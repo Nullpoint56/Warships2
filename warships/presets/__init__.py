@@ -1,0 +1,1 @@
+"""Ship placement preset management."""

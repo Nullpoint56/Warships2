@@ -205,3 +205,11 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+# IDE specific
+.idea
+
+# Project specific
+data
+uv.lock
