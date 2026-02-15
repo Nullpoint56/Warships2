@@ -4,8 +4,8 @@ import logging
 import os
 
 from warships.game.app.loop import AppLoop
-from warships.infra.config import load_env_file
-from warships.infra.logging import setup_logging
+from warships.game.infra.config import load_env_file
+from warships.game.infra.logging import setup_logging
 
 logger = logging.getLogger(__name__)
 

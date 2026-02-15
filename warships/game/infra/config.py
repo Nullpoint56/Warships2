@@ -41,6 +41,6 @@ def _resolve_env_path(path: str) -> Path:
         return candidate
 
     # Fallback for IDE run configs with different working directory.
-    project_root = Path(__file__).resolve().parents[2]
+    project_root = Path(__file__).resolve().parents[3]
     fallback = project_root / path
     return fallback

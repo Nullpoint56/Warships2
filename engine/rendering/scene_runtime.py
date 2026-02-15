@@ -14,7 +14,7 @@ def resolve_preserve_aspect() -> bool:
 
 def resolve_window_mode() -> str:
     """Read startup window mode from environment."""
-    return os.getenv("WARSHIPS_WINDOW_MODE", "fullscreen").strip().lower()
+    return os.getenv("WARSHIPS_WINDOW_MODE", "windowed").strip().lower()
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
@@ -105,4 +105,3 @@ def stop_backend_loop(rc_auto: Any) -> None:
     loop = getattr(rc_auto, "loop", None)
     if loop is not None and hasattr(loop, "stop"):
         loop.stop()
-
