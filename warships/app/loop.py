@@ -19,7 +19,8 @@ except Exception as exc:  # pragma: no cover
 
 class AppLoop:
     def __init__(self) -> None:
-        preset_service = PresetService(PresetRepository(Path("data/presets")))
+        preset_root = Path(__file__).resolve().parents[1] / "data" / "presets"
+        preset_service = PresetService(PresetRepository(preset_root))
         debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
         self._controller = GameController(preset_service=preset_service, rng=random.Random(), debug_ui=debug_ui)
         self._app = QApplication.instance() or QApplication([])

@@ -5,15 +5,15 @@ from __future__ import annotations
 import logging
 import random
 
-from warships.ai.hunt_target import HuntTargetAI
 from warships.ai.strategy import AIStrategy
+from warships.app.services.battle import resolve_player_turn, start_game
 from warships.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState, PresetRowView, TextPromptView
 from warships.core.board import BoardState
 from warships.core.fleet import random_fleet, validate_fleet
-from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType, ShotResult, Turn
-from warships.core.rules import GameSession, ai_fire, create_session, player_fire
+from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
+from warships.core.rules import GameSession
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout
 from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT
@@ -214,21 +214,13 @@ class GameController:
 
     def handle_board_click(self, event: BoardCellPressed) -> bool:
         """Handle board click for battle firing."""
-        if self._state is not AppState.BATTLE or self._session is None:
+        if self._state is not AppState.BATTLE or self._session is None or self._ai_strategy is None:
             return False
         if not event.is_ai_board:
             return False
-        result = player_fire(self._session, event.coord)
-        if result in {ShotResult.INVALID, ShotResult.REPEAT}:
-            self._status = "Invalid target. Choose another enemy cell."
-            return True
-        self._status = self._session.last_message
-        if self._session.winner is not None:
-            self._state = AppState.RESULT
-            self._refresh_buttons()
-            return True
-        self._run_ai_turn()
-        if self._session.winner is not None:
+        turn = resolve_player_turn(self._session, self._ai_strategy, event.coord)
+        self._status = turn.status
+        if turn.winner is not None:
             self._state = AppState.RESULT
             self._refresh_buttons()
         return True
@@ -322,6 +314,12 @@ class GameController:
             return False
         list_rect = NEW_GAME_SETUP.preset_list_rect()
         if not list_rect.contains(x, y):
+            return False
+        return self.scroll_new_game_presets(dy)
+
+    def scroll_new_game_presets(self, dy: float) -> bool:
+        """Scroll the new-game preset list by wheel delta semantics."""
+        if self._state is not AppState.NEW_GAME_SETUP:
             return False
         if dy < 0 and self._new_game_preset_scroll > 0:
             self._new_game_preset_scroll -= 1
@@ -554,20 +552,6 @@ class GameController:
         self._refresh_buttons()
         return True
 
-    def _run_ai_turn(self) -> None:
-        if self._session is None or self._ai_strategy is None:
-            return
-        if self._session.turn is not Turn.AI or self._session.winner is not None:
-            return
-        for _ in range(200):
-            shot = self._ai_strategy.choose_shot()
-            result = ai_fire(self._session, shot)
-            if result in {ShotResult.INVALID, ShotResult.REPEAT}:
-                continue
-            self._ai_strategy.notify_result(shot, result)
-            self._status = self._session.last_message
-            break
-
     def _current_difficulty(self) -> str:
         return _DIFFICULTIES[self._new_game_difficulty_index]
 
@@ -607,25 +591,20 @@ class GameController:
         return True
 
     def _start_game(self) -> bool:
-        if self._new_game_random_fleet is not None:
-            player_fleet = self._new_game_random_fleet
-            source_label = "Random Fleet"
-        elif self._new_game_selected_preset is not None:
-            source = self._new_game_selected_preset
-            try:
-                player_fleet = self._preset_service.load_preset(source)
-            except Exception as exc:
-                self._status = f"Failed to load preset '{source}': {exc}"
-                return True
-            source_label = f"Preset: {source}"
-        else:
-            self._status = "Select a preset or generate a random fleet first."
+        result = start_game(
+            preset_service=self._preset_service,
+            rng=self._rng,
+            difficulty=self._current_difficulty(),
+            selected_preset=self._new_game_selected_preset,
+            random_fleet_choice=self._new_game_random_fleet,
+        )
+        if not result.success or result.session is None or result.ai_strategy is None:
+            self._status = result.status
             return True
-        ai_fleet = random_fleet(self._rng)
-        self._session = create_session(player_fleet, ai_fleet)
-        self._ai_strategy = _build_ai_strategy(self._current_difficulty(), self._rng)
+        self._session = result.session
+        self._ai_strategy = result.ai_strategy
         self._state = AppState.BATTLE
-        self._status = f"Game started ({self._current_difficulty()}) using {source_label}."
+        self._status = result.status
         self._refresh_buttons()
         self._announce_state()
         return True
@@ -754,24 +733,3 @@ def _bow_from_grab_index(cell: Coord, orientation: Orientation, grab_index: int)
     if orientation is Orientation.HORIZONTAL:
         return Coord(row=cell.row, col=cell.col - grab_index)
     return Coord(row=cell.row - grab_index, col=cell.col)
-
-
-def _build_ai_strategy(difficulty: str, rng: random.Random) -> AIStrategy:
-    if difficulty == "Easy":
-        return _RandomShotAI(rng)
-    if difficulty == "Hard":
-        return HuntTargetAI(rng)
-    return HuntTargetAI(rng)
-
-
-class _RandomShotAI(AIStrategy):
-    def __init__(self, rng: random.Random) -> None:
-        self._rng = rng
-        self._remaining: set[tuple[int, int]] = {(r, c) for r in range(10) for c in range(10)}
-
-    def choose_shot(self) -> Coord:
-        row, col = self._rng.choice(list(self._remaining))
-        return Coord(row=row, col=col)
-
-    def notify_result(self, coord: Coord, result: ShotResult) -> None:
-        self._remaining.discard((coord.row, coord.col))

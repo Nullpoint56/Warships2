@@ -25,7 +25,7 @@ class MainWindow(QMainWindow):
         self._stack = QStackedWidget()
         self.setCentralWidget(self._stack)
         self._main = MainMenuPage(self._click_button)
-        self._new = NewGamePage(self._click_button)
+        self._new = NewGamePage(self._click_button, self._scroll_new_game_presets)
         self._presets = PresetManagerPage(self._click_button)
         self._canvas = GameCanvas(controller, self._layout, self._click_button)
         self._stack.addWidget(self._main)
@@ -43,6 +43,12 @@ class MainWindow(QMainWindow):
     def _click_button(self, button_id: str) -> None:
         if self._controller.handle_button(ButtonPressed(button_id)):
             self._sync_ui()
+
+    def _scroll_new_game_presets(self, dy: float) -> bool:
+        if self._controller.scroll_new_game_presets(dy):
+            self._sync_ui()
+            return True
+        return False
 
     def _sync_prompt(self, ui: AppUIState) -> None:
         if ui.prompt is None:

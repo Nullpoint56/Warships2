@@ -97,9 +97,10 @@ class MainMenuPage(QWidget):
 
 
 class NewGamePage(QWidget):
-    def __init__(self, on_button: Callable[[str], None]) -> None:
+    def __init__(self, on_button: Callable[[str], None], on_scroll: Callable[[float], bool] | None = None) -> None:
         super().__init__()
         self._on_button = on_button
+        self._on_scroll = on_scroll
         self._syncing = False
         root = QVBoxLayout(self)
         root.setContentsMargins(20, 20, 20, 20)
@@ -171,6 +172,11 @@ class NewGamePage(QWidget):
         self._on_button(f"new_game_select_preset:{item.text()}")
 
     def wheelEvent(self, event) -> None:  # type: ignore[override]
+        if self._on_scroll is not None:
+            changed = self._on_scroll(float(event.angleDelta().y()))
+            if changed:
+                event.accept()
+                return
         super().wheelEvent(event)
 
     def sync(self, ui: AppUIState) -> None:
