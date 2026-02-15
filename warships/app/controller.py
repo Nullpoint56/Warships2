@@ -5,15 +5,18 @@ from __future__ import annotations
 import logging
 import random
 
+from warships.ai.hunt_target import HuntTargetAI
+from warships.ai.strategy import AIStrategy
 from warships.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState, PresetRowView, TextPromptView
 from warships.core.board import BoardState
-from warships.core.fleet import validate_fleet
-from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
+from warships.core.fleet import random_fleet, validate_fleet
+from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType, ShotResult, Turn
+from warships.core.rules import GameSession, ai_fire, create_session, player_fire
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout
-from warships.ui.layout_metrics import PLACEMENT_PANEL, PRESET_PANEL, PROMPT
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT
 from warships.ui.overlays import Button, buttons_for_state
 
 _SHIP_ORDER = [
@@ -26,6 +29,8 @@ _SHIP_ORDER = [
 
 logger = logging.getLogger(__name__)
 _BOARD_LAYOUT = BoardLayout()
+_DIFFICULTIES = ["Easy", "Normal", "Hard"]
+_NEW_GAME_VISIBLE_PRESET_ROWS = 5
 
 
 class GameController:
@@ -37,8 +42,10 @@ class GameController:
         self._debug_ui = debug_ui
 
         self._state = AppState.MAIN_MENU
-        self._status = "Open preset manager."
+        self._status = "Choose New Game, Manage Presets, or Quit."
         self._is_closing = False
+        self._session: GameSession | None = None
+        self._ai_strategy: AIStrategy | None = None
 
         self._placements_by_type: dict[ShipType, ShipPlacement | None] = {ship_type: None for ship_type in _SHIP_ORDER}
         self._held_ship_type: ShipType | None = None
@@ -51,6 +58,13 @@ class GameController:
 
         self._preset_rows: list[PresetRowView] = []
         self._editing_preset_name: str | None = None
+        self._new_game_difficulty_index = 1
+        self._new_game_difficulty_open = False
+        self._new_game_selected_preset: str | None = None
+        self._new_game_preset_scroll = 0
+        self._new_game_random_fleet: FleetPlacement | None = None
+        self._new_game_preview: list[ShipPlacement] = []
+        self._new_game_source_label: str | None = None
 
         self._prompt: TextPromptView | None = None
         self._prompt_buffer: str = ""
@@ -71,7 +85,7 @@ class GameController:
             buttons=self._buttons,
             placements=self._placements_list(),
             placement_orientation=self._held_orientation or Orientation.HORIZONTAL,
-            session=None,
+            session=self._session,
             ship_order=list(_SHIP_ORDER),
             is_closing=self._is_closing,
             preset_rows=list(self._preset_rows),
@@ -82,6 +96,15 @@ class GameController:
             hover_cell=self._hover_cell,
             hover_x=self._hover_x,
             hover_y=self._hover_y,
+            new_game_difficulty=self._current_difficulty(),
+            new_game_difficulty_open=self._new_game_difficulty_open,
+            new_game_difficulty_options=list(_DIFFICULTIES),
+            new_game_visible_presets=self._visible_new_game_preset_names(),
+            new_game_selected_preset=self._new_game_selected_preset,
+            new_game_can_scroll_up=self._new_game_preset_scroll > 0,
+            new_game_can_scroll_down=self._new_game_can_scroll_down(),
+            new_game_source=self._new_game_source_label,
+            new_game_preview=list(self._new_game_preview),
         )
 
     def handle_button(self, event: ButtonPressed) -> bool:
@@ -97,6 +120,13 @@ class GameController:
             self._refresh_buttons()
             self._announce_state()
             return True
+        if button_id == "new_game":
+            self._state = AppState.NEW_GAME_SETUP
+            self._enter_new_game_setup()
+            self._status = "Configure game: difficulty and fleet selection."
+            self._refresh_buttons()
+            self._announce_state()
+            return True
         if button_id == "create_preset":
             self._state = AppState.PLACEMENT_EDIT
             self._status = "Drag a ship from panel, drop onto board. Press R while holding to rotate."
@@ -107,12 +137,45 @@ class GameController:
             return True
         if button_id == "back_main":
             self._state = AppState.MAIN_MENU
-            self._status = "Open preset manager."
+            self._status = "Choose New Game, Manage Presets, or Quit."
+            self._session = None
             self._refresh_buttons()
             self._announce_state()
             return True
+        if button_id == "new_game_toggle_difficulty":
+            self._new_game_difficulty_open = not self._new_game_difficulty_open
+            self._refresh_buttons()
+            return True
+        if button_id.startswith("new_game_diff_option:"):
+            diff = button_id.split(":", 1)[1]
+            if diff in _DIFFICULTIES:
+                self._new_game_difficulty_index = _DIFFICULTIES.index(diff)
+                self._new_game_difficulty_open = False
+                self._status = f"Difficulty: {self._current_difficulty()}."
+                self._refresh_buttons()
+                return True
+            return False
+        if button_id.startswith("new_game_select_preset:"):
+            name = button_id.split(":", 1)[1]
+            return self._select_new_game_preset(name)
+        if button_id == "new_game_randomize":
+            self._new_game_random_fleet = random_fleet(self._rng)
+            self._new_game_selected_preset = None
+            self._new_game_preview = list(self._new_game_random_fleet.ships)
+            self._new_game_source_label = "Random Fleet"
+            self._status = "Generated random fleet for this game."
+            return True
+        if button_id == "start_game":
+            return self._start_game()
         if button_id == "quit":
             self._is_closing = True
+            return True
+        if button_id == "play_again":
+            self._state = AppState.NEW_GAME_SETUP
+            self._enter_new_game_setup()
+            self._status = "Configure game: difficulty and fleet selection."
+            self._refresh_buttons()
+            self._announce_state()
             return True
         if button_id == "back_to_presets":
             self._state = AppState.PRESET_MANAGE
@@ -150,8 +213,25 @@ class GameController:
         return False
 
     def handle_board_click(self, event: BoardCellPressed) -> bool:
-        """Compatibility no-op for current pointer-driven editor."""
-        return False
+        """Handle board click for battle firing."""
+        if self._state is not AppState.BATTLE or self._session is None:
+            return False
+        if not event.is_ai_board:
+            return False
+        result = player_fire(self._session, event.coord)
+        if result in {ShotResult.INVALID, ShotResult.REPEAT}:
+            self._status = "Invalid target. Choose another enemy cell."
+            return True
+        self._status = self._session.last_message
+        if self._session.winner is not None:
+            self._state = AppState.RESULT
+            self._refresh_buttons()
+            return True
+        self._run_ai_turn()
+        if self._session.winner is not None:
+            self._state = AppState.RESULT
+            self._refresh_buttons()
+        return True
 
     def handle_pointer_move(self, event: PointerMoved) -> bool:
         """Update hover cell while dragging in editor."""
@@ -236,6 +316,23 @@ class GameController:
         self._sync_prompt()
         return True
 
+    def handle_wheel(self, x: float, y: float, dy: float) -> bool:
+        """Handle mouse wheel interactions."""
+        if self._state is not AppState.NEW_GAME_SETUP:
+            return False
+        list_rect = NEW_GAME_SETUP.preset_list_rect()
+        if not list_rect.contains(x, y):
+            return False
+        if dy < 0 and self._new_game_preset_scroll > 0:
+            self._new_game_preset_scroll -= 1
+            self._refresh_buttons()
+            return True
+        if dy > 0 and self._new_game_can_scroll_down():
+            self._new_game_preset_scroll += 1
+            self._refresh_buttons()
+            return True
+        return False
+
     def handle_pointer_down(self, x: float, y: float, button: int) -> bool:
         """Pick ship from board or palette."""
         if self._state is not AppState.PLACEMENT_EDIT or self._prompt is not None:
@@ -274,6 +371,9 @@ class GameController:
 
         palette_ship = _palette_ship_at_point(x, y)
         if palette_ship is not None:
+            if self._placements_by_type.get(palette_ship) is not None:
+                self._status = f"{palette_ship.value} is already placed."
+                return True
             self._held_ship_type = palette_ship
             self._held_orientation = Orientation.HORIZONTAL
             self._held_previous = None
@@ -430,14 +530,88 @@ class GameController:
         return True
 
     def _randomize_editor(self) -> bool:
-        from warships.core.fleet import random_fleet
-
         fleet = random_fleet(self._rng)
         self._reset_editor()
         for placement in fleet.ships:
             self._placements_by_type[placement.ship_type] = placement
         self._status = "Placement randomized."
         self._refresh_buttons()
+        return True
+
+    def _run_ai_turn(self) -> None:
+        if self._session is None or self._ai_strategy is None:
+            return
+        if self._session.turn is not Turn.AI or self._session.winner is not None:
+            return
+        for _ in range(200):
+            shot = self._ai_strategy.choose_shot()
+            result = ai_fire(self._session, shot)
+            if result in {ShotResult.INVALID, ShotResult.REPEAT}:
+                continue
+            self._ai_strategy.notify_result(shot, result)
+            self._status = self._session.last_message
+            break
+
+    def _current_difficulty(self) -> str:
+        return _DIFFICULTIES[self._new_game_difficulty_index]
+
+    def _enter_new_game_setup(self) -> None:
+        self._refresh_preset_rows()
+        self._new_game_difficulty_open = False
+        self._new_game_preset_scroll = 0
+        self._new_game_random_fleet = None
+        if self._preset_rows:
+            self._select_new_game_preset(self._preset_rows[0].name)
+        else:
+            self._new_game_selected_preset = None
+            self._new_game_preview = []
+            self._new_game_source_label = None
+
+    def _visible_new_game_preset_names(self) -> list[str]:
+        names = [row.name for row in self._preset_rows]
+        start = self._new_game_preset_scroll
+        end = start + _NEW_GAME_VISIBLE_PRESET_ROWS
+        return names[start:end]
+
+    def _new_game_can_scroll_down(self) -> bool:
+        names = [row.name for row in self._preset_rows]
+        return self._new_game_preset_scroll + _NEW_GAME_VISIBLE_PRESET_ROWS < len(names)
+
+    def _select_new_game_preset(self, name: str) -> bool:
+        try:
+            fleet = self._preset_service.load_preset(name)
+        except Exception as exc:
+            self._status = f"Failed to load preset '{name}': {exc}"
+            return True
+        self._new_game_selected_preset = name
+        self._new_game_random_fleet = None
+        self._new_game_preview = list(fleet.ships)
+        self._new_game_source_label = f"Preset: {name}"
+        self._status = f"Selected preset '{name}'."
+        return True
+
+    def _start_game(self) -> bool:
+        if self._new_game_random_fleet is not None:
+            player_fleet = self._new_game_random_fleet
+            source_label = "Random Fleet"
+        elif self._new_game_selected_preset is not None:
+            source = self._new_game_selected_preset
+            try:
+                player_fleet = self._preset_service.load_preset(source)
+            except Exception as exc:
+                self._status = f"Failed to load preset '{source}': {exc}"
+                return True
+            source_label = f"Preset: {source}"
+        else:
+            self._status = "Select a preset or generate a random fleet first."
+            return True
+        ai_fleet = random_fleet(self._rng)
+        self._session = create_session(player_fleet, ai_fleet)
+        self._ai_strategy = _build_ai_strategy(self._current_difficulty(), self._rng)
+        self._state = AppState.BATTLE
+        self._status = f"Game started ({self._current_difficulty()}) using {source_label}."
+        self._refresh_buttons()
+        self._announce_state()
         return True
 
     def _refresh_preset_rows(self) -> None:
@@ -449,6 +623,12 @@ class GameController:
                 continue
             rows.append(PresetRowView(name=name, placements=list(fleet.ships)))
         self._preset_rows = rows
+        names = [row.name for row in rows]
+        if self._new_game_selected_preset not in names:
+            self._new_game_selected_preset = None
+        max_scroll = max(0, len(names) - _NEW_GAME_VISIBLE_PRESET_ROWS)
+        if self._new_game_preset_scroll > max_scroll:
+            self._new_game_preset_scroll = max_scroll
 
     def _refresh_buttons(self) -> None:
         self._buttons = buttons_for_state(
@@ -458,6 +638,8 @@ class GameController:
         )
         if self._state is AppState.PRESET_MANAGE:
             self._buttons.extend(_preset_row_buttons(self._preset_rows))
+        if self._state is AppState.NEW_GAME_SETUP:
+            self._buttons.extend(_new_game_setup_buttons(self))
         if self._prompt is not None:
             self._buttons.extend(_prompt_buttons(self._prompt))
 
@@ -519,6 +701,23 @@ def _preset_row_buttons(rows: list[PresetRowView]) -> list[Button]:
     return buttons
 
 
+def _new_game_setup_buttons(controller: GameController) -> list[Button]:
+    buttons: list[Button] = []
+    difficulty = NEW_GAME_SETUP.difficulty_rect()
+    buttons.append(Button("new_game_toggle_difficulty", difficulty.x, difficulty.y, difficulty.w, difficulty.h))
+    if controller._new_game_difficulty_open:
+        for idx, name in enumerate(_DIFFICULTIES):
+            rect = NEW_GAME_SETUP.difficulty_option_rect(idx)
+            buttons.append(Button(f"new_game_diff_option:{name}", rect.x, rect.y, rect.w, rect.h))
+
+    for idx, name in enumerate(controller._visible_new_game_preset_names()):
+        row_rect = NEW_GAME_SETUP.preset_row_rect(idx)
+        buttons.append(Button(f"new_game_select_preset:{name}", row_rect.x, row_rect.y, row_rect.w, row_rect.h))
+    random_rect = NEW_GAME_SETUP.random_button_rect()
+    buttons.append(Button("new_game_randomize", random_rect.x, random_rect.y, random_rect.w, random_rect.h))
+    return buttons
+
+
 def _cells_for_ship(placement: ShipPlacement) -> list[Coord]:
     cells: list[Coord] = []
     for offset in range(placement.ship_type.size):
@@ -539,3 +738,24 @@ def _bow_from_grab_index(cell: Coord, orientation: Orientation, grab_index: int)
     if orientation is Orientation.HORIZONTAL:
         return Coord(row=cell.row, col=cell.col - grab_index)
     return Coord(row=cell.row - grab_index, col=cell.col)
+
+
+def _build_ai_strategy(difficulty: str, rng: random.Random) -> AIStrategy:
+    if difficulty == "Easy":
+        return _RandomShotAI(rng)
+    if difficulty == "Hard":
+        return HuntTargetAI(rng)
+    return HuntTargetAI(rng)
+
+
+class _RandomShotAI(AIStrategy):
+    def __init__(self, rng: random.Random) -> None:
+        self._rng = rng
+        self._remaining: set[tuple[int, int]] = {(r, c) for r in range(10) for c in range(10)}
+
+    def choose_shot(self) -> Coord:
+        row, col = self._rng.choice(list(self._remaining))
+        return Coord(row=row, col=col)
+
+    def notify_result(self, coord: Coord, result: ShotResult) -> None:
+        self._remaining.discard((coord.row, coord.col))

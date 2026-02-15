@@ -48,3 +48,12 @@ class AppUIState:
     hover_cell: Coord | None
     hover_x: float | None
     hover_y: float | None
+    new_game_difficulty: str | None
+    new_game_difficulty_open: bool
+    new_game_difficulty_options: list[str]
+    new_game_visible_presets: list[str]
+    new_game_selected_preset: str | None
+    new_game_can_scroll_up: bool
+    new_game_can_scroll_down: bool
+    new_game_source: str | None
+    new_game_preview: list[ShipPlacement]

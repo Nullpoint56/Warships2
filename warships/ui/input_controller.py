@@ -37,6 +37,15 @@ class KeyEvent:
     value: str
 
 
+@dataclass(frozen=True, slots=True)
+class WheelEvent:
+    """Mouse wheel event in canvas coordinates."""
+
+    x: float
+    y: float
+    dy: float
+
+
 logger = logging.getLogger(__name__)
 
 
@@ -47,6 +56,7 @@ class InputController:
         self._clicks: deque[PointerClick] = deque()
         self._pointer_events: deque[PointerEvent] = deque()
         self._key_events: deque[KeyEvent] = deque()
+        self._wheel_events: deque[WheelEvent] = deque()
         self._debug = os.getenv("WARSHIPS_DEBUG_INPUT", "0") == "1"
         self._on_click_queued = on_click_queued
 
@@ -59,6 +69,7 @@ class InputController:
         canvas.add_event_handler(self._on_pointer_up, "pointer_up")
         canvas.add_event_handler(self._on_key_down, "key_down")
         canvas.add_event_handler(self._on_char, "char")
+        canvas.add_event_handler(self._on_wheel, "wheel")
         if self._debug:
             canvas.add_event_handler(self._on_any_event, "*")
 
@@ -78,6 +89,12 @@ class InputController:
         """Return and clear key/char events."""
         items = list(self._key_events)
         self._key_events.clear()
+        return items
+
+    def drain_wheel_events(self) -> list[WheelEvent]:
+        """Return and clear wheel events."""
+        items = list(self._wheel_events)
+        self._wheel_events.clear()
         return items
 
     def _on_pointer_down(self, event: dict) -> None:
@@ -142,16 +159,29 @@ class InputController:
             if self._on_click_queued is not None:
                 self._on_click_queued()
 
+    def _on_wheel(self, event: dict) -> None:
+        if event.get("event_type") != "wheel":
+            return
+        x = event.get("x")
+        y = event.get("y")
+        dy = event.get("dy")
+        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)) or not isinstance(dy, (int, float)):
+            return
+        self._wheel_events.append(WheelEvent(float(x), float(y), float(dy)))
+        if self._on_click_queued is not None:
+            self._on_click_queued()
+
     @staticmethod
     def _on_any_event(event: dict) -> None:
         event_type = event.get("event_type")
-        if event_type not in {"pointer_down", "pointer_up", "pointer_move", "double_click"}:
+        if event_type not in {"pointer_down", "pointer_up", "pointer_move", "double_click", "wheel"}:
             return
         logger.debug(
-            "input_event type=%s button=%s buttons=%s x=%s y=%s",
+            "input_event type=%s button=%s buttons=%s x=%s y=%s dy=%s",
             event_type,
             event.get("button"),
             event.get("buttons"),
             event.get("x"),
             event.get("y"),
+            event.get("dy"),
         )

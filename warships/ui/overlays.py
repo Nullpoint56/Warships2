@@ -40,7 +40,14 @@ def buttons_for_state(
 
     if state is AppState.MAIN_MENU:
         return [
-            Button("manage_presets", left_x, base_y, bw + 50.0, bh),
+            Button("new_game", left_x, base_y, bw, bh),
+            Button("manage_presets", left_x + bw + gap, base_y, bw + 30.0, bh),
+            Button("quit", left_x + 2 * (bw + gap) + 30.0, base_y, bw, bh),
+        ]
+    if state is AppState.NEW_GAME_SETUP:
+        return [
+            Button("start_game", left_x + 430.0, base_y, bw + 20.0, bh),
+            Button("back_main", left_x + 630.0, base_y, bw, bh),
         ]
     if state is AppState.PRESET_MANAGE:
         return [
@@ -54,7 +61,7 @@ def buttons_for_state(
             Button("back_to_presets", left_x + 3 * (bw + gap), base_y, bw + 30.0, bh),
         ]
     if state is AppState.BATTLE:
-        return [Button("menu_from_battle", left_x, base_y, bw, bh)]
+        return [Button("back_main", left_x, base_y, bw, bh)]
     if state is AppState.RESULT:
         return [
             Button("play_again", left_x, base_y, bw, bh),
@@ -71,11 +78,19 @@ def button_label(button_id: str) -> str:
         return "Rename"
     if button_id.startswith("preset_delete:"):
         return "Delete"
+    if button_id.startswith("new_game_diff_option:"):
+        return button_id.split(":", 1)[1]
+    if button_id.startswith("new_game_select_preset:"):
+        return button_id.split(":", 1)[1]
     labels = {
         "manage_presets": "Manage Presets",
+        "new_game": "New Game",
         "create_preset": "Create",
-        "back_main": "Back",
+        "back_main": "Main Menu",
         "quit": "Quit",
+        "new_game_toggle_difficulty": "Difficulty",
+        "new_game_randomize": "Random Fleet",
+        "start_game": "Start Game",
         "save_preset": "Save Preset",
         "randomize": "Randomize",
         "back_to_presets": "Back to Presets",

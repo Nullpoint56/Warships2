@@ -51,3 +51,12 @@ class CharTyped:
     """Character input event."""
 
     char: str
+
+
+@dataclass(frozen=True, slots=True)
+class WheelScrolled:
+    """Mouse wheel delta at design-space position."""
+
+    x: float
+    y: float
+    dy: float
