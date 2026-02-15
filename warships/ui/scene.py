@@ -45,7 +45,11 @@ class SceneRenderer:
     _line_nodes: dict[str, Any] = field(default_factory=dict)
     _text_nodes: dict[str, Any] = field(default_factory=dict)
     _rect_props: dict[str, tuple[float, float, float, float, str, float]] = field(default_factory=dict)
+    _line_props: dict[str, tuple[float, float, float, float, int, str, float]] = field(default_factory=dict)
     _text_props: dict[str, tuple[str, float, float, float, str, str, float]] = field(default_factory=dict)
+    _rect_viewport_rev: dict[str, int] = field(default_factory=dict)
+    _line_viewport_rev: dict[str, int] = field(default_factory=dict)
+    _text_viewport_rev: dict[str, int] = field(default_factory=dict)
     _static_rect_keys: set[str] = field(default_factory=set)
     _static_line_keys: set[str] = field(default_factory=set)
     _static_text_keys: set[str] = field(default_factory=set)
@@ -59,6 +63,7 @@ class SceneRenderer:
     _draw_failed: bool = field(init=False, default=False)
     _is_closed: bool = field(init=False, default=False)
     _draw_callback: Callable[[], None] | None = field(init=False, default=None)
+    _viewport_revision: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -138,6 +143,7 @@ class SceneRenderer:
             return False
         self.width = new_width
         self.height = new_height
+        self._viewport_revision += 1
         self._update_camera_projection()
         return True
 
@@ -300,11 +306,17 @@ class SceneRenderer:
         if key is not None and key in self._rect_nodes:
             node = self._rect_nodes[key]
             new_props = (x, y, w, h, color, z)
-            if self._rect_props.get(key) != new_props:
+            needs_update = (
+                self._rect_props.get(key) != new_props
+                or self._rect_viewport_rev.get(key, -1) != self._viewport_revision
+            )
+            if needs_update:
                 node.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
+                node.geometry = gfx.plane_geometry(tw, th)
                 if hasattr(node, "material"):
                     node.material.color = color_value
                 self._rect_props[key] = new_props
+                self._rect_viewport_rev[key] = self._viewport_revision
             node.visible = True
             if static:
                 self._static_rect_keys.add(key)
@@ -320,6 +332,7 @@ class SceneRenderer:
         else:
             self._rect_nodes[key] = mesh
             self._rect_props[key] = (x, y, w, h, color, z)
+            self._rect_viewport_rev[key] = self._viewport_revision
             if static:
                 self._static_rect_keys.add(key)
             else:
@@ -338,8 +351,35 @@ class SceneRenderer:
         static: bool = False,
     ) -> None:
         """Add a batched line-segment grid."""
+        new_props = (x, y, width, height, lines, color, z)
         if key in self._line_nodes:
             node = self._line_nodes[key]
+            needs_update = (
+                self._line_props.get(key) != new_props
+                or self._line_viewport_rev.get(key, -1) != self._viewport_revision
+            )
+            if needs_update:
+                sx, sy, ox, oy = self._viewport_transform()
+                tx = x * sx + ox
+                ty = y * sy + oy
+                tw = width * sx
+                th = height * sy
+                points: list[tuple[float, float, float]] = []
+                step_x = tw / (lines - 1)
+                step_y = th / (lines - 1)
+                for idx in range(lines):
+                    px = tx + idx * step_x
+                    points.append((px, ty, z))
+                    points.append((px, ty + th, z))
+                    py = ty + idx * step_y
+                    points.append((tx, py, z))
+                    points.append((tx + tw, py, z))
+                positions = np.array(points, dtype=np.float32)
+                node.geometry = gfx.Geometry(positions=positions)
+                if hasattr(node, "material"):
+                    node.material.color = cast(Any, color)
+                self._line_props[key] = new_props
+                self._line_viewport_rev[key] = self._viewport_revision
             node.visible = True
             if static:
                 self._static_line_keys.add(key)
@@ -369,6 +409,8 @@ class SceneRenderer:
         line = gfx.Line(geometry, material)
         self.scene.add(line)
         self._line_nodes[key] = line
+        self._line_props[key] = new_props
+        self._line_viewport_rev[key] = self._viewport_revision
         if static:
             self._static_line_keys.add(key)
         else:
@@ -395,7 +437,11 @@ class SceneRenderer:
         if key is not None and key in self._text_nodes:
             node = self._text_nodes[key]
             new_props = (text, x, y, font_size, color, anchor, z)
-            if self._text_props.get(key) != new_props:
+            needs_update = (
+                self._text_props.get(key) != new_props
+                or self._text_viewport_rev.get(key, -1) != self._viewport_revision
+            )
+            if needs_update:
                 node.set_text(text)
                 node.local.position = (tx, ty, z)
                 if hasattr(node, "font_size"):
@@ -403,6 +449,7 @@ class SceneRenderer:
                 if hasattr(node, "material"):
                     node.material.color = color_value
                 self._text_props[key] = new_props
+                self._text_viewport_rev[key] = self._viewport_revision
             node.visible = True
             if static:
                 self._static_text_keys.add(key)
@@ -424,10 +471,44 @@ class SceneRenderer:
         else:
             self._text_nodes[key] = node
             self._text_props[key] = (text, x, y, font_size, color, anchor, z)
+            self._text_viewport_rev[key] = self._viewport_revision
             if static:
                 self._static_text_keys.add(key)
             else:
                 self._active_text_keys.add(key)
+
+    def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
+        """Fill the entire window in window-space coordinates."""
+        color_value = cast(Any, color)
+        tw = float(self.width)
+        th = float(self.height)
+        tx = 0.0
+        ty = 0.0
+        if key in self._rect_nodes:
+            node = self._rect_nodes[key]
+            new_props = (tx, ty, tw, th, color, z)
+            needs_update = (
+                self._rect_props.get(key) != new_props
+                or self._rect_viewport_rev.get(key, -1) != self._viewport_revision
+            )
+            if needs_update:
+                node.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
+                node.geometry = gfx.plane_geometry(tw, th)
+                if hasattr(node, "material"):
+                    node.material.color = color_value
+                self._rect_props[key] = new_props
+                self._rect_viewport_rev[key] = self._viewport_revision
+            node.visible = True
+            self._active_rect_keys.add(key)
+            return
+
+        mesh = gfx.Mesh(gfx.plane_geometry(tw, th), gfx.MeshBasicMaterial(color=color))
+        mesh.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
+        self.scene.add(mesh)
+        self._rect_nodes[key] = mesh
+        self._rect_props[key] = (tx, ty, tw, th, color, z)
+        self._rect_viewport_rev[key] = self._viewport_revision
+        self._active_rect_keys.add(key)
 
     def set_title(self, title: str) -> None:
         """Set window title when supported by backend."""

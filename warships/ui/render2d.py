@@ -59,6 +59,9 @@ class Render2D(Protocol):
     def set_title(self, title: str) -> None:
         """Set window title when supported."""
 
+    def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
+        """Fill the full window area regardless of design-space/aspect transform."""
+
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         """Map pointer coordinates into design-space coordinates."""
 
@@ -70,4 +73,3 @@ class Render2D(Protocol):
 
     def close(self) -> None:
         """Close renderer resources and stop the loop."""
-

@@ -33,7 +33,7 @@ _SHIP_ORDER = [
 logger = logging.getLogger(__name__)
 _BOARD_LAYOUT = BoardLayout()
 _DIFFICULTIES = ["Easy", "Normal", "Hard"]
-_NEW_GAME_VISIBLE_PRESET_ROWS = 5
+_NEW_GAME_VISIBLE_PRESET_ROWS = 4
 
 
 class GameController:
@@ -356,11 +356,11 @@ class GameController:
         """Scroll the new-game preset list by wheel delta semantics."""
         if self._state is not AppState.NEW_GAME_SETUP:
             return False
-        if dy < 0 and self._new_game_preset_scroll > 0:
+        if dy > 0 and self._new_game_preset_scroll > 0:
             self._new_game_preset_scroll -= 1
             self._refresh_buttons()
             return True
-        if dy > 0 and PresetFlowService.can_scroll_down(
+        if dy < 0 and PresetFlowService.can_scroll_down(
             self._preset_rows, self._new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
         ):
             self._new_game_preset_scroll += 1

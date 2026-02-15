@@ -11,7 +11,7 @@ from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, ce
 from warships.core.rules import GameSession
 from warships.ui.board_view import BoardLayout
 from warships.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
-from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, root_rect, status_rect
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, status_rect
 from warships.ui.overlays import Button, button_label
 from warships.ui.render2d import Render2D
 
@@ -34,15 +34,7 @@ class GameView:
     ) -> list[str]:
         """Draw current app state and return latest button labels for debug."""
         self._renderer.begin_frame()
-        self._renderer.add_rect(
-            "bg",
-            root_rect().x,
-            root_rect().y,
-            root_rect().w,
-            root_rect().h,
-            "#0b132b",
-            z=0.0,
-        )
+        self._renderer.fill_window("bg:window", "#0b132b", z=-100.0)
 
         labels = self._draw_buttons(ui.buttons)
         if ui.state in (AppState.PLACEMENT_EDIT, AppState.BATTLE, AppState.RESULT):
