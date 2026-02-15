@@ -57,7 +57,7 @@ def buttons_for_state(
     if state is AppState.PLACEMENT_EDIT:
         return [
             Button("randomize", left_x, base_y, bw, bh),
-            Button("save_preset", left_x + 2 * (bw + gap), base_y, bw, bh),
+            Button("save_preset", left_x + 2 * (bw + gap), base_y, bw, bh, enabled=placement_ready),
             Button("back_to_presets", left_x + 3 * (bw + gap), base_y, bw + 30.0, bh),
         ]
     if state is AppState.BATTLE:
@@ -65,7 +65,7 @@ def buttons_for_state(
     if state is AppState.RESULT:
         return [
             Button("play_again", left_x, base_y, bw, bh),
-            Button("quit", left_x + bw + gap, base_y, bw, bh),
+            Button("back_main", left_x + bw + gap, base_y, bw + 20.0, bh),
         ]
     return []
 
@@ -85,7 +85,7 @@ def button_label(button_id: str) -> str:
     labels = {
         "manage_presets": "Manage Presets",
         "new_game": "New Game",
-        "create_preset": "Create",
+        "create_preset": "Create Preset",
         "back_main": "Main Menu",
         "quit": "Quit",
         "new_game_toggle_difficulty": "Difficulty",

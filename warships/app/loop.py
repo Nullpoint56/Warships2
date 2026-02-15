@@ -15,7 +15,7 @@ from warships.presets.repository import PresetRepository
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout, Rect
 from warships.ui.layout_metrics import PLACEMENT_PANEL, PROMPT, root_rect, status_rect
-from warships.ui.overlays import button_label
+from warships.ui.overlays import Button, button_label
 
 try:
     from PyQt6.QtCore import QPointF, QRectF, Qt
@@ -85,6 +85,9 @@ class _MainMenuPage(QWidget):
         title = QLabel("Warships")
         title.setStyleSheet("font-size: 28px; color: #dbeafe;")
         layout.addWidget(title)
+        subtitle = QLabel("Classic naval tactics. Configure, place, and sink.")
+        subtitle.setStyleSheet("color: #93c5fd;")
+        layout.addWidget(subtitle)
         row = QHBoxLayout()
         self._new = QPushButton("New Game")
         self._manage = QPushButton("Manage Presets")
@@ -102,9 +105,12 @@ class _MainMenuPage(QWidget):
         self._new.clicked.connect(lambda: self._on_button("new_game"))
         self._manage.clicked.connect(lambda: self._on_button("manage_presets"))
         self._quit.clicked.connect(lambda: self._on_button("quit"))
+        self.setTabOrder(self._new, self._manage)
+        self.setTabOrder(self._manage, self._quit)
 
     def sync(self, ui: AppUIState) -> None:
         self._status.setText(ui.status)
+        self._status.setStyleSheet(f"color: {_status_color(ui.status)};")
 
 
 class _NewGamePage(QWidget):
@@ -117,6 +123,9 @@ class _NewGamePage(QWidget):
         title = QLabel("New Game Setup")
         title.setStyleSheet("font-size: 24px; color: #dbeafe;")
         root.addWidget(title)
+        helper = QLabel("Choose AI difficulty, select a preset or generate a random fleet, then start.")
+        helper.setStyleSheet("color: #93c5fd;")
+        root.addWidget(helper)
 
         top = QHBoxLayout()
         left = QVBoxLayout()
@@ -133,6 +142,7 @@ class _NewGamePage(QWidget):
         self._presets.setMinimumHeight(280)
         self._presets.itemClicked.connect(self._preset_clicked)
         left.addWidget(self._presets, 1)
+        self._presets.setToolTip("Scroll inside this list with the mouse wheel.")
 
         self._random = QPushButton("Generate Random Fleet")
         self._random.setMinimumHeight(44)
@@ -141,7 +151,7 @@ class _NewGamePage(QWidget):
 
         self._start = QPushButton("Start Game")
         self._start.clicked.connect(lambda: self._on_button("start_game"))
-        self._back = QPushButton("Back")
+        self._back = QPushButton("Main Menu")
         self._back.clicked.connect(lambda: self._on_button("back_main"))
         self._start.setMinimumHeight(44)
         self._back.setMinimumHeight(44)
@@ -164,6 +174,10 @@ class _NewGamePage(QWidget):
         self._status = QLabel("")
         self._status.setStyleSheet("color: #dbeafe;")
         root.addWidget(self._status)
+        self.setTabOrder(self._difficulty, self._presets)
+        self.setTabOrder(self._presets, self._random)
+        self.setTabOrder(self._random, self._start)
+        self.setTabOrder(self._start, self._back)
 
     def _difficulty_changed(self, value: str) -> None:
         if self._syncing:
@@ -194,6 +208,10 @@ class _NewGamePage(QWidget):
         self._source.setText(f"Selected Setup: {ui.new_game_source or 'None'}")
         self._preview.set_placements(ui.new_game_preview)
         self._status.setText(ui.status)
+        self._status.setStyleSheet(f"color: {_status_color(ui.status)};")
+        can_start = ui.new_game_source is not None and bool(ui.new_game_preview)
+        self._start.setEnabled(can_start)
+        self._start.setToolTip("" if can_start else "Select a preset or generate a random fleet first.")
         self._syncing = False
 
 
@@ -210,11 +228,11 @@ class _PresetManagerPage(QWidget):
         self._list.setMinimumHeight(360)
         root.addWidget(self._list, 1)
         controls = QHBoxLayout()
-        self._create = QPushButton("Create")
+        self._create = QPushButton("Create Preset")
         self._edit = QPushButton("Edit")
         self._rename = QPushButton("Rename")
         self._delete = QPushButton("Delete")
-        self._back = QPushButton("Back")
+        self._back = QPushButton("Main Menu")
         for b in (self._create, self._edit, self._rename, self._delete, self._back):
             b.setMinimumHeight(42)
             controls.addWidget(b)
@@ -227,7 +245,12 @@ class _PresetManagerPage(QWidget):
         self._back.clicked.connect(lambda: self._on_button("back_main"))
         self._edit.clicked.connect(lambda: self._for_selected("preset_edit:"))
         self._rename.clicked.connect(lambda: self._for_selected("preset_rename:"))
-        self._delete.clicked.connect(lambda: self._for_selected("preset_delete:"))
+        self._delete.clicked.connect(self._confirm_delete)
+        self.setTabOrder(self._list, self._create)
+        self.setTabOrder(self._create, self._edit)
+        self.setTabOrder(self._edit, self._rename)
+        self.setTabOrder(self._rename, self._delete)
+        self.setTabOrder(self._delete, self._back)
 
     def _for_selected(self, prefix: str) -> None:
         item = self._list.currentItem()
@@ -236,6 +259,23 @@ class _PresetManagerPage(QWidget):
         name = item.data(Qt.ItemDataRole.UserRole)
         if isinstance(name, str):
             self._on_button(prefix + name)
+
+    def _confirm_delete(self) -> None:
+        item = self._list.currentItem()
+        if item is None:
+            return
+        name = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(name, str):
+            return
+        answer = QMessageBox.question(
+            self,
+            "Delete Preset",
+            f"Delete preset '{name}'?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self._on_button(f"preset_delete:{name}")
 
     def sync(self, ui: AppUIState) -> None:
         selected_item = self._list.currentItem()
@@ -250,6 +290,7 @@ class _PresetManagerPage(QWidget):
             if selected == row.name:
                 it.setSelected(True)
         self._status.setText(ui.status)
+        self._status.setStyleSheet(f"color: {_status_color(ui.status)};")
 
 
 class _PresetListItemWidget(QWidget):
@@ -278,6 +319,7 @@ class _GameCanvas(QWidget):
         self._offset_y = 0.0
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setMouseTracking(True)
+        self._hover_design: tuple[float, float] | None = None
 
     def _update_viewport(self) -> None:
         w = max(1.0, float(self.width()))
@@ -316,7 +358,16 @@ class _GameCanvas(QWidget):
             self._draw_prompt(painter, ui)
         s = status_rect()
         self._draw_rect(painter, s, "#172554")
-        self._draw_text(painter, ui.status, s.x + 10, s.y + s.h / 2 + 5, 13)
+        self._draw_text(painter, ui.status, s.x + 10, s.y + s.h / 2 + 5, 13, _status_color(ui.status))
+        if ui.state is AppState.PLACEMENT_EDIT:
+            self._draw_text(
+                painter,
+                "Left click: pick/place  Right click: remove  R: rotate held  D: delete held  Save enabled after all ships",
+                s.x + 10,
+                s.y + s.h + 18,
+                11,
+                "#93c5fd",
+            )
         painter.end()
 
     def _draw_rect(self, painter: QPainter, r: Rect, color: str) -> None:
@@ -370,7 +421,10 @@ class _GameCanvas(QWidget):
         placed = {p.ship_type for p in ui.placements}
         for idx, ship in enumerate(ui.ship_order):
             row = PLACEMENT_PANEL.row_rect(idx)
-            self._draw_rect(painter, row, "#10b981" if ship in placed else "#334155")
+            color = "#10b981" if ship in placed else "#334155"
+            if self._hover_design is not None and row.contains(self._hover_design[0], self._hover_design[1]):
+                color = "#f59e0b" if ship not in placed else "#22c55e"
+            self._draw_rect(painter, row, color)
             self._draw_text(painter, f"{ship.value[:3]} ({ship.size})", row.x + 4, row.y + row.h / 2 + 4, 11)
 
     def _draw_held_preview(self, painter: QPainter, ui: AppUIState) -> None:
@@ -424,7 +478,17 @@ class _GameCanvas(QWidget):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
         x, y = self._to_design(event.position().x(), event.position().y())
+        self._hover_design = (x, y)
+        ui = self._controller.ui_state()
+        tip = ""
+        for b in ui.buttons:
+            if b.contains(x, y) and not b.enabled and b.id == "save_preset":
+                tip = "Place all ships to enable Save Preset."
+                break
+        self.setToolTip(tip)
         if self._controller.handle_pointer_move(PointerMoved(x=x, y=y)):
+            self.update()
+        else:
             self.update()
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # type: ignore[override]
@@ -476,6 +540,19 @@ class _MainWindow(QMainWindow):
     def _sync_prompt(self, ui: AppUIState) -> None:
         if ui.prompt is None:
             return
+        if ui.prompt.confirm_button_id == "prompt_confirm_overwrite":
+            answer = QMessageBox.question(
+                self,
+                ui.prompt.title,
+                f"Overwrite preset '{ui.prompt.value}'?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self._controller.handle_button(ButtonPressed(ui.prompt.confirm_button_id))
+            else:
+                self._controller.handle_button(ButtonPressed(ui.prompt.cancel_button_id))
+            return
         text, ok = QInputDialog.getText(self, ui.prompt.title, ui.prompt.title, text=ui.prompt.value)
         if not ok:
             self._controller.handle_button(ButtonPressed(ui.prompt.cancel_button_id))
@@ -488,9 +565,15 @@ class _MainWindow(QMainWindow):
 
     def _sync_ui(self) -> None:
         ui = self._controller.ui_state()
-        if ui.prompt is not None:
+        while ui.prompt is not None:
+            before = (ui.prompt.title, ui.prompt.value, ui.prompt.confirm_button_id)
             self._sync_prompt(ui)
             ui = self._controller.ui_state()
+            after_prompt = ui.prompt
+            if after_prompt is not None:
+                after = (after_prompt.title, after_prompt.value, after_prompt.confirm_button_id)
+                if after == before:
+                    break
         if ui.state is AppState.MAIN_MENU:
             self._main.sync(ui)
             self._stack.setCurrentWidget(self._main)
@@ -507,6 +590,39 @@ class _MainWindow(QMainWindow):
         if ui.is_closing:
             QApplication.instance().quit()
 
+    def keyPressEvent(self, event) -> None:  # type: ignore[override]
+        ui = self._controller.ui_state()
+        if event.key() == Qt.Key.Key_Escape:
+            if ui.state is AppState.NEW_GAME_SETUP:
+                self._click_button("back_main")
+                return
+            if ui.state is AppState.PRESET_MANAGE:
+                self._click_button("back_main")
+                return
+            if ui.state is AppState.PLACEMENT_EDIT:
+                self._click_button("back_to_presets")
+                return
+            if ui.state is AppState.BATTLE:
+                self._click_button("back_main")
+                return
+        if event.key() in {Qt.Key.Key_Return, Qt.Key.Key_Enter}:
+            if ui.state is AppState.MAIN_MENU:
+                self._click_button("new_game")
+                return
+            if ui.state is AppState.NEW_GAME_SETUP:
+                self._click_button("start_game")
+                return
+            if ui.state is AppState.PRESET_MANAGE:
+                self._click_button("create_preset")
+                return
+            if ui.state is AppState.PLACEMENT_EDIT:
+                self._click_button("save_preset")
+                return
+            if ui.state is AppState.RESULT:
+                self._click_button("play_again")
+                return
+        super().keyPressEvent(event)
+
 
 class AppLoop:
     def __init__(self) -> None:
@@ -516,9 +632,9 @@ class AppLoop:
         self._app = QApplication.instance() or QApplication([])
         self._app.setStyleSheet(
             """
-            QWidget { font-size: 15px; }
+            QWidget { font-size: 16px; }
             QLabel { color: #e2e8f0; }
-            QPushButton { padding: 8px 14px; }
+            QPushButton { padding: 10px 16px; }
             QComboBox { padding: 6px 8px; }
             QListWidget { background: #111827; color: #e5e7eb; }
             """
@@ -546,3 +662,12 @@ def _cells_for_ship(placement: ShipPlacement) -> list[Coord]:
         else:
             cells.append(Coord(row=placement.bow.row + offset, col=placement.bow.col))
     return cells
+
+
+def _status_color(status: str) -> str:
+    low = status.lower()
+    if any(word in low for word in ("failed", "error", "invalid", "cannot", "duplicate")):
+        return "#fca5a5"
+    if any(word in low for word in ("saved", "renamed", "deleted", "started", "placed", "selected", "generated", "win")):
+        return "#86efac"
+    return "#dbeafe"
