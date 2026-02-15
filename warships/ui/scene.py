@@ -26,6 +26,21 @@ except Exception as exc:  # pragma: no cover - missing GUI backend
     _canvas_import_error = exc
 else:
     _canvas_import_error = None
+    try:
+        # Guard against transient zero-size events (e.g. snap/resize on Windows) before they
+        # propagate into rendercanvas internals.
+        from rendercanvas import _size as _rc_size  # type: ignore
+
+        if not getattr(_rc_size.SizeInfo.set_physical_size, "_warships_size_clamped", False):
+            _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
+
+            def _safe_set_physical_size(self: object, width: int, height: int, pixel_ratio: float) -> None:
+                _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
+
+            _safe_set_physical_size._warships_size_clamped = True  # type: ignore[attr-defined]
+            _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size  # type: ignore
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
