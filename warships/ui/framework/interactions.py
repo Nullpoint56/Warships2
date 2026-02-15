@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState
-from warships.ui.layout_metrics import NEW_GAME_SETUP
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 from warships.ui.overlays import Button
 
 
@@ -17,7 +17,8 @@ class InteractionPlan:
     buttons: tuple[Button, ...]
     shortcut_buttons: dict[str, str]
     allows_ai_board_click: bool
-    wheel_scroll_in_preset_list_only: bool
+    wheel_scroll_in_new_game_list: bool
+    wheel_scroll_in_preset_manage_panel: bool
 
 
 def build_interaction_plan(ui: AppUIState) -> InteractionPlan:
@@ -26,7 +27,8 @@ def build_interaction_plan(ui: AppUIState) -> InteractionPlan:
         buttons=tuple(ui.buttons),
         shortcut_buttons=_shortcut_buttons_for_state(ui.state),
         allows_ai_board_click=ui.state is AppState.BATTLE,
-        wheel_scroll_in_preset_list_only=ui.state is AppState.NEW_GAME_SETUP,
+        wheel_scroll_in_new_game_list=ui.state is AppState.NEW_GAME_SETUP,
+        wheel_scroll_in_preset_manage_panel=ui.state is AppState.PRESET_MANAGE,
     )
 
 
@@ -45,9 +47,11 @@ def resolve_key_shortcut(plan: InteractionPlan, key_name: str) -> str | None:
 
 def can_scroll_with_wheel(plan: InteractionPlan, x: float, y: float) -> bool:
     """Return whether wheel scrolling should be routed to controller at this point."""
-    if not plan.wheel_scroll_in_preset_list_only:
-        return False
-    return NEW_GAME_SETUP.preset_list_rect().contains(x, y)
+    if plan.wheel_scroll_in_new_game_list and NEW_GAME_SETUP.preset_list_rect().contains(x, y):
+        return True
+    if plan.wheel_scroll_in_preset_manage_panel and PRESET_PANEL.panel_rect().contains(x, y):
+        return True
+    return False
 
 
 def _shortcut_buttons_for_state(state: AppState) -> dict[str, str]:

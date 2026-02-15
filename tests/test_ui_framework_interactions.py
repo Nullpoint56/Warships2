@@ -4,7 +4,7 @@ from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState
 from warships.core.models import Orientation, ShipType
 from warships.ui.framework import can_scroll_with_wheel, build_interaction_plan, resolve_key_shortcut, resolve_pointer_button
-from warships.ui.layout_metrics import NEW_GAME_SETUP
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 from warships.ui.overlays import Button
 
 
@@ -60,8 +60,11 @@ def test_shortcuts_main_menu_and_battle() -> None:
 
 def test_wheel_scroll_only_inside_new_game_preset_list() -> None:
     new_game_plan = build_interaction_plan(_ui_state(AppState.NEW_GAME_SETUP, buttons=[]))
+    preset_manage_plan = build_interaction_plan(_ui_state(AppState.PRESET_MANAGE, buttons=[]))
     battle_plan = build_interaction_plan(_ui_state(AppState.BATTLE, buttons=[]))
     list_rect = NEW_GAME_SETUP.preset_list_rect()
+    preset_panel = PRESET_PANEL.panel_rect()
     assert can_scroll_with_wheel(new_game_plan, list_rect.x + 5.0, list_rect.y + 5.0) is True
     assert can_scroll_with_wheel(new_game_plan, 1.0, 1.0) is False
+    assert can_scroll_with_wheel(preset_manage_plan, preset_panel.x + 5.0, preset_panel.y + 5.0) is True
     assert can_scroll_with_wheel(battle_plan, list_rect.x + 5.0, list_rect.y + 5.0) is False

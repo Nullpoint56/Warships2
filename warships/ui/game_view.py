@@ -398,6 +398,28 @@ class GameView:
                 "#b91c1c",
                 z=1.0,
             )
+        if ui.preset_manage_can_scroll_up:
+            self._renderer.add_text(
+                key="presets:scroll:up",
+                text="^ more",
+                x=panel_x + panel_w - 78.0,
+                y=panel_y + 28.0,
+                font_size=14.0,
+                color="#93c5fd",
+                anchor="middle-left",
+                z=1.05,
+            )
+        if ui.preset_manage_can_scroll_down:
+            self._renderer.add_text(
+                key="presets:scroll:down",
+                text="v more",
+                x=panel_x + panel_w - 78.0,
+                y=panel_y + panel_h - 14.0,
+                font_size=14.0,
+                color="#93c5fd",
+                anchor="middle-left",
+                z=1.05,
+            )
 
     def _draw_new_game_setup(self, ui: AppUIState) -> None:
         panel = NEW_GAME_SETUP.panel_rect()
@@ -415,7 +437,7 @@ class GameView:
             key="newgame:difficulty_label",
             text="Difficulty",
             x=panel.x + 20.0,
-            y=panel.y + 60.0,
+            y=panel.y + NEW_GAME_SETUP.difficulty_label_y,
             font_size=16.0,
             color="#bfdbfe",
             anchor="top-left",
@@ -473,17 +495,6 @@ class GameView:
                 anchor="middle-left",
                 z=0.92,
             )
-        self._renderer.add_text(
-            key="newgame:presets:hint",
-            text="Scroll with mouse wheel while hovering this list",
-            x=list_rect.x + 12.0,
-            y=list_rect.y + list_rect.h + 12.0,
-            font_size=13.0,
-            color="#93c5fd",
-            anchor="top-left",
-            z=0.92,
-        )
-
         random_btn = NEW_GAME_SETUP.random_button_rect()
         self._renderer.add_rect("newgame:random:bg", random_btn.x, random_btn.y, random_btn.w, random_btn.h, "#7c3aed", z=0.9)
         self._renderer.add_text(
@@ -499,9 +510,9 @@ class GameView:
         self._renderer.add_text(
             key="newgame:preview_title",
             text=f"Selected Setup: {ui.new_game_source or 'None'}",
-            x=panel.x + 520.0,
-            y=panel.y + 140.0,
-            font_size=18.0,
+            x=panel.x + NEW_GAME_SETUP.preview_x,
+            y=panel.y + NEW_GAME_SETUP.preview_title_y,
+            font_size=20.0,
             color="#bfdbfe",
             anchor="top-left",
         )
