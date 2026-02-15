@@ -8,6 +8,7 @@ class AppState(Enum):
 
     BOOT = auto()
     MAIN_MENU = auto()
+    PRESET_MANAGE = auto()
     PLACEMENT_EDIT = auto()
     PLACEMENT_LOAD = auto()
     BATTLE = auto()

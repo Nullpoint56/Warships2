@@ -32,3 +32,11 @@ class PresetService:
         if not valid:
             raise ValueError(f"Preset '{name}' is invalid: {reason}")
         return fleet
+
+    def rename_preset(self, old_name: str, new_name: str) -> None:
+        """Rename preset."""
+        self._repository.rename(old_name, new_name)
+
+    def delete_preset(self, name: str) -> None:
+        """Delete preset."""
+        self._repository.delete(name)

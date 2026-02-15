@@ -20,3 +20,34 @@ class BoardCellPressed:
 
     is_ai_board: bool
     coord: Coord
+
+
+@dataclass(frozen=True, slots=True)
+class PointerMoved:
+    """Pointer moved in design coordinates."""
+
+    x: float
+    y: float
+
+
+@dataclass(frozen=True, slots=True)
+class PointerReleased:
+    """Pointer released in design coordinates."""
+
+    x: float
+    y: float
+    button: int
+
+
+@dataclass(frozen=True, slots=True)
+class KeyPressed:
+    """Key down event."""
+
+    key: str
+
+
+@dataclass(frozen=True, slots=True)
+class CharTyped:
+    """Character input event."""
+
+    char: str

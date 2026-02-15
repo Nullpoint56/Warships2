@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from warships.app.state_machine import AppState
+from warships.ui.layout_metrics import top_bar_rect
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,47 +31,59 @@ def buttons_for_state(
     has_presets: bool,
 ) -> list[Button]:
     """Build buttons for the current app state."""
-    base_y = 28.0
+    top_bar = top_bar_rect()
+    base_y = top_bar.y + 8.0
+    left_x = top_bar.x + 20.0
     gap = 16.0
     bw = 160.0
     bh = 50.0
 
     if state is AppState.MAIN_MENU:
         return [
-            Button("new_game", 80.0, base_y, bw, bh),
-            Button("load_preset", 80.0 + bw + gap, base_y, bw, bh, enabled=has_presets),
-            Button("quit", 80.0 + 2 * (bw + gap), base_y, bw, bh),
+            Button("manage_presets", left_x, base_y, bw + 50.0, bh),
+        ]
+    if state is AppState.PRESET_MANAGE:
+        return [
+            Button("create_preset", left_x, base_y, bw, bh),
+            Button("back_main", left_x + bw + gap, base_y, bw, bh),
         ]
     if state is AppState.PLACEMENT_EDIT:
         return [
-            Button("rotate", 80.0, base_y, bw, bh),
-            Button("randomize", 80.0 + bw + gap, base_y, bw, bh),
-            Button("save_preset", 80.0 + 2 * (bw + gap), base_y, bw, bh),
-            Button("start_battle", 80.0 + 3 * (bw + gap), base_y, bw, bh, enabled=placement_ready),
-            Button("back_to_menu", 80.0 + 4 * (bw + gap), base_y, bw, bh),
+            Button("randomize", left_x, base_y, bw, bh),
+            Button("save_preset", left_x + 2 * (bw + gap), base_y, bw, bh),
+            Button("back_to_presets", left_x + 3 * (bw + gap), base_y, bw + 30.0, bh),
         ]
     if state is AppState.BATTLE:
-        return [Button("menu_from_battle", 80.0, base_y, bw, bh)]
+        return [Button("menu_from_battle", left_x, base_y, bw, bh)]
     if state is AppState.RESULT:
         return [
-            Button("play_again", 80.0, base_y, bw, bh),
-            Button("quit", 80.0 + bw + gap, base_y, bw, bh),
+            Button("play_again", left_x, base_y, bw, bh),
+            Button("quit", left_x + bw + gap, base_y, bw, bh),
         ]
     return []
 
 
 def button_label(button_id: str) -> str:
     """Map button id to visible label."""
+    if button_id.startswith("preset_edit:"):
+        return "Edit"
+    if button_id.startswith("preset_rename:"):
+        return "Rename"
+    if button_id.startswith("preset_delete:"):
+        return "Delete"
     labels = {
-        "new_game": "New Game",
-        "load_preset": "Load Preset",
+        "manage_presets": "Manage Presets",
+        "create_preset": "Create",
+        "back_main": "Back",
         "quit": "Quit",
-        "rotate": "Rotate",
-        "randomize": "Randomize",
         "save_preset": "Save Preset",
-        "start_battle": "Start Battle",
-        "back_to_menu": "Back to Menu",
+        "randomize": "Randomize",
+        "back_to_presets": "Back to Presets",
         "menu_from_battle": "Menu",
         "play_again": "Play Again",
+        "prompt_confirm_save": "Save",
+        "prompt_confirm_rename": "Rename",
+        "prompt_confirm_overwrite": "Overwrite",
+        "prompt_cancel": "Cancel",
     }
     return labels.get(button_id, button_id)

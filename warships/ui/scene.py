@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import logging
+import os
 from typing import Callable
 from typing import Any
 from typing import cast
@@ -25,6 +26,18 @@ except Exception as exc:  # pragma: no cover - missing GUI backend
     _canvas_import_error = exc
 else:
     _canvas_import_error = None
+    try:
+        # Work around transient zero-size events during some window snap/resize flows on Windows.
+        from rendercanvas import _size as _rc_size  # type: ignore
+
+        _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
+
+        def _safe_set_physical_size(self: object, width: int, height: int, pixel_ratio: float) -> None:
+            _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
+
+        _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size  # type: ignore
+    except Exception:
+        pass
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +48,9 @@ class SceneRenderer:
 
     width: int = 1200
     height: int = 720
+    design_width: int = 1200
+    design_height: int = 720
+    preserve_aspect: bool = False
     title: str = "Warships V1"
     _dynamic_nodes: list[object] = field(default_factory=list)
     _rect_nodes: dict[str, Any] = field(default_factory=dict)
@@ -72,17 +88,127 @@ class SceneRenderer:
             raise RuntimeError("rendercanvas.auto did not expose RenderCanvas.")
 
         self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
+        aspect_mode = os.getenv("WARSHIPS_UI_ASPECT_MODE", "contain").strip().lower()
+        self.preserve_aspect = aspect_mode in {"contain", "preserve", "fixed"}
+        window_mode = os.getenv("WARSHIPS_WINDOW_MODE", "fullscreen").strip().lower()
+        if window_mode in {"fullscreen", "borderless", "maximized"}:
+            self._apply_startup_window_mode(window_mode)
+            self._sync_size_from_canvas()
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
         self.camera.local.position = (self.width / 2.0, self.height / 2.0, 0.0)
         self.camera.local.scale_y = -1.0
 
+    def _apply_startup_window_mode(self, window_mode: str) -> None:
+        """Set startup window mode for GLFW backend."""
+        try:
+            import rendercanvas.glfw as rc_glfw  # type: ignore
+        except Exception:
+            return
+        window = getattr(self.canvas, "_window", None)
+        if window is None:
+            return
+        glfw = rc_glfw.glfw
+        try:
+            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
+        except Exception:
+            pass
+        if window_mode == "maximized":
+            try:
+                glfw.maximize_window(window)
+            except Exception:
+                pass
+            return
+        monitor = glfw.get_primary_monitor()
+        if not monitor:
+            try:
+                glfw.maximize_window(window)
+            except Exception:
+                pass
+            return
+        if window_mode == "fullscreen":
+            video_mode = glfw.get_video_mode(monitor)
+            if video_mode is not None:
+                try:
+                    glfw.set_window_monitor(
+                        window,
+                        monitor,
+                        0,
+                        0,
+                        int(video_mode.size.width),
+                        int(video_mode.size.height),
+                        int(video_mode.refresh_rate),
+                    )
+                    return
+                except Exception:
+                    pass
+        try:
+            x, y, w, h = glfw.get_monitor_workarea(monitor)
+            glfw.set_window_monitor(window, None, int(x), int(y), int(w), int(h), 0)
+        except Exception:
+            try:
+                glfw.maximize_window(window)
+            except Exception:
+                pass
+
+    def _sync_size_from_canvas(self) -> None:
+        get_logical_size = getattr(self.canvas, "get_logical_size", None)
+        if not callable(get_logical_size):
+            return
+        try:
+            size = get_logical_size()
+        except Exception:
+            return
+        if not (isinstance(size, (tuple, list)) and len(size) >= 2):
+            return
+        width, height = size[0], size[1]
+        if not isinstance(width, (int, float)) or not isinstance(height, (int, float)):
+            return
+        if width <= 1.0 or height <= 1.0:
+            return
+        self.width = int(width)
+        self.height = int(height)
+
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
         self._active_rect_keys.clear()
         self._active_line_keys.clear()
         self._active_text_keys.clear()
+
+    def _scale_x(self) -> float:
+        sx, _, _, _ = self._viewport_transform()
+        return sx
+
+    def _scale_y(self) -> float:
+        _, sy, _, _ = self._viewport_transform()
+        return sy
+
+    def _viewport_transform(self) -> tuple[float, float, float, float]:
+        """Return (sx, sy, offset_x, offset_y) from design-space to window-space."""
+        if self.design_width <= 0 or self.design_height <= 0:
+            return 1.0, 1.0, 0.0, 0.0
+        raw_sx = float(self.width) / float(self.design_width)
+        raw_sy = float(self.height) / float(self.design_height)
+        if not self.preserve_aspect:
+            return raw_sx, raw_sy, 0.0, 0.0
+        scale = min(raw_sx, raw_sy)
+        viewport_w = float(self.design_width) * scale
+        viewport_h = float(self.design_height) * scale
+        offset_x = (float(self.width) - viewport_w) * 0.5
+        offset_y = (float(self.height) - viewport_h) * 0.5
+        return scale, scale, offset_x, offset_y
+
+    def to_design_space(self, x: float, y: float) -> tuple[float, float]:
+        """Convert window-space coordinates to design-space coordinates."""
+        sx = self._scale_x()
+        sy = self._scale_y()
+        _, _, ox, oy = self._viewport_transform()
+        if sx <= 0.0 or sy <= 0.0:
+            return x, y
+        dx = (x - ox) / sx
+        dy = (y - oy) / sy
+        return dx, dy
 
     def end_frame(self) -> None:
         """Hide dynamic retained nodes that were not touched this frame."""
@@ -120,11 +246,16 @@ class SceneRenderer:
     ) -> None:
         """Add a filled rectangle."""
         color_value = cast(Any, color)
+        sx, sy, ox, oy = self._viewport_transform()
+        tx = x * sx + ox
+        ty = y * sy + oy
+        tw = w * sx
+        th = h * sy
         if key is not None and key in self._rect_nodes:
             node = self._rect_nodes[key]
             new_props = (x, y, w, h, color, z)
             if self._rect_props.get(key) != new_props:
-                node.local.position = (x + w / 2.0, y + h / 2.0, z)
+                node.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
                 if hasattr(node, "material"):
                     node.material.color = color_value
                 self._rect_props[key] = new_props
@@ -135,8 +266,8 @@ class SceneRenderer:
                 self._active_rect_keys.add(key)
             return
 
-        mesh = gfx.Mesh(gfx.plane_geometry(w, h), gfx.MeshBasicMaterial(color=color))
-        mesh.local.position = (x + w / 2.0, y + h / 2.0, z)
+        mesh = gfx.Mesh(gfx.plane_geometry(tw, th), gfx.MeshBasicMaterial(color=color))
+        mesh.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
         self.scene.add(mesh)
         if key is None:
             self._dynamic_nodes.append(mesh)
@@ -170,16 +301,21 @@ class SceneRenderer:
                 self._active_line_keys.add(key)
             return
 
+        sx, sy, ox, oy = self._viewport_transform()
+        tx = x * sx + ox
+        ty = y * sy + oy
+        tw = width * sx
+        th = height * sy
         points: list[tuple[float, float, float]] = []
-        step_x = width / (lines - 1)
-        step_y = height / (lines - 1)
+        step_x = tw / (lines - 1)
+        step_y = th / (lines - 1)
         for idx in range(lines):
-            px = x + idx * step_x
-            points.append((px, y, z))
-            points.append((px, y + height, z))
-            py = y + idx * step_y
-            points.append((x, py, z))
-            points.append((x + width, py, z))
+            px = tx + idx * step_x
+            points.append((px, ty, z))
+            points.append((px, ty + th, z))
+            py = ty + idx * step_y
+            points.append((tx, py, z))
+            points.append((tx + tw, py, z))
 
         positions = np.array(points, dtype=np.float32)
         geometry = gfx.Geometry(positions=positions)
@@ -206,12 +342,18 @@ class SceneRenderer:
     ) -> None:
         """Add screen-space text."""
         color_value = cast(Any, color)
+        sx, sy, ox, oy = self._viewport_transform()
+        tx = x * sx + ox
+        ty = y * sy + oy
+        tsize = font_size * min(sx, sy)
         if key is not None and key in self._text_nodes:
             node = self._text_nodes[key]
             new_props = (text, x, y, font_size, color, anchor, z)
             if self._text_props.get(key) != new_props:
                 node.set_text(text)
-                node.local.position = (x, y, z)
+                node.local.position = (tx, ty, z)
+                if hasattr(node, "font_size"):
+                    node.font_size = tsize
                 if hasattr(node, "material"):
                     node.material.color = color_value
                 self._text_props[key] = new_props
@@ -224,12 +366,12 @@ class SceneRenderer:
 
         node = gfx.Text(
             text=text,
-            font_size=font_size,
+            font_size=tsize,
             screen_space=True,
             anchor=anchor,
             material=gfx.TextMaterial(color=color_value),
         )
-        node.local.position = (x, y, z)
+        node.local.position = (tx, ty, z)
         self.scene.add(node)
         if key is None:
             self._dynamic_nodes.append(node)

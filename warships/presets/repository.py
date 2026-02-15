@@ -29,6 +29,22 @@ class PresetRepository:
         with path.open("w", encoding="utf-8") as handle:
             json.dump(payload, handle, indent=2)
 
+    def delete(self, name: str) -> None:
+        """Delete preset by name if it exists."""
+        path = self._path_for_name(name)
+        if path.exists():
+            path.unlink()
+
+    def rename(self, old_name: str, new_name: str) -> None:
+        """Rename preset file."""
+        old_path = self._path_for_name(old_name)
+        new_path = self._path_for_name(new_name)
+        if not old_path.exists():
+            raise FileNotFoundError(f"Preset '{old_name}' not found.")
+        if new_path.exists():
+            raise ValueError(f"Preset '{new_name}' already exists.")
+        old_path.replace(new_path)
+
     def _path_for_name(self, name: str) -> Path:
         cleaned = _sanitize_name(name)
         return self._root / f"{cleaned}.json"

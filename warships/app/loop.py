@@ -8,13 +8,13 @@ from pathlib import Path
 import time
 
 from warships.app.controller import GameController
-from warships.app.events import BoardCellPressed, ButtonPressed
+from warships.app.events import ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.app.state_machine import AppState
 from warships.presets.repository import PresetRepository
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout
 from warships.ui.game_view import GameView
-from warships.ui.input_controller import InputController, PointerClick
+from warships.ui.input_controller import InputController, PointerClick, PointerEvent, KeyEvent
 from warships.ui.scene import SceneRenderer
 
 
@@ -27,8 +27,6 @@ class AppLoop:
         self._view = GameView(self._renderer, self._layout)
         self._input = InputController(on_click_queued=self._renderer.invalidate)
         self._input.bind(self._renderer.canvas)
-        if hasattr(self._renderer.canvas, "add_event_handler"):
-            self._renderer.canvas.add_event_handler(self._on_resize, "resize")
 
         preset_service = PresetService(PresetRepository(Path("data/presets")))
         self._debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
@@ -59,6 +57,10 @@ class AppLoop:
         )
 
     def _process_inputs(self) -> None:
+        for key_event in self._input.drain_key_events():
+            self._handle_key_event(key_event)
+        for pointer_event in self._input.drain_pointer_events():
+            self._handle_pointer_event(pointer_event)
         clicks = self._input.drain_clicks()
         if not clicks:
             return
@@ -67,7 +69,7 @@ class AppLoop:
     def _handle_click(self, click: PointerClick) -> None:
         if click.button != 1:
             return
-        norm_x, norm_y = self._to_design_space(click.x, click.y)
+        norm_x, norm_y = self._renderer.to_design_space(click.x, click.y)
         now = time.monotonic()
         if now - self._last_click_ts < 0.20 and self._last_click_pos == (norm_x, norm_y):
             return
@@ -82,38 +84,25 @@ class AppLoop:
                     self._renderer.invalidate()
                 return
 
-        if ui.state is AppState.PLACEMENT_EDIT:
-            coord = self._layout.screen_to_cell(is_ai=False, px=norm_x, py=norm_y)
-            if coord is None:
-                return
-            changed = self._controller.handle_board_click(BoardCellPressed(is_ai_board=False, coord=coord))
-            if changed:
-                self._renderer.invalidate()
-            return
+        # Placement editor is drag/drop and handled via pointer down/move/up.
 
-        if ui.state is AppState.BATTLE:
-            coord = self._layout.screen_to_cell(is_ai=True, px=norm_x, py=norm_y)
-            if coord is None:
-                return
-            changed = self._controller.handle_board_click(BoardCellPressed(is_ai_board=True, coord=coord))
-            if changed:
-                self._renderer.invalidate()
+    def _handle_pointer_event(self, event: PointerEvent) -> None:
+        x, y = self._renderer.to_design_space(event.x, event.y)
+        changed = False
+        if event.event_type == "pointer_down":
+            changed = self._controller.handle_pointer_down(x, y, event.button)
+        elif event.event_type == "pointer_move":
+            changed = self._controller.handle_pointer_move(PointerMoved(x=x, y=y))
+        elif event.event_type == "pointer_up":
+            changed = self._controller.handle_pointer_release(PointerReleased(x=x, y=y, button=event.button))
+        if changed:
+            self._renderer.invalidate()
 
-    def _to_design_space(self, x: float, y: float) -> tuple[float, float]:
-        """Map click coordinates from current logical canvas size to design space."""
-        if not hasattr(self._renderer.canvas, "get_logical_size"):
-            return x, y
-        size = self._renderer.canvas.get_logical_size()
-        if not isinstance(size, tuple) or len(size) != 2:
-            return x, y
-        current_w, current_h = float(size[0]), float(size[1])
-        if current_w <= 1.0 or current_h <= 1.0:
-            return x, y
-        return (
-            x * (self._renderer.width / current_w),
-            y * (self._renderer.height / current_h),
-        )
-
-    def _on_resize(self, _event: dict) -> None:
-        """Ensure a redraw when canvas size changes."""
-        self._renderer.invalidate()
+    def _handle_key_event(self, event: KeyEvent) -> None:
+        changed = False
+        if event.event_type == "key_down":
+            changed = self._controller.handle_key_pressed(KeyPressed(key=event.value))
+        elif event.event_type == "char":
+            changed = self._controller.handle_char_typed(CharTyped(char=event.value))
+        if changed:
+            self._renderer.invalidate()
