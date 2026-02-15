@@ -8,6 +8,6 @@ from warships.app.frontend import FrontendBundle
 
 def create_frontend(controller: GameController) -> FrontendBundle:
     """Create the pygfx frontend bundle."""
-    from warships.ui.bootstrap import create_pygfx_frontend
+    from warships.engine.runtime.pygfx_frontend import create_pygfx_frontend
 
     return create_pygfx_frontend(controller)
