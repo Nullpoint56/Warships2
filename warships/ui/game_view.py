@@ -10,7 +10,8 @@ from warships.core.board import BoardState
 from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
 from warships.ui.board_view import BoardLayout
-from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT, root_rect, status_rect
+from warships.ui.framework import build_modal_text_input_widget, render_modal_text_input_widget
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, root_rect, status_rect
 from warships.ui.overlays import Button, button_label
 from warships.ui.scene import SceneRenderer
 
@@ -63,8 +64,9 @@ class GameView:
             self._draw_preset_manage(ui)
         if ui.state is AppState.NEW_GAME_SETUP:
             self._draw_new_game_setup(ui)
-        if ui.prompt is not None:
-            self._draw_prompt(ui)
+        prompt_widget = build_modal_text_input_widget(ui)
+        if prompt_widget is not None:
+            render_modal_text_input_widget(self._renderer, prompt_widget)
 
         self._draw_status_bar(ui.state, ui.status, ui.placement_orientation, ui.placements, ui.ship_order)
         self._renderer.set_title(f"Warships V1 | {ui.status}")
@@ -527,45 +529,6 @@ class GameView:
                     "#10b981",
                     z=1.1,
                 )
-
-    def _draw_prompt(self, ui: AppUIState) -> None:
-        if ui.prompt is None:
-            return
-        overlay = PROMPT.overlay_rect()
-        panel = PROMPT.panel_rect()
-        input_rect = PROMPT.input_rect()
-        self._renderer.add_rect(
-            "prompt:overlay",
-            overlay.x,
-            overlay.y,
-            overlay.w,
-            overlay.h,
-            "#000000",
-            z=10.0,
-        )
-        self._renderer.add_rect("prompt:panel", panel.x, panel.y, panel.w, panel.h, "#1f2937", z=10.1)
-        self._renderer.add_text(
-            key="prompt:title",
-            text=ui.prompt.title,
-            x=panel.x + 30.0,
-            y=panel.y + 34.0,
-            font_size=24.0,
-            color="#f9fafb",
-            anchor="top-left",
-            z=10.2,
-        )
-        self._renderer.add_rect("prompt:input:bg", input_rect.x, input_rect.y, input_rect.w, input_rect.h, "#111827", z=10.2)
-        self._renderer.add_text(
-            key="prompt:value",
-            text=ui.prompt.value or "_",
-            x=input_rect.x + 12.0,
-            y=input_rect.y + input_rect.h / 2.0,
-            font_size=18.0,
-            color="#e5e7eb",
-            anchor="middle-left",
-            z=10.3,
-        )
-
 
 def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:

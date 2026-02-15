@@ -26,18 +26,6 @@ except Exception as exc:  # pragma: no cover - missing GUI backend
     _canvas_import_error = exc
 else:
     _canvas_import_error = None
-    try:
-        # Work around transient zero-size events during some window snap/resize flows on Windows.
-        from rendercanvas import _size as _rc_size  # type: ignore
-
-        _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
-
-        def _safe_set_physical_size(self: object, width: int, height: int, pixel_ratio: float) -> None:
-            _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
-
-        _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size  # type: ignore
-    except Exception:
-        pass
 
 logger = logging.getLogger(__name__)
 
@@ -93,10 +81,71 @@ class SceneRenderer:
         window_mode = os.getenv("WARSHIPS_WINDOW_MODE", "fullscreen").strip().lower()
         if window_mode in {"fullscreen", "borderless", "maximized"}:
             self._apply_startup_window_mode(window_mode)
-            self._sync_size_from_canvas()
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
+        self._update_camera_projection()
+        self._bind_resize_events()
+        self._sync_size_from_canvas()
+
+    def _bind_resize_events(self) -> None:
+        add_handler = getattr(self.canvas, "add_event_handler", None)
+        if not callable(add_handler):
+            return
+        try:
+            add_handler(self._on_resize, "resize")
+        except Exception:
+            logger.debug("resize_event_binding_failed", exc_info=True)
+
+    def _on_resize(self, event: object) -> None:
+        if not isinstance(event, dict):
+            self._sync_size_from_canvas()
+            return
+        width, height = self._extract_resize_dimensions(event)
+        if width is None or height is None:
+            self._sync_size_from_canvas()
+            return
+        self._apply_canvas_size(width, height)
+
+    @staticmethod
+    def _extract_resize_dimensions(event: dict[str, object]) -> tuple[float | None, float | None]:
+        width = event.get("width")
+        height = event.get("height")
+        if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+            return float(width), float(height)
+
+        size = event.get("size")
+        if isinstance(size, (tuple, list)) and len(size) >= 2:
+            w = size[0]
+            h = size[1]
+            if isinstance(w, (int, float)) and isinstance(h, (int, float)):
+                return float(w), float(h)
+
+        logical_size = event.get("logical_size")
+        if isinstance(logical_size, (tuple, list)) and len(logical_size) >= 2:
+            w = logical_size[0]
+            h = logical_size[1]
+            if isinstance(w, (int, float)) and isinstance(h, (int, float)):
+                return float(w), float(h)
+        return None, None
+
+    def _apply_canvas_size(self, width: float, height: float) -> bool:
+        if width <= 1.0 or height <= 1.0:
+            return False
+        new_width = int(width)
+        new_height = int(height)
+        if new_width == self.width and new_height == self.height:
+            return False
+        self.width = new_width
+        self.height = new_height
+        self._update_camera_projection()
+        return True
+
+    def _update_camera_projection(self) -> None:
+        if hasattr(self.camera, "width"):
+            self.camera.width = self.width
+        if hasattr(self.camera, "height"):
+            self.camera.height = self.height
         self.camera.local.position = (self.width / 2.0, self.height / 2.0, 0.0)
         self.camera.local.scale_y = -1.0
 
@@ -152,23 +201,20 @@ class SceneRenderer:
             except Exception:
                 pass
 
-    def _sync_size_from_canvas(self) -> None:
+    def _sync_size_from_canvas(self) -> bool:
         get_logical_size = getattr(self.canvas, "get_logical_size", None)
         if not callable(get_logical_size):
-            return
+            return False
         try:
             size = get_logical_size()
         except Exception:
-            return
+            return False
         if not (isinstance(size, (tuple, list)) and len(size) >= 2):
-            return
+            return False
         width, height = size[0], size[1]
         if not isinstance(width, (int, float)) or not isinstance(height, (int, float)):
-            return
-        if width <= 1.0 or height <= 1.0:
-            return
-        self.width = int(width)
-        self.height = int(height)
+            return False
+        return self._apply_canvas_size(float(width), float(height))
 
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
@@ -404,6 +450,7 @@ class SceneRenderer:
             if self._draw_failed or self._is_closed:
                 return
             try:
+                self._sync_size_from_canvas()
                 if self._draw_callback is None:
                     return
                 self._draw_callback()

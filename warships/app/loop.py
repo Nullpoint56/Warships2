@@ -1,4 +1,4 @@
-"""Application loop bootstrap for the PyQt runtime."""
+"""Application loop bootstrap for configured frontend runtime."""
 
 from __future__ import annotations
 
