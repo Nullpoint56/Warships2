@@ -6,7 +6,7 @@ from dataclasses import dataclass
 import random
 
 from warships.ai.hunt_target import HuntTargetAI
-from warships.ai.probability_target import ProbabilityTargetAI
+from warships.ai.pattern_hard import PatternHardAI
 from warships.ai.strategy import AIStrategy
 from warships.core.fleet import random_fleet
 from warships.core.models import Coord, FleetPlacement, ShotResult, Turn
@@ -104,7 +104,7 @@ def build_ai_strategy(difficulty: str, rng: random.Random) -> AIStrategy:
     if difficulty == "Easy":
         return _RandomShotAI(rng)
     if difficulty == "Hard":
-        return ProbabilityTargetAI(rng)
+        return PatternHardAI(rng)
     return HuntTargetAI(rng)
 
 
