@@ -41,7 +41,7 @@ class PresetFlowService:
         for name in preset_service.list_presets():
             try:
                 fleet = preset_service.load_preset(name)
-            except Exception as exc:  # pylint: disable=broad-exception-caught
+            except (ValueError, FileNotFoundError) as exc:
                 logger.warning("Skipping invalid preset '%s': %s", name, exc)
                 continue
             rows.append(PresetRowView(name=name, placements=list(fleet.ships)))
@@ -64,7 +64,7 @@ class PresetFlowService:
     def select_new_game_preset(preset_service: PresetService, name: str) -> SelectPresetResult:
         try:
             fleet = preset_service.load_preset(name)
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except (ValueError, FileNotFoundError) as exc:
             return SelectPresetResult(
                 selected_preset=None,
                 random_fleet=None,
@@ -103,4 +103,3 @@ class PresetFlowService:
             confirm_button_id=prompt.confirm_button_id,
             cancel_button_id=prompt.cancel_button_id,
         )
-

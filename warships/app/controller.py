@@ -458,7 +458,7 @@ class GameController:
                 return True
             try:
                 self._preset_service.save_preset(value, fleet)
-            except Exception as exc:
+            except ValueError as exc:
                 self._status = f"Save failed: {exc}"
                 return True
             self._editing_preset_name = value
@@ -476,7 +476,7 @@ class GameController:
                     target,
                     FleetPlacement(ships=PlacementEditorService.placements_list(self._placements_by_type)),
                 )
-            except Exception as exc:
+            except ValueError as exc:
                 self._status = f"Save failed: {exc}"
                 return True
             self._editing_preset_name = target
@@ -491,7 +491,7 @@ class GameController:
         if self._prompt_mode == "rename" and self._prompt_target:
             try:
                 self._preset_service.rename_preset(self._prompt_target, value)
-            except Exception as exc:
+            except (ValueError, FileNotFoundError) as exc:
                 self._status = f"Rename failed: {exc}"
                 return True
             self._status = f"Renamed '{self._prompt_target}' to '{value}'."

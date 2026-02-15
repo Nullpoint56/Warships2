@@ -47,7 +47,7 @@ def start_game(
     elif selected_preset is not None:
         try:
             player_fleet = preset_service.load_preset(selected_preset)
-        except Exception as exc:
+        except (ValueError, FileNotFoundError) as exc:
             return StartGameResult(
                 session=None,
                 ai_strategy=None,

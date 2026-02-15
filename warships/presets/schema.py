@@ -64,10 +64,10 @@ def payload_to_fleet(payload: dict[str, object]) -> tuple[str, FleetPlacement]:
             ship_type = ShipType(str(item["type"]))
             bow = item["bow"]
             if not isinstance(bow, list) or len(bow) != 2:
-                raise ValueError
+                raise ValueError("Ship bow must be a 2-item list.")
             row, col = int(bow[0]), int(bow[1])
             orientation = Orientation(str(item["orientation"]))
-        except Exception as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Malformed ship entry in preset payload.") from exc
         ships.append(ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation))
     return name, FleetPlacement(ships=ships)
