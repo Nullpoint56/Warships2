@@ -3,7 +3,7 @@
 import logging
 import os
 
-from warships.app.loop import AppLoop
+from warships.game.app.loop import AppLoop
 from warships.infra.config import load_env_file
 from warships.infra.logging import setup_logging
 
@@ -28,3 +28,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

@@ -1,0 +1,1 @@
+"""Warships game-domain modules."""
