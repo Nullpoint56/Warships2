@@ -5,7 +5,16 @@ from __future__ import annotations
 import random
 
 from warships.core.board import BoardState
-from warships.core.models import BOARD_SIZE, DEFAULT_FLEET, Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
+from warships.core.models import (
+    BOARD_SIZE,
+    DEFAULT_FLEET,
+    Coord,
+    FleetPlacement,
+    Orientation,
+    ShipPlacement,
+    ShipType,
+    cells_for_placement,
+)
 
 
 def validate_fleet(fleet: FleetPlacement, size: int = BOARD_SIZE) -> tuple[bool, str]:
@@ -42,7 +51,68 @@ def build_board_from_fleet(fleet: FleetPlacement, size: int = BOARD_SIZE) -> Boa
 
 
 def random_fleet(rng: random.Random, size: int = BOARD_SIZE) -> FleetPlacement:
-    """Generate a random valid fleet placement."""
+    """Generate a random valid fleet placement with non-touching ships."""
+    for _ in range(400):
+        generated = _generate_non_touching_fleet(rng, size)
+        if generated is not None:
+            return generated
+    # Fallback preserves playability for atypical board sizes/configs.
+    return _generate_relaxed_fleet(rng, size)
+
+
+def _generate_non_touching_fleet(rng: random.Random, size: int) -> FleetPlacement | None:
+    occupied: set[tuple[int, int]] = set()
+    placements_by_type: dict[ShipType, ShipPlacement] = {}
+    ship_order = list(DEFAULT_FLEET)
+    rng.shuffle(ship_order)
+
+    for ship_type in ship_order:
+        candidates = _candidate_placements(ship_type, size, occupied)
+        if not candidates:
+            return None
+        placement = rng.choice(candidates)
+        placements_by_type[ship_type] = placement
+        for cell in cells_for_placement(placement):
+            occupied.add((cell.row, cell.col))
+
+    ordered = [placements_by_type[ship_type] for ship_type in DEFAULT_FLEET]
+    return FleetPlacement(ships=ordered)
+
+
+def _candidate_placements(
+    ship_type: ShipType,
+    size: int,
+    occupied: set[tuple[int, int]],
+) -> list[ShipPlacement]:
+    candidates: list[ShipPlacement] = []
+    for orientation in (Orientation.HORIZONTAL, Orientation.VERTICAL):
+        max_row = size if orientation is Orientation.HORIZONTAL else size - ship_type.size + 1
+        max_col = size - ship_type.size + 1 if orientation is Orientation.HORIZONTAL else size
+        for row in range(max_row):
+            for col in range(max_col):
+                placement = ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation)
+                cells = cells_for_placement(placement)
+                if _touches_existing(cells, occupied, size):
+                    continue
+                candidates.append(placement)
+    return candidates
+
+
+def _touches_existing(cells: list[Coord], occupied: set[tuple[int, int]], size: int) -> bool:
+    for cell in cells:
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                rr = cell.row + dr
+                cc = cell.col + dc
+                if not (0 <= rr < size and 0 <= cc < size):
+                    continue
+                if (rr, cc) in occupied:
+                    return True
+    return False
+
+
+def _generate_relaxed_fleet(rng: random.Random, size: int) -> FleetPlacement:
+    """Legacy overlap-only generator used as a last resort."""
     board = BoardState(size=size)
     placements: list[ShipPlacement] = []
 
