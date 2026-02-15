@@ -7,7 +7,7 @@ import logging
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState
 from warships.core.board import BoardState
-from warships.core.models import Coord, Orientation, ShipPlacement, ShipType
+from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
 from warships.ui.board_view import BoardLayout
 from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT, root_rect, status_rect
@@ -248,7 +248,7 @@ class GameView:
 
     def _draw_ships_from_placements(self, placements: list[ShipPlacement]) -> None:
         for placement in placements:
-            for coord in _cells_for_ship(placement):
+            for coord in cells_for_placement(placement):
                 cell_rect = self._layout.cell_rect(is_ai=False, coord=coord)
                 self._renderer.add_rect(
                     f"ship:placement:{placement.ship_type.value}:{coord.row}:{coord.col}",
@@ -517,7 +517,7 @@ class GameView:
     def _draw_preset_preview(self, key_prefix: str, placements: list[ShipPlacement], x: float, y: float, cell: float) -> None:
         self._renderer.add_rect(f"preset:preview:bg:{key_prefix}", x, y, cell * 10, cell * 10, "#1e3a8a", z=1.0)
         for placement in placements:
-            for coord in _cells_for_ship(placement):
+            for coord in cells_for_placement(placement):
                 self._renderer.add_rect(
                     f"preset:preview:cell:{key_prefix}:{coord.row}:{coord.col}",
                     x + coord.col * cell + 0.5,
@@ -565,16 +565,6 @@ class GameView:
             anchor="middle-left",
             z=10.3,
         )
-
-
-def _cells_for_ship(placement: ShipPlacement) -> list[Coord]:
-    cells: list[Coord] = []
-    for offset in range(placement.ship_type.size):
-        if placement.orientation is Orientation.HORIZONTAL:
-            cells.append(Coord(row=placement.bow.row, col=placement.bow.col + offset))
-        else:
-            cells.append(Coord(row=placement.bow.row + offset, col=placement.bow.col))
-    return cells
 
 
 def _truncate(text: str, max_len: int) -> str:

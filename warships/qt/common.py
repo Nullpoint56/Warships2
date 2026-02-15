@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-from warships.core.models import Coord, Orientation, ShipPlacement
+from warships.core.models import Coord, ShipPlacement, cells_for_placement
 
 DESIGN_W = 1200.0
 DESIGN_H = 720.0
 
 
 def cells_for_ship(placement: ShipPlacement) -> list[Coord]:
-    cells: list[Coord] = []
-    for offset in range(placement.ship_type.size):
-        if placement.orientation is Orientation.HORIZONTAL:
-            cells.append(Coord(row=placement.bow.row, col=placement.bow.col + offset))
-        else:
-            cells.append(Coord(row=placement.bow.row + offset, col=placement.bow.col))
-    return cells
+    return cells_for_placement(placement)
 
 
 def status_color(status: str) -> str:

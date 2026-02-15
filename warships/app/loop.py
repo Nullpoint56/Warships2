@@ -8,14 +8,9 @@ from pathlib import Path
 
 from warships.app.controller import GameController
 from warships.app.frontend import FrontendWindow
+from warships.app.frontend_factory import create_frontend
 from warships.presets.repository import PresetRepository
 from warships.presets.service import PresetService
-from warships.qt.window import MainWindow, QtFrontendWindow
-
-try:
-    from PyQt6.QtWidgets import QApplication
-except Exception as exc:  # pragma: no cover
-    raise RuntimeError("PyQt6 is required for the UI. Install dependency 'PyQt6'.") from exc
 
 
 class AppLoop:
@@ -24,17 +19,9 @@ class AppLoop:
         preset_service = PresetService(PresetRepository(preset_root))
         debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
         self._controller = GameController(preset_service=preset_service, rng=random.Random(), debug_ui=debug_ui)
-        self._app = QApplication.instance() or QApplication([])
-        self._app.setStyleSheet(
-            """
-            QWidget { font-size: 16px; }
-            QLabel { color: #e2e8f0; }
-            QPushButton { padding: 10px 16px; }
-            QComboBox { padding: 6px 8px; }
-            QListWidget { background: #111827; color: #e5e7eb; }
-            """
-        )
-        self._window: FrontendWindow = QtFrontendWindow(MainWindow(self._controller))
+        frontend = create_frontend(self._controller)
+        self._window: FrontendWindow = frontend.window
+        self._run_event_loop = frontend.run_event_loop
 
     def run(self) -> None:
         mode = os.getenv("WARSHIPS_WINDOW_MODE", "windowed").lower()
@@ -45,4 +32,4 @@ class AppLoop:
         else:
             self._window.show_windowed(1280, 800)
         self._window.sync_ui()
-        self._app.exec()
+        self._run_event_loop()

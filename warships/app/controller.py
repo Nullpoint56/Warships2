@@ -7,7 +7,7 @@ import logging
 import random
 
 from warships.ai.strategy import AIStrategy
-from warships.app.flows.placement_math import bow_from_grab_index, cells_for_ship, grab_index_from_cell
+from warships.app.flows.placement_math import bow_from_grab_index, grab_index_from_cell
 from warships.app.services.battle import resolve_player_turn, start_game
 from warships.app.services.placement_editor import PlacementEditorService
 from warships.app.services.preset_flow import PresetFlowService
@@ -15,7 +15,7 @@ from warships.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyP
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState, PresetRowView, TextPromptView
 from warships.core.fleet import random_fleet
-from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
+from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout
@@ -397,7 +397,7 @@ class GameController:
             if board_cell is None:
                 return False
             for ship_type, placement in self._placements_by_type.items():
-                if placement and board_cell in cells_for_ship(placement):
+                if placement and board_cell in cells_for_placement(placement):
                     self._placements_by_type[ship_type] = None
                     self._status = f"Removed {ship_type.value}."
                     self._refresh_buttons()
@@ -411,7 +411,7 @@ class GameController:
         self._hover_y = y
         if board_cell is not None:
             for ship_type, placement in self._placements_by_type.items():
-                if placement and board_cell in cells_for_ship(placement):
+                if placement and board_cell in cells_for_placement(placement):
                     self._held_ship_type = ship_type
                     self._held_orientation = placement.orientation
                     self._held_previous = placement
