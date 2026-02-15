@@ -10,9 +10,10 @@ from warships.core.board import BoardState
 from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
 from warships.ui.board_view import BoardLayout
-from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT, root_rect, status_rect
+from warships.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, status_rect
 from warships.ui.overlays import Button, button_label
-from warships.ui.scene import SceneRenderer
+from warships.ui.render2d import Render2D
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ logger = logging.getLogger(__name__)
 class GameView:
     """Draws game state using retained keyed scene nodes."""
 
-    def __init__(self, renderer: SceneRenderer, layout: BoardLayout) -> None:
+    def __init__(self, renderer: Render2D, layout: BoardLayout) -> None:
         self._renderer = renderer
         self._layout = layout
         self._static_initialized = False
@@ -33,15 +34,7 @@ class GameView:
     ) -> list[str]:
         """Draw current app state and return latest button labels for debug."""
         self._renderer.begin_frame()
-        self._renderer.add_rect(
-            "bg",
-            root_rect().x,
-            root_rect().y,
-            root_rect().w,
-            root_rect().h,
-            "#0b132b",
-            z=0.0,
-        )
+        self._renderer.fill_window("bg:window", "#0b132b", z=-100.0)
 
         labels = self._draw_buttons(ui.buttons)
         if ui.state in (AppState.PLACEMENT_EDIT, AppState.BATTLE, AppState.RESULT):
@@ -63,8 +56,9 @@ class GameView:
             self._draw_preset_manage(ui)
         if ui.state is AppState.NEW_GAME_SETUP:
             self._draw_new_game_setup(ui)
-        if ui.prompt is not None:
-            self._draw_prompt(ui)
+        prompt_widget = build_modal_text_input_widget(ui)
+        if prompt_widget is not None:
+            render_modal_text_input_widget(self._renderer, prompt_widget)
 
         self._draw_status_bar(ui.state, ui.status, ui.placement_orientation, ui.placements, ui.ship_order)
         self._renderer.set_title(f"Warships V1 | {ui.status}")
@@ -404,6 +398,28 @@ class GameView:
                 "#b91c1c",
                 z=1.0,
             )
+        if ui.preset_manage_can_scroll_up:
+            self._renderer.add_text(
+                key="presets:scroll:up",
+                text="^ more",
+                x=panel_x + panel_w - 78.0,
+                y=panel_y + 28.0,
+                font_size=14.0,
+                color="#93c5fd",
+                anchor="middle-left",
+                z=1.05,
+            )
+        if ui.preset_manage_can_scroll_down:
+            self._renderer.add_text(
+                key="presets:scroll:down",
+                text="v more",
+                x=panel_x + panel_w - 78.0,
+                y=panel_y + panel_h - 14.0,
+                font_size=14.0,
+                color="#93c5fd",
+                anchor="middle-left",
+                z=1.05,
+            )
 
     def _draw_new_game_setup(self, ui: AppUIState) -> None:
         panel = NEW_GAME_SETUP.panel_rect()
@@ -421,7 +437,7 @@ class GameView:
             key="newgame:difficulty_label",
             text="Difficulty",
             x=panel.x + 20.0,
-            y=panel.y + 60.0,
+            y=panel.y + NEW_GAME_SETUP.difficulty_label_y,
             font_size=16.0,
             color="#bfdbfe",
             anchor="top-left",
@@ -479,17 +495,6 @@ class GameView:
                 anchor="middle-left",
                 z=0.92,
             )
-        self._renderer.add_text(
-            key="newgame:presets:hint",
-            text="Scroll with mouse wheel while hovering this list",
-            x=list_rect.x + 12.0,
-            y=list_rect.y + list_rect.h + 12.0,
-            font_size=13.0,
-            color="#93c5fd",
-            anchor="top-left",
-            z=0.92,
-        )
-
         random_btn = NEW_GAME_SETUP.random_button_rect()
         self._renderer.add_rect("newgame:random:bg", random_btn.x, random_btn.y, random_btn.w, random_btn.h, "#7c3aed", z=0.9)
         self._renderer.add_text(
@@ -505,9 +510,9 @@ class GameView:
         self._renderer.add_text(
             key="newgame:preview_title",
             text=f"Selected Setup: {ui.new_game_source or 'None'}",
-            x=panel.x + 520.0,
-            y=panel.y + 140.0,
-            font_size=18.0,
+            x=panel.x + NEW_GAME_SETUP.preview_x,
+            y=panel.y + NEW_GAME_SETUP.preview_title_y,
+            font_size=20.0,
             color="#bfdbfe",
             anchor="top-left",
         )
@@ -527,45 +532,6 @@ class GameView:
                     "#10b981",
                     z=1.1,
                 )
-
-    def _draw_prompt(self, ui: AppUIState) -> None:
-        if ui.prompt is None:
-            return
-        overlay = PROMPT.overlay_rect()
-        panel = PROMPT.panel_rect()
-        input_rect = PROMPT.input_rect()
-        self._renderer.add_rect(
-            "prompt:overlay",
-            overlay.x,
-            overlay.y,
-            overlay.w,
-            overlay.h,
-            "#000000",
-            z=10.0,
-        )
-        self._renderer.add_rect("prompt:panel", panel.x, panel.y, panel.w, panel.h, "#1f2937", z=10.1)
-        self._renderer.add_text(
-            key="prompt:title",
-            text=ui.prompt.title,
-            x=panel.x + 30.0,
-            y=panel.y + 34.0,
-            font_size=24.0,
-            color="#f9fafb",
-            anchor="top-left",
-            z=10.2,
-        )
-        self._renderer.add_rect("prompt:input:bg", input_rect.x, input_rect.y, input_rect.w, input_rect.h, "#111827", z=10.2)
-        self._renderer.add_text(
-            key="prompt:value",
-            text=ui.prompt.value or "_",
-            x=input_rect.x + 12.0,
-            y=input_rect.y + input_rect.h / 2.0,
-            font_size=18.0,
-            color="#e5e7eb",
-            anchor="middle-left",
-            z=10.3,
-        )
-
 
 def _truncate(text: str, max_len: int) -> str:
     if len(text) <= max_len:

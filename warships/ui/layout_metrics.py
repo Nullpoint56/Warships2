@@ -106,6 +106,14 @@ class PresetPanelLayout:
             Rect(left_x + 2.0 * (self.button_w + self.button_gap), y, self.button_w, self.button_h),
         )
 
+    def visible_row_capacity(self) -> int:
+        """Return how many rows fit vertically inside the panel."""
+        panel = self.panel_rect()
+        usable = panel.h - self.row_start_y - self.row_h
+        if usable < 0:
+            return 1
+        return max(1, int(usable // self.row_step_y) + 1)
+
 
 @dataclass(frozen=True, slots=True)
 class PromptLayout:
@@ -154,7 +162,8 @@ class NewGameSetupLayout:
     panel_pad_x: float = 0.0
     panel_pad_y: float = 0.0
     difficulty_x_pad: float = 20.0
-    difficulty_y: float = 70.0
+    difficulty_label_y: float = 74.0
+    difficulty_y: float = 102.0
     difficulty_w: float = 260.0
     difficulty_h: float = 42.0
     dropdown_row_h: float = 36.0
@@ -163,14 +172,16 @@ class NewGameSetupLayout:
     list_y: float = 250.0
     list_w: float = 420.0
     list_h: float = 250.0
+    list_row_top_pad: float = 38.0
     list_row_h: float = 48.0
     list_row_gap: float = 8.0
     random_btn_y: float = 510.0
     random_btn_w: float = 180.0
     random_btn_h: float = 44.0
-    preview_x: float = 520.0
-    preview_y: float = 210.0
-    preview_cell: float = 18.0
+    preview_x: float = 500.0
+    preview_title_y: float = 126.0
+    preview_y: float = 160.0
+    preview_cell: float = 22.0
 
     def panel_rect(self) -> Rect:
         return _inset(content_rect(), self.panel_pad_x, self.panel_pad_y)
@@ -190,8 +201,15 @@ class NewGameSetupLayout:
 
     def preset_row_rect(self, visible_index: int) -> Rect:
         list_rect = self.preset_list_rect()
-        y = list_rect.y + 14.0 + visible_index * (self.list_row_h + self.list_row_gap)
+        y = list_rect.y + self.list_row_top_pad + visible_index * (self.list_row_h + self.list_row_gap)
         return Rect(list_rect.x + 12.0, y, list_rect.w - 24.0, self.list_row_h)
+
+    def visible_row_capacity(self) -> int:
+        """Return how many preset rows fit in the visible list box."""
+        usable = self.list_h - self.list_row_top_pad - self.list_row_h
+        if usable < 0:
+            return 1
+        return max(1, int(usable // (self.list_row_h + self.list_row_gap)) + 1)
 
     def random_button_rect(self) -> Rect:
         panel = self.panel_rect()

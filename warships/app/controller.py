@@ -33,7 +33,8 @@ _SHIP_ORDER = [
 logger = logging.getLogger(__name__)
 _BOARD_LAYOUT = BoardLayout()
 _DIFFICULTIES = ["Easy", "Normal", "Hard"]
-_NEW_GAME_VISIBLE_PRESET_ROWS = 5
+_NEW_GAME_VISIBLE_PRESET_ROWS = NEW_GAME_SETUP.visible_row_capacity()
+_PRESET_MANAGE_VISIBLE_ROWS = PRESET_PANEL.visible_row_capacity()
 
 
 class GameController:
@@ -60,6 +61,7 @@ class GameController:
         self._hover_y: float | None = None
 
         self._preset_rows: list[PresetRowView] = []
+        self._preset_manage_scroll = 0
         self._editing_preset_name: str | None = None
         self._new_game_difficulty_index = 1
         self._new_game_difficulty_open = False
@@ -112,7 +114,7 @@ class GameController:
             session=self._session,
             ship_order=list(_SHIP_ORDER),
             is_closing=self._is_closing,
-            preset_rows=list(self._preset_rows),
+            preset_rows=self._visible_preset_manage_rows(),
             prompt=self._prompt,
             held_ship_type=self._held_ship_type,
             held_ship_orientation=self._held_orientation,
@@ -133,6 +135,8 @@ class GameController:
             ),
             new_game_source=self._new_game_source_label,
             new_game_preview=list(self._new_game_preview),
+            preset_manage_can_scroll_up=self._preset_manage_scroll > 0,
+            preset_manage_can_scroll_down=self._preset_manage_can_scroll_down(),
         )
 
     def handle_button(self, event: ButtonPressed) -> bool:
@@ -346,7 +350,12 @@ class GameController:
     def handle_wheel(self, x: float, y: float, dy: float) -> bool:
         """Handle mouse wheel interactions."""
         if self._state is not AppState.NEW_GAME_SETUP:
-            return False
+            if self._state is not AppState.PRESET_MANAGE:
+                return False
+            panel_rect = PRESET_PANEL.panel_rect()
+            if not panel_rect.contains(x, y):
+                return False
+            return self.scroll_preset_manage_rows(dy)
         list_rect = NEW_GAME_SETUP.preset_list_rect()
         if not list_rect.contains(x, y):
             return False
@@ -364,6 +373,20 @@ class GameController:
             self._preset_rows, self._new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
         ):
             self._new_game_preset_scroll += 1
+            self._refresh_buttons()
+            return True
+        return False
+
+    def scroll_preset_manage_rows(self, dy: float) -> bool:
+        """Scroll preset manager rows by wheel delta semantics."""
+        if self._state is not AppState.PRESET_MANAGE:
+            return False
+        if dy < 0 and self._preset_manage_scroll > 0:
+            self._preset_manage_scroll -= 1
+            self._refresh_buttons()
+            return True
+        if dy > 0 and self._preset_manage_can_scroll_down():
+            self._preset_manage_scroll += 1
             self._refresh_buttons()
             return True
         return False
@@ -611,6 +634,8 @@ class GameController:
         self._preset_rows = result.rows
         self._new_game_selected_preset = result.selected_preset
         self._new_game_preset_scroll = result.scroll
+        max_manage_scroll = max(0, len(self._preset_rows) - _PRESET_MANAGE_VISIBLE_ROWS)
+        self._preset_manage_scroll = min(self._preset_manage_scroll, max_manage_scroll)
 
     def _refresh_buttons(self) -> None:
         self._buttons = buttons_for_state(
@@ -619,11 +644,19 @@ class GameController:
             has_presets=bool(self._preset_rows),
         )
         if self._state is AppState.PRESET_MANAGE:
-            self._buttons.extend(_preset_row_buttons(self._preset_rows))
+            self._buttons.extend(_preset_row_buttons(self._visible_preset_manage_rows()))
         if self._state is AppState.NEW_GAME_SETUP:
             self._buttons.extend(_new_game_setup_buttons(self))
         if self._prompt is not None:
             self._buttons.extend(_prompt_buttons(self._prompt))
+
+    def _visible_preset_manage_rows(self) -> list[PresetRowView]:
+        start = self._preset_manage_scroll
+        end = start + _PRESET_MANAGE_VISIBLE_ROWS
+        return list(self._preset_rows[start:end])
+
+    def _preset_manage_can_scroll_down(self) -> bool:
+        return self._preset_manage_scroll + _PRESET_MANAGE_VISIBLE_ROWS < len(self._preset_rows)
 
     def _announce_state(self) -> None:
         logger.info("state=%s", self._state.name)

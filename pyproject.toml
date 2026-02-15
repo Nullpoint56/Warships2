@@ -1,11 +1,14 @@
 [project]
 name = "warships2"
 version = "0.1.0"
-description = "Classic Battleship (Warships) built with Python and PyQt6."
+description = "Classic Battleship (Warships) built with Python and pygfx."
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "numpy>=2.0",
-    "PyQt6>=6.7",
+    "pygfx>=0.7",
+    "wgpu>=0.20",
+    "rendercanvas>=2.4",
+    "glfw>=2.9",
 ]
 
 [project.optional-dependencies]
