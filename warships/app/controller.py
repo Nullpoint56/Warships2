@@ -392,6 +392,7 @@ class GameController:
             if self._held_ship_type is not None:
                 self._restore_held_ship()
                 self._status = "Returned held ship."
+                self._refresh_buttons()
                 return True
             board_cell = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, x, y)
             if board_cell is None:
