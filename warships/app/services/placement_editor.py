@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import random
-
 from warships.core.board import BoardState
-from warships.core.fleet import random_fleet
 from warships.core.models import Coord, ShipPlacement, ShipType
 from warships.ui.board_view import BoardLayout
 from warships.ui.layout_metrics import PLACEMENT_PANEL
@@ -48,14 +45,6 @@ class PlacementEditorService:
         return True
 
     @staticmethod
-    def randomized_placements(rng: random.Random) -> dict[ShipType, ShipPlacement | None]:
-        fleet = random_fleet(rng)
-        placements: dict[ShipType, ShipPlacement | None] = {}
-        for placement in fleet.ships:
-            placements[placement.ship_type] = placement
-        return placements
-
-    @staticmethod
     def to_board_cell(layout: BoardLayout, x: float, y: float) -> Coord | None:
         return layout.screen_to_cell(is_ai=False, px=x, py=y)
 
@@ -69,4 +58,3 @@ class PlacementEditorService:
             if row.contains(x, y):
                 return ship_type
         return None
-

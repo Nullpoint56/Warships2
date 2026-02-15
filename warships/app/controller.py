@@ -490,12 +490,6 @@ class GameController:
         self._prompt_mode = mode
         self._prompt_target = target
         self._prompt_buffer = initial_value
-        if mode == "save":
-            confirm = "prompt_confirm_save"
-        elif mode == "rename":
-            confirm = "prompt_confirm_rename"
-        else:
-            confirm = "prompt_confirm_overwrite"
         self._prompt = PresetFlowService.open_prompt(title, self._prompt_buffer, mode)
 
     def _close_prompt(self) -> None:
