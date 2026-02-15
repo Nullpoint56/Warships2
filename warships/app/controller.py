@@ -333,6 +333,22 @@ class GameController:
             return True
         return False
 
+    def submit_prompt_text(self, text: str) -> bool:
+        """Set current prompt text and confirm it."""
+        if self._prompt is None:
+            return False
+        self._prompt_buffer = text[:32]
+        self._sync_prompt()
+        return self._confirm_prompt()
+
+    def cancel_prompt(self) -> bool:
+        """Cancel currently open prompt."""
+        if self._prompt is None:
+            return False
+        self._close_prompt()
+        self._refresh_buttons()
+        return True
+
     def handle_pointer_down(self, x: float, y: float, button: int) -> bool:
         """Pick ship from board or palette."""
         if self._state is not AppState.PLACEMENT_EDIT or self._prompt is not None:
