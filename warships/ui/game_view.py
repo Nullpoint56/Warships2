@@ -10,10 +10,10 @@ from warships.core.board import BoardState
 from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
 from warships.ui.board_view import BoardLayout
-from warships.ui.framework import build_modal_text_input_widget, render_modal_text_input_widget
+from warships.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
 from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, root_rect, status_rect
 from warships.ui.overlays import Button, button_label
-from warships.ui.scene import SceneRenderer
+from warships.ui.render2d import Render2D
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class GameView:
     """Draws game state using retained keyed scene nodes."""
 
-    def __init__(self, renderer: SceneRenderer, layout: BoardLayout) -> None:
+    def __init__(self, renderer: Render2D, layout: BoardLayout) -> None:
         self._renderer = renderer
         self._layout = layout
         self._static_initialized = False

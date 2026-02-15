@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from warships.app.ui_state import AppUIState
 from warships.ui.board_view import Rect
 from warships.ui.layout_metrics import PROMPT
-from warships.ui.scene import SceneRenderer
+from warships.ui.render2d import Render2D
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,7 +43,7 @@ def build_modal_text_input_widget(ui: AppUIState) -> ModalTextInputWidget | None
     )
 
 
-def render_modal_text_input_widget(renderer: SceneRenderer, widget: ModalTextInputWidget) -> None:
+def render_modal_text_input_widget(renderer: Render2D, widget: ModalTextInputWidget) -> None:
     """Render a modal text input widget."""
     renderer.add_rect(
         "prompt:overlay",
