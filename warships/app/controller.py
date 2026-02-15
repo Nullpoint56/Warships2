@@ -7,16 +7,17 @@ import random
 
 from warships.ai.strategy import AIStrategy
 from warships.app.services.battle import resolve_player_turn, start_game
+from warships.app.services.placement_editor import PlacementEditorService
+from warships.app.services.preset_flow import PresetFlowService
 from warships.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState, PresetRowView, TextPromptView
-from warships.core.board import BoardState
-from warships.core.fleet import random_fleet, validate_fleet
+from warships.core.fleet import random_fleet
 from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
 from warships.core.rules import GameSession
 from warships.presets.service import PresetService
 from warships.ui.board_view import BoardLayout
-from warships.ui.layout_metrics import NEW_GAME_SETUP, PLACEMENT_PANEL, PRESET_PANEL, PROMPT
+from warships.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL, PROMPT
 from warships.ui.overlays import Button, buttons_for_state
 
 _SHIP_ORDER = [
@@ -83,7 +84,7 @@ class GameController:
             state=self._state,
             status=self._status,
             buttons=self._buttons,
-            placements=self._placements_list(),
+            placements=PlacementEditorService.placements_list(self._placements_by_type),
             placement_orientation=self._held_orientation or Orientation.HORIZONTAL,
             session=self._session,
             ship_order=list(_SHIP_ORDER),
@@ -99,10 +100,14 @@ class GameController:
             new_game_difficulty=self._current_difficulty(),
             new_game_difficulty_open=self._new_game_difficulty_open,
             new_game_difficulty_options=list(_DIFFICULTIES),
-            new_game_visible_presets=self._visible_new_game_preset_names(),
+            new_game_visible_presets=PresetFlowService.visible_new_game_preset_names(
+                self._preset_rows, self._new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
+            ),
             new_game_selected_preset=self._new_game_selected_preset,
             new_game_can_scroll_up=self._new_game_preset_scroll > 0,
-            new_game_can_scroll_down=self._new_game_can_scroll_down(),
+            new_game_can_scroll_down=PresetFlowService.can_scroll_down(
+                self._preset_rows, self._new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
+            ),
             new_game_source=self._new_game_source_label,
             new_game_preview=list(self._new_game_preview),
         )
@@ -185,7 +190,7 @@ class GameController:
             self._announce_state()
             return True
         if button_id == "save_preset":
-            if not self._all_ships_placed():
+            if not PlacementEditorService.all_ships_placed(self._placements_by_type, _SHIP_ORDER):
                 self._status = "Place all ships before saving."
                 return True
             default_name = self._editing_preset_name or "new_preset"
@@ -231,7 +236,7 @@ class GameController:
             return False
         self._hover_x = event.x
         self._hover_y = event.y
-        self._hover_cell = _to_board_cell(event.x, event.y)
+        self._hover_cell = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, event.x, event.y)
         return self._held_ship_type is not None
 
     def handle_pointer_release(self, event: PointerReleased) -> bool:
@@ -242,13 +247,13 @@ class GameController:
             return False
         if self._held_ship_type is None or self._held_orientation is None:
             return False
-        target = _to_board_cell(event.x, event.y)
+        target = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, event.x, event.y)
         if target is None:
             self._restore_held_ship()
             return True
         bow = _bow_from_grab_index(target, self._held_orientation, self._held_grab_index)
         candidate = ShipPlacement(self._held_ship_type, bow, self._held_orientation)
-        if self._can_place(candidate):
+        if PlacementEditorService.can_place(self._placements_by_type, candidate):
             self._placements_by_type[self._held_ship_type] = candidate
             self._status = f"Placed {self._held_ship_type.value}."
         else:
@@ -325,7 +330,9 @@ class GameController:
             self._new_game_preset_scroll -= 1
             self._refresh_buttons()
             return True
-        if dy > 0 and self._new_game_can_scroll_down():
+        if dy > 0 and PresetFlowService.can_scroll_down(
+            self._preset_rows, self._new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
+        ):
             self._new_game_preset_scroll += 1
             self._refresh_buttons()
             return True
@@ -356,7 +363,7 @@ class GameController:
                 self._restore_held_ship()
                 self._status = "Returned held ship."
                 return True
-            board_cell = _to_board_cell(x, y)
+            board_cell = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, x, y)
             if board_cell is None:
                 return False
             for ship_type, placement in self._placements_by_type.items():
@@ -369,7 +376,7 @@ class GameController:
         if button != 1:
             return False
 
-        board_cell = _to_board_cell(x, y)
+        board_cell = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, x, y)
         self._hover_x = x
         self._hover_y = y
         if board_cell is not None:
@@ -383,7 +390,7 @@ class GameController:
                     self._status = f"Holding {ship_type.value}. Press R to rotate."
                     return True
 
-        palette_ship = _palette_ship_at_point(x, y)
+        palette_ship = PlacementEditorService.palette_ship_at_point(_SHIP_ORDER, x, y)
         if palette_ship is not None:
             if self._placements_by_type.get(palette_ship) is not None:
                 self._status = f"{palette_ship.value} is already placed."
@@ -411,7 +418,7 @@ class GameController:
             self._status = "Name cannot be empty."
             return True
         if self._prompt_mode == "save":
-            fleet = FleetPlacement(ships=self._placements_list())
+            fleet = FleetPlacement(ships=PlacementEditorService.placements_list(self._placements_by_type))
             exists = any(row.name == value for row in self._preset_rows)
             if exists and value != (self._editing_preset_name or ""):
                 self._pending_save_name = value
@@ -434,7 +441,10 @@ class GameController:
         if self._prompt_mode == "overwrite":
             target = self._pending_save_name or value
             try:
-                self._preset_service.save_preset(target, FleetPlacement(ships=self._placements_list()))
+                self._preset_service.save_preset(
+                    target,
+                    FleetPlacement(ships=PlacementEditorService.placements_list(self._placements_by_type)),
+                )
             except Exception as exc:
                 self._status = f"Save failed: {exc}"
                 return True
@@ -482,12 +492,7 @@ class GameController:
             confirm = "prompt_confirm_rename"
         else:
             confirm = "prompt_confirm_overwrite"
-        self._prompt = TextPromptView(
-            title=title,
-            value=self._prompt_buffer,
-            confirm_button_id=confirm,
-            cancel_button_id="prompt_cancel",
-        )
+        self._prompt = PresetFlowService.open_prompt(title, self._prompt_buffer, mode)
 
     def _close_prompt(self) -> None:
         self._prompt = None
@@ -498,15 +503,10 @@ class GameController:
     def _sync_prompt(self) -> None:
         if self._prompt is None:
             return
-        self._prompt = TextPromptView(
-            title=self._prompt.title,
-            value=self._prompt_buffer,
-            confirm_button_id=self._prompt.confirm_button_id,
-            cancel_button_id=self._prompt.cancel_button_id,
-        )
+        self._prompt = PresetFlowService.sync_prompt(self._prompt, self._prompt_buffer)
 
     def _reset_editor(self) -> None:
-        self._placements_by_type = {ship_type: None for ship_type in _SHIP_ORDER}
+        self._placements_by_type = PlacementEditorService.reset(_SHIP_ORDER)
         self._held_ship_type = None
         self._held_orientation = None
         self._held_previous = None
@@ -523,30 +523,9 @@ class GameController:
         self._held_previous = None
         self._held_grab_index = 0
 
-    def _placements_list(self) -> list[ShipPlacement]:
-        return [placement for placement in self._placements_by_type.values() if placement is not None]
-
-    def _all_ships_placed(self) -> bool:
-        return all(self._placements_by_type[ship_type] is not None for ship_type in _SHIP_ORDER)
-
-    def _can_place(self, candidate: ShipPlacement) -> bool:
-        board = BoardState()
-        temp: list[ShipPlacement] = [p for p in self._placements_by_type.values() if p is not None]
-        temp.append(candidate)
-        seen: set[ShipType] = set()
-        for idx, placement in enumerate(temp, start=1):
-            if placement.ship_type in seen:
-                return False
-            seen.add(placement.ship_type)
-            if not board.can_place(placement):
-                return False
-            board.place_ship(idx, placement)
-        return True
-
     def _randomize_editor(self) -> bool:
-        fleet = random_fleet(self._rng)
         self._reset_editor()
-        for placement in fleet.ships:
+        for placement in random_fleet(self._rng).ships:
             self._placements_by_type[placement.ship_type] = placement
         self._status = "Placement randomized."
         self._refresh_buttons()
@@ -567,27 +546,13 @@ class GameController:
             self._new_game_preview = []
             self._new_game_source_label = None
 
-    def _visible_new_game_preset_names(self) -> list[str]:
-        names = [row.name for row in self._preset_rows]
-        start = self._new_game_preset_scroll
-        end = start + _NEW_GAME_VISIBLE_PRESET_ROWS
-        return names[start:end]
-
-    def _new_game_can_scroll_down(self) -> bool:
-        names = [row.name for row in self._preset_rows]
-        return self._new_game_preset_scroll + _NEW_GAME_VISIBLE_PRESET_ROWS < len(names)
-
     def _select_new_game_preset(self, name: str) -> bool:
-        try:
-            fleet = self._preset_service.load_preset(name)
-        except Exception as exc:
-            self._status = f"Failed to load preset '{name}': {exc}"
-            return True
-        self._new_game_selected_preset = name
-        self._new_game_random_fleet = None
-        self._new_game_preview = list(fleet.ships)
-        self._new_game_source_label = f"Preset: {name}"
-        self._status = f"Selected preset '{name}'."
+        result = PresetFlowService.select_new_game_preset(self._preset_service, name)
+        self._new_game_selected_preset = result.selected_preset
+        self._new_game_random_fleet = result.random_fleet
+        self._new_game_preview = result.preview
+        self._new_game_source_label = result.source_label
+        self._status = result.status
         return True
 
     def _start_game(self) -> bool:
@@ -610,25 +575,21 @@ class GameController:
         return True
 
     def _refresh_preset_rows(self) -> None:
-        rows: list[PresetRowView] = []
-        for name in self._preset_service.list_presets():
-            try:
-                fleet = self._preset_service.load_preset(name)
-            except Exception:
-                continue
-            rows.append(PresetRowView(name=name, placements=list(fleet.ships)))
-        self._preset_rows = rows
-        names = [row.name for row in rows]
-        if self._new_game_selected_preset not in names:
-            self._new_game_selected_preset = None
-        max_scroll = max(0, len(names) - _NEW_GAME_VISIBLE_PRESET_ROWS)
-        if self._new_game_preset_scroll > max_scroll:
-            self._new_game_preset_scroll = max_scroll
+        result = PresetFlowService.refresh_rows(
+            preset_service=self._preset_service,
+            selected_preset=self._new_game_selected_preset,
+            scroll=self._new_game_preset_scroll,
+            visible_rows=_NEW_GAME_VISIBLE_PRESET_ROWS,
+            logger=logger,
+        )
+        self._preset_rows = result.rows
+        self._new_game_selected_preset = result.selected_preset
+        self._new_game_preset_scroll = result.scroll
 
     def _refresh_buttons(self) -> None:
         self._buttons = buttons_for_state(
             self._state,
-            placement_ready=self._all_ships_placed(),
+            placement_ready=PlacementEditorService.all_ships_placed(self._placements_by_type, _SHIP_ORDER),
             has_presets=bool(self._preset_rows),
         )
         if self._state is AppState.PRESET_MANAGE:
@@ -642,39 +603,6 @@ class GameController:
         logger.info("state=%s", self._state.name)
         if self._debug_ui:
             logger.debug("buttons=%s", [button.id for button in self._buttons])
-
-
-def _validate_partial_fleet(fleet: FleetPlacement) -> tuple[bool, str]:
-    valid, reason = validate_fleet(fleet)
-    if valid:
-        return True, ""
-    if "exactly five ships" in reason:
-        board = BoardState()
-        seen: set[ShipType] = set()
-        for idx, placement in enumerate(fleet.ships, start=1):
-            if placement.ship_type in seen:
-                return False, "Duplicate ship type."
-            seen.add(placement.ship_type)
-            if not board.can_place(placement):
-                return False, "Invalid placement."
-            board.place_ship(idx, placement)
-        return True, ""
-    return False, reason
-
-
-def _to_board_cell(x: float, y: float) -> Coord | None:
-    return _BOARD_LAYOUT.screen_to_cell(is_ai=False, px=x, py=y)
-
-
-def _palette_ship_at_point(x: float, y: float) -> ShipType | None:
-    panel = PLACEMENT_PANEL.panel_rect()
-    if not panel.contains(x, y):
-        return None
-    for index, ship_type in enumerate(_SHIP_ORDER):
-        row = PLACEMENT_PANEL.row_rect(index)
-        if row.contains(x, y):
-            return ship_type
-    return None
 
 
 def _prompt_buttons(prompt: TextPromptView) -> list[Button]:
@@ -705,7 +633,13 @@ def _new_game_setup_buttons(controller: GameController) -> list[Button]:
             rect = NEW_GAME_SETUP.difficulty_option_rect(idx)
             buttons.append(Button(f"new_game_diff_option:{name}", rect.x, rect.y, rect.w, rect.h))
 
-    for idx, name in enumerate(controller._visible_new_game_preset_names()):
+    for idx, name in enumerate(
+        PresetFlowService.visible_new_game_preset_names(
+            controller._preset_rows,
+            controller._new_game_preset_scroll,
+            _NEW_GAME_VISIBLE_PRESET_ROWS,
+        )
+    ):
         row_rect = NEW_GAME_SETUP.preset_row_rect(idx)
         buttons.append(Button(f"new_game_select_preset:{name}", row_rect.x, row_rect.y, row_rect.w, row_rect.h))
     random_rect = NEW_GAME_SETUP.random_button_rect()
