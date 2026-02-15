@@ -136,3 +136,9 @@ and `engine` (runtime/input/render infrastructure), while keeping behavior stabl
 - Phase G step 4 completed: compatibility shim modules removed after migration.
 - Phase G follow-up completed: engine package was moved out of `warships/` to top-level `engine/` (monorepo split: `engine` + `warships/game`).
 - Architecture decision recorded: engine-hosted lifecycle selected as the target model for multi-game engine reuse.
+- Phase H step H1 completed: added `engine.api.game_module` contract and `engine.runtime.host.EngineHost` lifecycle shell (non-breaking, no startup-path switch yet).
+- Phase H step H2 completed: frame-loop orchestration in `engine.runtime.pygfx_frontend` now runs through `EngineHost` via a temporary module adapter; `PygfxFrontendWindow` remains compatibility wrapper.
+- Phase H step H3 completed: temporary frontend-local module adapter extracted to `warships.game.app.engine_game_module.WarshipsGameModule`; `engine.runtime.pygfx_frontend` now only wires engine runtime services + game module.
+- Phase H step H4 completed: `warships/main.py` now starts engine-hosted runtime directly via `warships.game.app.engine_hosted_runtime.run_engine_hosted_app`.
+- Phase H step H5 completed: app-owned lifecycle ownership and frontend factory indirection were removed from active runtime path.
+- Phase H step H6 completed: transitional fallback/compatibility modules removed (`warships.game.app.legacy_runtime`, `warships.game.app.loop`, `warships.game.app.frontend`, `warships.game.app.frontend_factory`) and `engine.runtime.pygfx_frontend` no longer depends on Warships app/controller types.

@@ -3,7 +3,7 @@
 import logging
 import os
 
-from warships.game.app.loop import AppLoop
+from warships.game.app.engine_hosted_runtime import run_engine_hosted_app
 from warships.game.infra.config import load_env_file
 from warships.game.infra.logging import setup_logging
 
@@ -22,8 +22,7 @@ def main() -> None:
                 "warships_debug_ui": os.getenv("WARSHIPS_DEBUG_UI", "0"),
             },
         )
-    app = AppLoop()
-    app.run()
+    run_engine_hosted_app()
 
 
 if __name__ == "__main__":
