@@ -52,7 +52,6 @@ class PygfxFrontendWindow:
         for event in self._input.drain_wheel_events():
             changed = self._host.handle_wheel_event(event) or changed
         if changed:
-            self._host.request_redraw()
             self._renderer.invalidate()
 
 

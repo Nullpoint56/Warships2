@@ -9,7 +9,8 @@ from warships.game.app.ui_state import AppUIState
 from engine.api.render import RenderAPI as Render2D
 from engine.ui_runtime.board_layout import BoardLayout
 from warships.game.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
-from warships.game.ui.overlays import Button, button_label
+from engine.ui_runtime.widgets import Button
+from warships.game.ui.overlays import button_label
 from warships.game.ui.views import (
     draw_ai_board,
     draw_new_game_setup,

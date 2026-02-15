@@ -142,3 +142,7 @@ and `engine` (runtime/input/render infrastructure), while keeping behavior stabl
 - Phase H step H4 completed: `warships/main.py` now starts engine-hosted runtime directly via `warships.game.app.engine_hosted_runtime.run_engine_hosted_app`.
 - Phase H step H5 completed: app-owned lifecycle ownership and frontend factory indirection were removed from active runtime path.
 - Phase H step H6 completed: transitional fallback/compatibility modules removed (`warships.game.app.legacy_runtime`, `warships.game.app.loop`, `warships.game.app.frontend`, `warships.game.app.frontend_factory`) and `engine.runtime.pygfx_frontend` no longer depends on Warships app/controller types.
+
+## Architecture Audit
+- Moved to docs/architecture_audit.md (findings + code-based reality check).
+

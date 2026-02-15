@@ -18,9 +18,6 @@ class HostFrameContext:
 class HostControl(Protocol):
     """Host control surface exposed to game modules."""
 
-    def request_redraw(self) -> None:
-        """Schedule one redraw."""
-
     def close(self) -> None:
         """Request host shutdown."""
 
@@ -48,4 +45,3 @@ class GameModule(Protocol):
 
     def on_shutdown(self) -> None:
         """Release resources and finalize state."""
-

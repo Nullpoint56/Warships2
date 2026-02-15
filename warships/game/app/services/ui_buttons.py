@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from warships.game.app.state_machine import AppState
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.preset_flow import PresetFlowService
 from warships.game.app.ui_state import PresetRowView, TextPromptView
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL, PROMPT
-from warships.game.ui.overlays import Button
+from engine.ui_runtime.widgets import Button
+from warships.game.ui.overlays import buttons_for_state
 
 
 def prompt_buttons(prompt: TextPromptView) -> list[Button]:
@@ -48,6 +50,40 @@ def new_game_setup_buttons(
         buttons.append(Button(f"new_game_select_preset:{name}", row_rect.x, row_rect.y, row_rect.w, row_rect.h))
     random_rect = NEW_GAME_SETUP.random_button_rect()
     buttons.append(Button("new_game_randomize", random_rect.x, random_rect.y, random_rect.w, random_rect.h))
+    return buttons
+
+
+def compose_buttons(
+    *,
+    state: AppState,
+    placement_ready: bool,
+    has_presets: bool,
+    visible_preset_manage_rows: list[PresetRowView],
+    preset_rows: list[PresetRowView],
+    new_game_preset_scroll: int,
+    new_game_visible_rows: int,
+    new_game_difficulty_open: bool,
+    prompt: TextPromptView | None,
+) -> list[Button]:
+    """Compose state, row, and modal buttons for current controller snapshot."""
+    buttons = buttons_for_state(
+        state=state,
+        placement_ready=placement_ready,
+        has_presets=has_presets,
+    )
+    if state is AppState.PRESET_MANAGE:
+        buttons.extend(preset_row_buttons(visible_preset_manage_rows))
+    if state is AppState.NEW_GAME_SETUP:
+        buttons.extend(
+            new_game_setup_buttons(
+                rows=preset_rows,
+                scroll=new_game_preset_scroll,
+                visible_rows=new_game_visible_rows,
+                difficulty_open=new_game_difficulty_open,
+            )
+        )
+    if prompt is not None:
+        buttons.extend(prompt_buttons(prompt))
     return buttons
 
 

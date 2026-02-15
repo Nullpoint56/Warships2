@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from warships.game.app.ui_state import AppUIState
 from engine.api.render import RenderAPI as Render2D
-from engine.ui_runtime.board_layout import Rect
+from engine.ui_runtime.geometry import Rect
 from warships.game.ui.layout_metrics import PROMPT
 
 

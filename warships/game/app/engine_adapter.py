@@ -6,10 +6,11 @@ from dataclasses import dataclass
 
 from warships.game.app.controller import GameController
 from warships.game.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
+from warships.game.app.state_machine import AppState
+from warships.game.app.shortcut_policy import shortcut_buttons_for_state
 from warships.game.core.models import Coord
 from engine.api.app_port import ButtonView, EngineAppPort, InteractionPlanView, ModalWidgetView, RectView
 from warships.game.ui.framework.widgets import build_modal_text_input_widget
-from warships.game.ui.framework.interactions import build_interaction_plan
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
 
@@ -39,15 +40,18 @@ class WarshipsAppAdapter(EngineAppPort):
         return build_modal_text_input_widget(self._controller.ui_state())
 
     def interaction_plan(self) -> InteractionPlanView:
-        plan = build_interaction_plan(self._controller.ui_state())
+        ui = self._controller.ui_state()
+        state = ui.state
+        wheel_new_game = state is AppState.NEW_GAME_SETUP
+        wheel_preset_manage = state is AppState.PRESET_MANAGE
         return _EngineInteractionPlan(
-            buttons=plan.buttons,
-            shortcut_buttons=plan.shortcut_buttons,
-            allows_ai_board_click=plan.allows_ai_board_click,
-            wheel_scroll_in_new_game_list=plan.wheel_scroll_in_new_game_list,
-            wheel_scroll_in_preset_manage_panel=plan.wheel_scroll_in_preset_manage_panel,
-            new_game_list_rect=NEW_GAME_SETUP.preset_list_rect() if plan.wheel_scroll_in_new_game_list else None,
-            preset_manage_rect=PRESET_PANEL.panel_rect() if plan.wheel_scroll_in_preset_manage_panel else None,
+            buttons=tuple(ui.buttons),
+            shortcut_buttons=shortcut_buttons_for_state(state),
+            allows_ai_board_click=state is AppState.BATTLE,
+            wheel_scroll_in_new_game_list=wheel_new_game,
+            wheel_scroll_in_preset_manage_panel=wheel_preset_manage,
+            new_game_list_rect=NEW_GAME_SETUP.preset_list_rect() if wheel_new_game else None,
+            preset_manage_rect=PRESET_PANEL.panel_rect() if wheel_preset_manage else None,
         )
 
     def on_button(self, button_id: str) -> bool:

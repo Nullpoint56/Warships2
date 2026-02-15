@@ -1,6 +1,7 @@
 """Engine-owned UI runtime helpers."""
 
-from engine.ui_runtime.board_layout import BoardLayout, Rect
+from engine.ui_runtime.board_layout import BoardLayout
+from engine.ui_runtime.geometry import CellCoord, Rect
 from engine.ui_runtime.interactions import (
     NonModalKeyRoute,
     can_scroll_with_wheel,
@@ -15,6 +16,8 @@ from engine.ui_runtime.modal_runtime import (
     route_modal_key_event,
     route_modal_pointer_event,
 )
+from engine.ui_runtime.scroll import ScrollOutcome, apply_wheel_scroll
+from engine.ui_runtime.widgets import Button
 
 __all__ = [
     "ModalInputState",
@@ -22,7 +25,11 @@ __all__ = [
     "ModalPointerRoute",
     "NonModalKeyRoute",
     "BoardLayout",
+    "Button",
+    "CellCoord",
     "Rect",
+    "ScrollOutcome",
+    "apply_wheel_scroll",
     "can_scroll_with_wheel",
     "map_key_name",
     "resolve_pointer_button",

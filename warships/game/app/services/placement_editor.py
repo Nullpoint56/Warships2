@@ -46,7 +46,10 @@ class PlacementEditorService:
 
     @staticmethod
     def to_board_cell(layout: BoardLayout, x: float, y: float) -> Coord | None:
-        return layout.screen_to_cell(is_ai=False, px=x, py=y)
+        cell = layout.screen_to_cell(is_ai=False, px=x, py=y)
+        if cell is None:
+            return None
+        return Coord(row=cell.row, col=cell.col)
 
     @staticmethod
     def palette_ship_at_point(ship_order: list[ShipType], x: float, y: float) -> ShipType | None:

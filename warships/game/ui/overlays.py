@@ -2,27 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
+from engine.ui_runtime.widgets import Button
 from warships.game.app.state_machine import AppState
 from warships.game.ui.layout_metrics import top_bar_rect
-
-
-@dataclass(frozen=True, slots=True)
-class Button:
-    """Clickable rectangular button."""
-
-    id: str
-    x: float
-    y: float
-    w: float
-    h: float
-    visible: bool = True
-    enabled: bool = True
-
-    def contains(self, px: float, py: float) -> bool:
-        """Return whether this button contains the point."""
-        return self.visible and self.x <= px <= self.x + self.w and self.y <= py <= self.y + self.h
 
 
 def buttons_for_state(

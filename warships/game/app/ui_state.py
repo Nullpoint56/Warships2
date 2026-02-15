@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from warships.game.app.state_machine import AppState
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.core.rules import GameSession
-from warships.game.ui.overlays import Button
+from engine.ui_runtime.widgets import Button
 
 
 @dataclass(frozen=True, slots=True)

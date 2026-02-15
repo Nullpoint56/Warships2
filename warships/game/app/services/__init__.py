@@ -1,6 +1,5 @@
 """Application service-layer helpers."""
 
-from warships.game.app.services.menu_scroll import MenuScrollService, ScrollOutcome
 from warships.game.app.services.new_game_flow import DIFFICULTIES, NewGameFlowService, NewGameSelection
 from warships.game.app.services.placement_flow import HeldShipState, PlacementActionResult, PlacementFlowService
 from warships.game.app.services.prompt_flow import (
@@ -15,7 +14,6 @@ from warships.game.app.services.ui_buttons import new_game_setup_buttons, preset
 __all__ = [
     "DIFFICULTIES",
     "HeldShipState",
-    "MenuScrollService",
     "NewGameFlowService",
     "NewGameSelection",
     "PlacementActionResult",
@@ -24,7 +22,6 @@ __all__ = [
     "PromptFlowService",
     "PromptInteractionOutcome",
     "PromptState",
-    "ScrollOutcome",
     "AppTransition",
     "SessionFlowService",
     "new_game_setup_buttons",

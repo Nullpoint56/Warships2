@@ -109,7 +109,7 @@ def draw_board_frame(renderer, layout: BoardLayout, is_ai: bool) -> None:
 def draw_ships_from_placements(renderer, layout: BoardLayout, placements: list[ShipPlacement]) -> None:
     for placement in placements:
         for coord in cells_for_placement(placement):
-            cell_rect = layout.cell_rect(is_ai=False, coord=coord)
+            cell_rect = layout.cell_rect(is_ai=False, row=coord.row, col=coord.col)
             renderer.add_rect(
                 f"ship:placement:{placement.ship_type.value}:{coord.row}:{coord.col}",
                 cell_rect.x + 2.0,
@@ -127,7 +127,7 @@ def draw_ships_from_board(renderer, layout: BoardLayout, board: BoardState, is_a
         for col in range(board.size):
             if int(board.ships[row, col]) == 0:
                 continue
-            cell_rect = layout.cell_rect(is_ai=is_ai, coord=Coord(row=row, col=col))
+            cell_rect = layout.cell_rect(is_ai=is_ai, row=row, col=col)
             renderer.add_rect(
                 f"ship:{board_key}:{row}:{col}",
                 cell_rect.x + 2.0,
@@ -146,7 +146,7 @@ def draw_shots(renderer, layout: BoardLayout, board: BoardState, is_ai: bool) ->
             value = int(board.shots[row, col])
             if value == 0:
                 continue
-            cell_rect = layout.cell_rect(is_ai=is_ai, coord=Coord(row=row, col=col))
+            cell_rect = layout.cell_rect(is_ai=is_ai, row=row, col=col)
             color = "#e11d48" if value == 2 else "#f1f5f9"
             renderer.add_rect(
                 f"shot:{board_key}:{row}:{col}",
@@ -177,7 +177,7 @@ def draw_held_ship_preview(
             col = bow_col + (i if orientation is Orientation.HORIZONTAL else 0)
             if row < 0 or row >= 10 or col < 0 or col >= 10:
                 continue
-            cell_rect = layout.cell_rect(is_ai=False, coord=Coord(row=row, col=col))
+            cell_rect = layout.cell_rect(is_ai=False, row=row, col=col)
             renderer.add_rect(
                 f"held:preview:{ship_type.value}:{i}",
                 cell_rect.x + 2.0,

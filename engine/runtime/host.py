@@ -26,7 +26,6 @@ class EngineHost(HostControl):
         self._frame_index = 0
         self._closed = False
         self._started = False
-        self._redraw_requested = True
 
     @property
     def config(self) -> EngineHostConfig:
@@ -58,10 +57,6 @@ class EngineHost(HostControl):
         self._frame_index += 1
         if self._module.should_close():
             self.close()
-        self._redraw_requested = False
-
-    def request_redraw(self) -> None:
-        self._redraw_requested = True
 
     def close(self) -> None:
         if self._closed:
@@ -71,7 +66,3 @@ class EngineHost(HostControl):
 
     def is_closed(self) -> bool:
         return self._closed
-
-    def redraw_requested(self) -> bool:
-        return self._redraw_requested
-
