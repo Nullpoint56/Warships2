@@ -7,9 +7,10 @@ import random
 from pathlib import Path
 
 from warships.app.controller import GameController
+from warships.app.frontend import FrontendWindow
 from warships.presets.repository import PresetRepository
 from warships.presets.service import PresetService
-from warships.qt.window import MainWindow
+from warships.qt.window import MainWindow, QtFrontendWindow
 
 try:
     from PyQt6.QtWidgets import QApplication
@@ -33,16 +34,15 @@ class AppLoop:
             QListWidget { background: #111827; color: #e5e7eb; }
             """
         )
-        self._window = MainWindow(self._controller)
+        self._window: FrontendWindow = QtFrontendWindow(MainWindow(self._controller))
 
     def run(self) -> None:
         mode = os.getenv("WARSHIPS_WINDOW_MODE", "windowed").lower()
         if mode == "fullscreen":
-            self._window.showFullScreen()
+            self._window.show_fullscreen()
         elif mode in {"maximized", "borderless"}:
-            self._window.showMaximized()
+            self._window.show_maximized()
         else:
-            self._window.resize(1280, 800)
-            self._window.show()
+            self._window.show_windowed(1280, 800)
         self._window.sync_ui()
         self._app.exec()
