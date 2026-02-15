@@ -49,3 +49,20 @@ and `engine` (runtime/input/render infrastructure), while keeping behavior stabl
    - retained primitive cache/drawer
 2. Keep external render API stable.
 
+### Phase F: Engine Boundary Tightening
+1. Move engine-owned runtime/render/input modules out of `warships/ui` into `warships/engine`:
+   - `ui/scene*.py` -> `engine/rendering/*`
+   - `ui/input_controller.py` -> `engine/input/*`
+2. Keep compatibility shims in `warships/ui` for one migration phase to avoid broad breakage.
+3. Repoint `engine.runtime` imports to `engine.rendering` and `engine.input` (no `warships/ui` dependency for backend runtime).
+4. Keep game-specific presentation modules in app/ui:
+   - `ui/game_view.py`, `ui/views/*`, `ui/layout_metrics.py`, `ui/overlays.py`, `ui/board_view.py`
+5. Keep game AI outside engine (domain/gameplay layer), but remove direct app/runtime coupling.
+6. Follow-up phase: make `engine.api.app_port` type contracts engine-owned (remove direct `app.ui_state` dependency).
+
+## Progress Notes
+- Phase F step 1 completed: rendering/input runtime modules moved under `engine` with `warships/ui` compatibility shims.
+- Phase F step 2 completed: key normalization and modal runtime core moved to `engine/ui_runtime` with framework shim compatibility.
+- Phase F step 6 completed: `engine.api.app_port` no longer imports app/core model types (`AppUIState`, `Coord`); board click uses primitive row/col values.
+- Phase F follow-up completed: engine runtime no longer depends on `warships.ui.board_view`; `BoardLayout`/`Rect` are now engine-owned in `engine/ui_runtime/board_layout.py` with `warships/ui/board_view.py` shimmed.
+- Phase F follow-up completed: in-repo imports now reference `engine.ui_runtime.board_layout` directly (shims remain only for external/backward compatibility).

@@ -6,10 +6,10 @@ import logging
 
 from warships.app.state_machine import AppState
 from warships.app.ui_state import AppUIState
-from warships.ui.board_view import BoardLayout
+from warships.engine.api.render import RenderAPI as Render2D
+from warships.engine.ui_runtime.board_layout import BoardLayout
 from warships.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
 from warships.ui.overlays import Button, button_label
-from warships.ui.render2d import Render2D
 from warships.ui.views import (
     draw_ai_board,
     draw_new_game_setup,
@@ -111,4 +111,3 @@ class GameView:
                 z=10.5 if button.id.startswith("prompt_") else 3.0,
             )
         return labels
-

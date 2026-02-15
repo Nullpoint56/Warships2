@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.ui.framework.widgets import ModalTextInputWidget, resolve_modal_pointer_target
+from warships.engine.api.app_port import ModalWidgetView
 
 
 @dataclass(slots=True)
@@ -14,7 +14,7 @@ class ModalInputState:
     is_open: bool = False
     input_focused: bool = False
 
-    def sync(self, widget: ModalTextInputWidget | None) -> None:
+    def sync(self, widget: ModalWidgetView | None) -> None:
         """Sync state with current modal presence."""
         if widget is None:
             self.is_open = False
@@ -44,7 +44,7 @@ class ModalKeyRoute:
 
 
 def route_modal_pointer_event(
-    widget: ModalTextInputWidget,
+    widget: ModalWidgetView,
     state: ModalInputState,
     x: float,
     y: float,
@@ -53,7 +53,7 @@ def route_modal_pointer_event(
     """Route a pointer-down event when a modal is active."""
     if button != 1:
         return ModalPointerRoute(swallow=True)
-    target = resolve_modal_pointer_target(widget, x, y)
+    target = _resolve_modal_pointer_target(widget, x, y)
     if target == "confirm":
         return ModalPointerRoute(swallow=True, button_id=widget.confirm_button_id)
     if target == "cancel":
@@ -92,3 +92,16 @@ def route_modal_key_event(
         return ModalKeyRoute(swallow=True, key=mapped_key)
     return ModalKeyRoute(swallow=True)
 
+
+def _resolve_modal_pointer_target(widget: ModalWidgetView, x: float, y: float) -> str | None:
+    if widget.confirm_button_rect.contains(x, y):
+        return "confirm"
+    if widget.cancel_button_rect.contains(x, y):
+        return "cancel"
+    if widget.input_rect.contains(x, y):
+        return "input"
+    if widget.panel_rect.contains(x, y):
+        return "panel"
+    if widget.overlay_rect.contains(x, y):
+        return "overlay"
+    return None

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 from typing import cast
 
-from warships.ui.scene_primitives import grid_positions
+from warships.engine.rendering.scene_primitives import grid_positions
 
 
 def hide_inactive_nodes(nodes: dict[str, Any], static_keys: set[str], active_keys: set[str]) -> None:
@@ -198,4 +198,3 @@ def upsert_text(
             static_text_keys.add(key)
         else:
             active_text_keys.add(key)
-

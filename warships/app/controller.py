@@ -22,8 +22,8 @@ from warships.app.ui_state import AppUIState, PresetRowView
 from warships.core.fleet import random_fleet
 from warships.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
 from warships.core.rules import GameSession
+from warships.engine.ui_runtime.board_layout import BoardLayout
 from warships.presets.service import PresetService
-from warships.ui.board_view import BoardLayout
 from warships.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 from warships.ui.overlays import Button, buttons_for_state
 

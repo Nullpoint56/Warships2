@@ -5,7 +5,7 @@ from __future__ import annotations
 from warships.core.board import BoardState
 from warships.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.core.rules import GameSession
-from warships.ui.board_view import BoardLayout
+from warships.engine.ui_runtime.board_layout import BoardLayout
 from warships.ui.layout_metrics import PLACEMENT_PANEL
 
 
@@ -202,4 +202,3 @@ def draw_held_ship_preview(
             "#f59e0b",
             z=1.2,
         )
-

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.ui.board_view import Rect
+from warships.engine.ui_runtime.board_layout import Rect
 
 
 DESIGN_WIDTH = 1200.0

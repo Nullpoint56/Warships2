@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from warships.app.ui_state import AppUIState
-from warships.ui.board_view import Rect
+from warships.engine.api.render import RenderAPI as Render2D
+from warships.engine.ui_runtime.board_layout import Rect
 from warships.ui.layout_metrics import PROMPT
-from warships.ui.render2d import Render2D
 
 
 @dataclass(frozen=True, slots=True)

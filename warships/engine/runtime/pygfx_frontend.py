@@ -7,11 +7,11 @@ import os
 from warships.app.controller import GameController
 from warships.app.engine_adapter import WarshipsAppAdapter
 from warships.app.frontend import FrontendBundle, FrontendWindow
+from warships.engine.input.input_controller import InputController
+from warships.engine.rendering.scene import SceneRenderer
 from warships.engine.runtime.framework_engine import EngineUIFramework
-from warships.ui.board_view import BoardLayout
+from warships.engine.ui_runtime.board_layout import BoardLayout
 from warships.ui.game_view import GameView
-from warships.ui.input_controller import InputController
-from warships.ui.scene import SceneRenderer
 
 
 class PygfxFrontendWindow(FrontendWindow):
@@ -70,4 +70,3 @@ def create_pygfx_frontend(controller: GameController) -> FrontendBundle:
     """Build pygfx adapter and event-loop runner."""
     window = PygfxFrontendWindow(controller)
     return FrontendBundle(window=window, run_event_loop=window.run)
-

@@ -7,8 +7,8 @@ import logging
 from typing import Callable
 from typing import Any
 from typing import cast
-from warships.ui.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
-from warships.ui.scene_runtime import (
+from warships.engine.rendering.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
+from warships.engine.rendering.scene_runtime import (
     apply_startup_window_mode,
     get_canvas_logical_size,
     resolve_preserve_aspect,
@@ -16,7 +16,7 @@ from warships.ui.scene_runtime import (
     run_backend_loop,
     stop_backend_loop,
 )
-from warships.ui.scene_viewport import extract_resize_dimensions, to_design_space, viewport_transform
+from warships.engine.rendering.scene_viewport import extract_resize_dimensions, to_design_space, viewport_transform
 
 try:
     import pygfx as gfx

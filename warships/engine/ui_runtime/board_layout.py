@@ -1,4 +1,4 @@
-"""Board rendering primitives and updates."""
+"""Engine-owned board layout and hit-testing helpers."""
 
 from __future__ import annotations
 
@@ -57,3 +57,4 @@ class BoardLayout:
         if not (0 <= row < self.board_size and 0 <= col < self.board_size):
             return None
         return Coord(row=row, col=col)
+

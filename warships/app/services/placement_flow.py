@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from warships.app.flows.placement_math import bow_from_grab_index, grab_index_from_cell
 from warships.app.services.placement_editor import PlacementEditorService
 from warships.core.models import Orientation, ShipPlacement, ShipType, cells_for_placement
-from warships.ui.board_view import BoardLayout
+from warships.engine.ui_runtime.board_layout import BoardLayout
 
 
 @dataclass(frozen=True, slots=True)

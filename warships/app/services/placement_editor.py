@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from warships.core.board import BoardState
 from warships.core.models import Coord, ShipPlacement, ShipType
-from warships.ui.board_view import BoardLayout
+from warships.engine.ui_runtime.board_layout import BoardLayout
 from warships.ui.layout_metrics import PLACEMENT_PANEL
 
 
