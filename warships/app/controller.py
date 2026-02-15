@@ -6,6 +6,7 @@ import logging
 import random
 
 from warships.ai.strategy import AIStrategy
+from warships.app.flows.placement_math import bow_from_grab_index, cells_for_ship, grab_index_from_cell
 from warships.app.services.battle import resolve_player_turn, start_game
 from warships.app.services.placement_editor import PlacementEditorService
 from warships.app.services.preset_flow import PresetFlowService
@@ -250,8 +251,9 @@ class GameController:
         target = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, event.x, event.y)
         if target is None:
             self._restore_held_ship()
+            self._refresh_buttons()
             return True
-        bow = _bow_from_grab_index(target, self._held_orientation, self._held_grab_index)
+        bow = bow_from_grab_index(target, self._held_orientation, self._held_grab_index)
         candidate = ShipPlacement(self._held_ship_type, bow, self._held_orientation)
         if PlacementEditorService.can_place(self._placements_by_type, candidate):
             self._placements_by_type[self._held_ship_type] = candidate
@@ -263,6 +265,7 @@ class GameController:
         self._held_orientation = None
         self._held_previous = None
         self._held_grab_index = 0
+        self._refresh_buttons()
         return True
 
     def handle_key_pressed(self, event: KeyPressed) -> bool:
@@ -367,7 +370,7 @@ class GameController:
             if board_cell is None:
                 return False
             for ship_type, placement in self._placements_by_type.items():
-                if placement and board_cell in _cells_for_ship(placement):
+                if placement and board_cell in cells_for_ship(placement):
                     self._placements_by_type[ship_type] = None
                     self._status = f"Removed {ship_type.value}."
                     self._refresh_buttons()
@@ -381,13 +384,14 @@ class GameController:
         self._hover_y = y
         if board_cell is not None:
             for ship_type, placement in self._placements_by_type.items():
-                if placement and board_cell in _cells_for_ship(placement):
+                if placement and board_cell in cells_for_ship(placement):
                     self._held_ship_type = ship_type
                     self._held_orientation = placement.orientation
                     self._held_previous = placement
-                    self._held_grab_index = _grab_index_from_cell(placement, board_cell)
+                    self._held_grab_index = grab_index_from_cell(placement, board_cell)
                     self._placements_by_type[ship_type] = None
                     self._status = f"Holding {ship_type.value}. Press R to rotate."
+                    self._refresh_buttons()
                     return True
 
         palette_ship = PlacementEditorService.palette_ship_at_point(_SHIP_ORDER, x, y)
@@ -645,25 +649,3 @@ def _new_game_setup_buttons(controller: GameController) -> list[Button]:
     random_rect = NEW_GAME_SETUP.random_button_rect()
     buttons.append(Button("new_game_randomize", random_rect.x, random_rect.y, random_rect.w, random_rect.h))
     return buttons
-
-
-def _cells_for_ship(placement: ShipPlacement) -> list[Coord]:
-    cells: list[Coord] = []
-    for offset in range(placement.ship_type.size):
-        if placement.orientation is Orientation.HORIZONTAL:
-            cells.append(Coord(row=placement.bow.row, col=placement.bow.col + offset))
-        else:
-            cells.append(Coord(row=placement.bow.row + offset, col=placement.bow.col))
-    return cells
-
-
-def _grab_index_from_cell(placement: ShipPlacement, cell: Coord) -> int:
-    if placement.orientation is Orientation.HORIZONTAL:
-        return max(0, cell.col - placement.bow.col)
-    return max(0, cell.row - placement.bow.row)
-
-
-def _bow_from_grab_index(cell: Coord, orientation: Orientation, grab_index: int) -> Coord:
-    if orientation is Orientation.HORIZONTAL:
-        return Coord(row=cell.row, col=cell.col - grab_index)
-    return Coord(row=cell.row - grab_index, col=cell.col)
