@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import random
 
@@ -75,6 +76,27 @@ class GameController:
         self._pending_save_name: str | None = None
 
         self._buttons: list[Button] = []
+        self._button_handlers: dict[str, Callable[[], bool]] = {
+            "manage_presets": self._on_manage_presets,
+            "new_game": self._on_new_game,
+            "create_preset": self._on_create_preset,
+            "back_main": self._on_back_main,
+            "new_game_toggle_difficulty": self._on_toggle_new_game_difficulty,
+            "new_game_randomize": self._on_new_game_randomize,
+            "start_game": self._start_game,
+            "quit": self._on_quit,
+            "play_again": self._on_play_again,
+            "back_to_presets": self._on_back_to_presets,
+            "save_preset": self._on_save_preset,
+            "randomize": self._randomize_editor,
+        }
+        self._prefixed_button_handlers: list[tuple[str, Callable[[str], bool]]] = [
+            ("new_game_diff_option:", self._on_new_game_diff_option),
+            ("new_game_select_preset:", self._select_new_game_preset),
+            ("preset_edit:", self._edit_preset),
+            ("preset_rename:", self._on_preset_rename),
+            ("preset_delete:", self._on_preset_delete),
+        ]
         self._refresh_preset_rows()
         self._refresh_buttons()
         self._announce_state()
@@ -118,105 +140,110 @@ class GameController:
         button_id = event.button_id
         if self._prompt is not None:
             return self._handle_prompt_button(button_id)
-
-        if button_id == "manage_presets":
-            self._state = AppState.PRESET_MANAGE
-            self._status = "Manage presets."
-            self._refresh_preset_rows()
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "new_game":
-            self._state = AppState.NEW_GAME_SETUP
-            self._enter_new_game_setup()
-            self._status = "Configure game: difficulty and fleet selection."
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "create_preset":
-            self._state = AppState.PLACEMENT_EDIT
-            self._status = "Drag a ship from panel, drop onto board. Press R while holding to rotate."
-            self._reset_editor()
-            self._editing_preset_name = None
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "back_main":
-            self._state = AppState.MAIN_MENU
-            self._status = "Choose New Game, Manage Presets, or Quit."
-            self._session = None
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "new_game_toggle_difficulty":
-            self._new_game_difficulty_open = not self._new_game_difficulty_open
-            self._refresh_buttons()
-            return True
-        if button_id.startswith("new_game_diff_option:"):
-            diff = button_id.split(":", 1)[1]
-            if diff in _DIFFICULTIES:
-                self._new_game_difficulty_index = _DIFFICULTIES.index(diff)
-                self._new_game_difficulty_open = False
-                self._status = f"Difficulty: {self._current_difficulty()}."
-                self._refresh_buttons()
-                return True
-            return False
-        if button_id.startswith("new_game_select_preset:"):
-            name = button_id.split(":", 1)[1]
-            return self._select_new_game_preset(name)
-        if button_id == "new_game_randomize":
-            self._new_game_random_fleet = random_fleet(self._rng)
-            self._new_game_selected_preset = None
-            self._new_game_preview = list(self._new_game_random_fleet.ships)
-            self._new_game_source_label = "Random Fleet"
-            self._status = "Generated random fleet for this game."
-            return True
-        if button_id == "start_game":
-            return self._start_game()
-        if button_id == "quit":
-            self._is_closing = True
-            return True
-        if button_id == "play_again":
-            self._state = AppState.NEW_GAME_SETUP
-            self._enter_new_game_setup()
-            self._status = "Configure game: difficulty and fleet selection."
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "back_to_presets":
-            self._state = AppState.PRESET_MANAGE
-            self._status = "Manage presets."
-            self._refresh_preset_rows()
-            self._refresh_buttons()
-            self._announce_state()
-            return True
-        if button_id == "save_preset":
-            if not PlacementEditorService.all_ships_placed(self._placements_by_type, _SHIP_ORDER):
-                self._status = "Place all ships before saving."
-                return True
-            default_name = self._editing_preset_name or "new_preset"
-            self._open_prompt("Save Preset", default_name, mode="save")
-            self._refresh_buttons()
-            return True
-        if button_id == "randomize":
-            return self._randomize_editor()
-
-        if button_id.startswith("preset_edit:"):
-            name = button_id.split(":", 1)[1]
-            return self._edit_preset(name)
-        if button_id.startswith("preset_rename:"):
-            name = button_id.split(":", 1)[1]
-            self._open_prompt("Rename Preset", name, mode="rename", target=name)
-            self._refresh_buttons()
-            return True
-        if button_id.startswith("preset_delete:"):
-            name = button_id.split(":", 1)[1]
-            self._preset_service.delete_preset(name)
-            self._status = f"Deleted preset '{name}'."
-            self._refresh_preset_rows()
-            self._refresh_buttons()
-            return True
+        handler = self._button_handlers.get(button_id)
+        if handler is not None:
+            return handler()
+        for prefix, prefixed_handler in self._prefixed_button_handlers:
+            if button_id.startswith(prefix):
+                suffix = button_id.split(":", 1)[1]
+                return prefixed_handler(suffix)
         return False
+
+    def _on_manage_presets(self) -> bool:
+        self._state = AppState.PRESET_MANAGE
+        self._status = "Manage presets."
+        self._refresh_preset_rows()
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_new_game(self) -> bool:
+        self._state = AppState.NEW_GAME_SETUP
+        self._enter_new_game_setup()
+        self._status = "Configure game: difficulty and fleet selection."
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_create_preset(self) -> bool:
+        self._state = AppState.PLACEMENT_EDIT
+        self._status = "Drag a ship from panel, drop onto board. Press R while holding to rotate."
+        self._reset_editor()
+        self._editing_preset_name = None
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_back_main(self) -> bool:
+        self._state = AppState.MAIN_MENU
+        self._status = "Choose New Game, Manage Presets, or Quit."
+        self._session = None
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_toggle_new_game_difficulty(self) -> bool:
+        self._new_game_difficulty_open = not self._new_game_difficulty_open
+        self._refresh_buttons()
+        return True
+
+    def _on_new_game_diff_option(self, diff: str) -> bool:
+        if diff not in _DIFFICULTIES:
+            return False
+        self._new_game_difficulty_index = _DIFFICULTIES.index(diff)
+        self._new_game_difficulty_open = False
+        self._status = f"Difficulty: {self._current_difficulty()}."
+        self._refresh_buttons()
+        return True
+
+    def _on_new_game_randomize(self) -> bool:
+        self._new_game_random_fleet = random_fleet(self._rng)
+        self._new_game_selected_preset = None
+        self._new_game_preview = list(self._new_game_random_fleet.ships)
+        self._new_game_source_label = "Random Fleet"
+        self._status = "Generated random fleet for this game."
+        return True
+
+    def _on_quit(self) -> bool:
+        self._is_closing = True
+        return True
+
+    def _on_play_again(self) -> bool:
+        self._state = AppState.NEW_GAME_SETUP
+        self._enter_new_game_setup()
+        self._status = "Configure game: difficulty and fleet selection."
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_back_to_presets(self) -> bool:
+        self._state = AppState.PRESET_MANAGE
+        self._status = "Manage presets."
+        self._refresh_preset_rows()
+        self._refresh_buttons()
+        self._announce_state()
+        return True
+
+    def _on_save_preset(self) -> bool:
+        if not PlacementEditorService.all_ships_placed(self._placements_by_type, _SHIP_ORDER):
+            self._status = "Place all ships before saving."
+            return True
+        default_name = self._editing_preset_name or "new_preset"
+        self._open_prompt("Save Preset", default_name, mode="save")
+        self._refresh_buttons()
+        return True
+
+    def _on_preset_rename(self, name: str) -> bool:
+        self._open_prompt("Rename Preset", name, mode="rename", target=name)
+        self._refresh_buttons()
+        return True
+
+    def _on_preset_delete(self, name: str) -> bool:
+        self._preset_service.delete_preset(name)
+        self._status = f"Deleted preset '{name}'."
+        self._refresh_preset_rows()
+        self._refresh_buttons()
+        return True
 
     def handle_board_click(self, event: BoardCellPressed) -> bool:
         """Handle board click for battle firing."""
