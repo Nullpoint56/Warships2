@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
-from warships.app.ui_state import PresetRowView, TextPromptView
+from warships.app.ui_state import PresetRowView
 from warships.core.models import FleetPlacement, ShipPlacement
 from warships.presets.service import PresetService
 
@@ -24,6 +24,13 @@ class SelectPresetResult:
     preview: list[ShipPlacement]
     source_label: str | None
     status: str
+
+
+@dataclass(frozen=True, slots=True)
+class EditPresetResult:
+    placements: list[ShipPlacement]
+    status: str
+    success: bool
 
 
 class PresetFlowService:
@@ -81,25 +88,13 @@ class PresetFlowService:
         )
 
     @staticmethod
-    def open_prompt(title: str, initial_value: str, mode: str) -> TextPromptView:
-        if mode == "save":
-            confirm = "prompt_confirm_save"
-        elif mode == "rename":
-            confirm = "prompt_confirm_rename"
-        else:
-            confirm = "prompt_confirm_overwrite"
-        return TextPromptView(
-            title=title,
-            value=initial_value,
-            confirm_button_id=confirm,
-            cancel_button_id="prompt_cancel",
-        )
-
-    @staticmethod
-    def sync_prompt(prompt: TextPromptView, value: str) -> TextPromptView:
-        return TextPromptView(
-            title=prompt.title,
-            value=value,
-            confirm_button_id=prompt.confirm_button_id,
-            cancel_button_id=prompt.cancel_button_id,
+    def load_preset_for_edit(preset_service: PresetService, name: str) -> EditPresetResult:
+        try:
+            fleet = preset_service.load_preset(name)
+        except (ValueError, FileNotFoundError) as exc:
+            return EditPresetResult(placements=[], status=f"Failed to load preset '{name}': {exc}", success=False)
+        return EditPresetResult(
+            placements=list(fleet.ships),
+            status=f"Editing preset '{name}'. Drag ships to adjust.",
+            success=True,
         )
