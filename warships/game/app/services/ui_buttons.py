@@ -3,15 +3,15 @@
 from __future__ import annotations
 
 from warships.game.app.state_machine import AppState
+from warships.game.app.ports.runtime_primitives import Button, PromptView
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.preset_flow import PresetFlowService
-from warships.game.app.ui_state import PresetRowView, TextPromptView
+from warships.game.app.ui_state import PresetRowView
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL, PROMPT
-from engine.ui_runtime.widgets import Button
 from warships.game.ui.overlays import buttons_for_state
 
 
-def prompt_buttons(prompt: TextPromptView) -> list[Button]:
+def prompt_buttons(prompt: PromptView) -> list[Button]:
     confirm = PROMPT.confirm_button_rect()
     cancel = PROMPT.cancel_button_rect()
     return [
@@ -63,7 +63,7 @@ def compose_buttons(
     new_game_preset_scroll: int,
     new_game_visible_rows: int,
     new_game_difficulty_open: bool,
-    prompt: TextPromptView | None,
+    prompt: PromptView | None,
 ) -> list[Button]:
     """Compose state, row, and modal buttons for current controller snapshot."""
     buttons = buttons_for_state(

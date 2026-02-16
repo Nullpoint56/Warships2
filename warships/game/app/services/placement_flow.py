@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from warships.game.app.ports.runtime_primitives import BoardLayout
 from warships.game.app.flows.placement_math import bow_from_grab_index, grab_index_from_cell
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.core.models import Orientation, ShipPlacement, ShipType, cells_for_placement
-from engine.ui_runtime.board_layout import BoardLayout
 
 
 @dataclass(frozen=True, slots=True)

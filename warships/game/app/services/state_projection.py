@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.app.services.preset_flow import PresetFlowService
@@ -10,18 +11,6 @@ from warships.game.app.ui_state import AppUIState, PresetRowView
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.core.rules import GameSession
 from warships.game.ui.overlays import Button
-
-
-def visible_rows(rows: list[PresetRowView], scroll: int, visible_count: int) -> list[PresetRowView]:
-    """Slice visible rows for list-like UIs."""
-    start = scroll
-    end = start + visible_count
-    return list(rows[start:end])
-
-
-def can_scroll_down(scroll: int, visible_count: int, total_count: int) -> bool:
-    """Return whether another row below is available."""
-    return scroll + visible_count < total_count
 
 
 def build_ui_state(
@@ -63,7 +52,7 @@ def build_ui_state(
         session=session,
         ship_order=ship_order,
         is_closing=is_closing,
-        preset_rows=visible_rows(preset_rows, preset_manage_scroll, preset_manage_visible_rows),
+        preset_rows=visible_slice(preset_rows, preset_manage_scroll, preset_manage_visible_rows),
         prompt=prompt,
         held_ship_type=held_ship_type,
         held_ship_orientation=held_ship_orientation,
@@ -85,7 +74,7 @@ def build_ui_state(
         new_game_source=new_game_source,
         new_game_preview=list(new_game_preview),
         preset_manage_can_scroll_up=preset_manage_scroll > 0,
-        preset_manage_can_scroll_down=can_scroll_down(
+        preset_manage_can_scroll_down=can_scroll_list_down(
             scroll=preset_manage_scroll,
             visible_count=preset_manage_visible_rows,
             total_count=len(preset_rows),

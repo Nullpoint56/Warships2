@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from warships.game.app.ports.runtime_primitives import PromptInteractionOutcome, PromptState
 from warships.game.app.controller_state import ControllerState
-from warships.game.app.services.prompt_flow import PromptConfirmOutcome, PromptInteractionOutcome
-from warships.game.app.services.prompt_flow import PromptState
+from warships.game.app.services.prompt_flow import PromptConfirmOutcome
 from warships.game.app.state_machine import AppState
 
 

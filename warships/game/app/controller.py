@@ -6,7 +6,8 @@ import logging
 import random
 
 from warships.game.app.services.battle import resolve_player_turn, start_game
-from warships.game.app.services.input_dispatch import ButtonDispatcher
+from warships.game.app.ports.runtime_primitives import BoardLayout
+from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
 from warships.game.app.services.input_policy import (
     can_handle_key_for_placement,
     can_handle_pointer_down,
@@ -21,6 +22,7 @@ from warships.game.app.services.mutation_orchestration import (
     apply_edit_preset_result,
     apply_placement_outcome,
 )
+from warships.game.app.services.controller_support import ControllerSupport
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.app.services.placement_flow import HeldShipState, PlacementFlowService
 from warships.game.app.services.preset_flow import PresetFlowService
@@ -30,22 +32,18 @@ from warships.game.app.services.prompt_orchestration import (
     apply_prompt_interaction_outcome,
 )
 from warships.game.app.services.setup_orchestration import (
-    NewGameSelectionState,
     refresh_preset_state,
     resolve_new_game_selection,
 )
-from warships.game.app.services.state_projection import build_ui_state, can_scroll_down, visible_rows
+from warships.game.app.services.state_projection import build_ui_state
 from warships.game.app.services.session_flow import AppTransition, SessionFlowService
 from warships.game.app.services.transition_orchestration import apply_transition
-from warships.game.app.services.ui_buttons import compose_buttons
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.fleet import random_fleet
 from warships.game.core.models import Orientation, ShipPlacement, ShipType
-from engine.ui_runtime.board_layout import BoardLayout
-from engine.ui_runtime.scroll import apply_wheel_scroll
 from warships.game.presets.service import PresetService
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
@@ -69,12 +67,19 @@ class GameController:
     def __init__(self, preset_service: PresetService, rng: random.Random, debug_ui: bool = False) -> None:
         self._preset_service = preset_service
         self._rng = rng
-        self._debug_ui = debug_ui
 
         self._state_data = ControllerState(
             placements_by_type={ship_type: None for ship_type in _SHIP_ORDER},
         )
-        self._button_dispatcher = ButtonDispatcher(
+        self._support = ControllerSupport(
+            state=self._state_data,
+            ship_order=list(_SHIP_ORDER),
+            new_game_visible_rows=_NEW_GAME_VISIBLE_PRESET_ROWS,
+            preset_manage_visible_rows=_PRESET_MANAGE_VISIBLE_ROWS,
+            logger=logger,
+            debug_ui=debug_ui,
+        )
+        self._button_dispatcher = ActionDispatcher(
             direct_handlers={
                 "manage_presets": self._on_manage_presets,
                 "new_game": self._on_new_game,
@@ -173,12 +178,10 @@ class GameController:
     def _on_new_game_randomize(self) -> bool:
         selection = NewGameFlowService.randomize_selection(self._rng)
         self._apply_new_game_selection_state(
-            NewGameSelectionState(
-                selected_preset=selection.selected_preset,
-                random_fleet=selection.random_fleet,
-                preview=selection.preview,
-                source_label=selection.source_label,
-            )
+            selected_preset=selection.selected_preset,
+            random_fleet=selection.random_fleet,
+            preview=selection.preview,
+            source_label=selection.source_label,
         )
         self._set_status(selection.status or self._state_data.status)
         return True
@@ -420,14 +423,7 @@ class GameController:
         )
 
     def _reset_editor(self) -> None:
-        self._state_data.placements_by_type = PlacementEditorService.reset(_SHIP_ORDER)
-        self._state_data.held_ship_type = None
-        self._state_data.held_orientation = None
-        self._state_data.held_previous = None
-        self._state_data.held_grab_index = 0
-        self._state_data.hover_cell = None
-        self._state_data.hover_x = None
-        self._state_data.hover_y = None
+        self._support.reset_editor()
 
     def _held_state(self) -> HeldShipState:
         return HeldShipState(
@@ -464,22 +460,24 @@ class GameController:
         self._state_data.new_game_difficulty_open = False
         self._state_data.new_game_preset_scroll = 0
         self._state_data.new_game_random_fleet = None
+        selection = resolve_new_game_selection(
+            preset_service=self._preset_service,
+            preset_rows=self._state_data.preset_rows,
+        )
         self._apply_new_game_selection_state(
-            resolve_new_game_selection(
-                preset_service=self._preset_service,
-                preset_rows=self._state_data.preset_rows,
-            )
+            selected_preset=selection.selected_preset,
+            random_fleet=selection.random_fleet,
+            preview=selection.preview,
+            source_label=selection.source_label,
         )
 
     def _select_new_game_preset(self, name: str) -> bool:
         selection = NewGameFlowService.select_preset(self._preset_service, name)
         self._apply_new_game_selection_state(
-            NewGameSelectionState(
-                selected_preset=selection.selected_preset,
-                random_fleet=selection.random_fleet,
-                preview=selection.preview,
-                source_label=selection.source_label,
-            )
+            selected_preset=selection.selected_preset,
+            random_fleet=selection.random_fleet,
+            preview=selection.preview,
+            source_label=selection.source_label,
         )
         if selection.status is not None:
             self._set_status(selection.status)
@@ -523,47 +521,35 @@ class GameController:
         self._state_data.new_game_preset_scroll = result.new_game_scroll
         self._state_data.preset_manage_scroll = result.preset_manage_scroll
 
-    def _apply_new_game_selection_state(self, selection: NewGameSelectionState) -> None:
-        self._state_data.new_game_selected_preset = selection.selected_preset
-        self._state_data.new_game_random_fleet = selection.random_fleet
-        self._state_data.new_game_preview = selection.preview
-        self._state_data.new_game_source_label = selection.source_label
+    def _apply_new_game_selection_state(
+        self,
+        *,
+        selected_preset: str | None,
+        random_fleet,
+        preview: list[ShipPlacement],
+        source_label: str | None,
+    ) -> None:
+        self._support.apply_new_game_selection(
+            selected_preset=selected_preset,
+            random_fleet=random_fleet,
+            preview=preview,
+            source_label=source_label,
+        )
 
     def _set_status(self, status: str) -> None:
-        self._state_data.status = status
+        self._support.set_status(status)
 
     def _apply_loaded_placements(self, placements: list[ShipPlacement]) -> None:
-        for placement in placements:
-            self._state_data.placements_by_type[placement.ship_type] = placement
+        self._support.apply_loaded_placements(placements)
 
     def _refresh_buttons(self) -> None:
-        self._state_data.buttons = compose_buttons(
-            state=self._state_data.app_state,
-            placement_ready=PlacementEditorService.all_ships_placed(self._state_data.placements_by_type, _SHIP_ORDER),
-            has_presets=bool(self._state_data.preset_rows),
-            visible_preset_manage_rows=visible_rows(
-                self._state_data.preset_rows,
-                self._state_data.preset_manage_scroll,
-                _PRESET_MANAGE_VISIBLE_ROWS,
-            ),
-            preset_rows=self._state_data.preset_rows,
-            new_game_preset_scroll=self._state_data.new_game_preset_scroll,
-            new_game_visible_rows=_NEW_GAME_VISIBLE_PRESET_ROWS,
-            new_game_difficulty_open=self._state_data.new_game_difficulty_open,
-            prompt=self._state_data.prompt_state.prompt,
-        )
+        self._support.refresh_buttons()
 
     def _preset_manage_can_scroll_down(self) -> bool:
-        return can_scroll_down(
-            scroll=self._state_data.preset_manage_scroll,
-            visible_count=_PRESET_MANAGE_VISIBLE_ROWS,
-            total_count=len(self._state_data.preset_rows),
-        )
+        return self._support.preset_manage_can_scroll_down()
 
     def _announce_state(self) -> None:
-        logger.info("state=%s", self._state_data.app_state.name)
-        if self._debug_ui:
-            logger.debug("buttons=%s", [button.id for button in self._state_data.buttons])
+        self._support.announce_state()
 
 
 

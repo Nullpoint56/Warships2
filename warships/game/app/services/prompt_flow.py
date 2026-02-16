@@ -4,7 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.game.app.ui_state import TextPromptView
+from warships.game.app.ports.runtime_primitives import PromptInteractionOutcome, PromptState, PromptView
+from warships.game.app.ports.runtime_services import (
+    close_prompt as close_prompt_runtime,
+    handle_prompt_button,
+    handle_prompt_char,
+    handle_prompt_key,
+    open_prompt as open_prompt_runtime,
+    sync_prompt as sync_prompt_runtime,
+)
 from warships.game.core.models import FleetPlacement, ShipPlacement
 from warships.game.presets.service import PresetService
 
@@ -15,7 +23,7 @@ class PromptConfirmOutcome:
 
     handled: bool
     status: str | None
-    prompt: TextPromptView | None
+    prompt: PromptView | None
     prompt_mode: str | None
     prompt_target: str | None
     prompt_buffer: str
@@ -25,26 +33,6 @@ class PromptConfirmOutcome:
     refresh_preset_rows: bool = False
     refresh_buttons: bool = False
     announce_state: bool = False
-
-
-@dataclass(frozen=True, slots=True)
-class PromptState:
-    """Current prompt UI state."""
-
-    prompt: TextPromptView | None = None
-    buffer: str = ""
-    mode: str | None = None
-    target: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PromptInteractionOutcome:
-    """Outcome of prompt-only input handling before confirmation logic."""
-
-    handled: bool
-    state: PromptState
-    request_confirm: bool = False
-    refresh_buttons: bool = False
 
 
 class PromptFlowService:
@@ -58,84 +46,38 @@ class PromptFlowService:
             confirm = "prompt_confirm_rename"
         else:
             confirm = "prompt_confirm_overwrite"
-        return PromptState(
-            prompt=TextPromptView(
-                title=title,
-                value=initial_value,
-                confirm_button_id=confirm,
-                cancel_button_id="prompt_cancel",
-            ),
-            buffer=initial_value,
+        return open_prompt_runtime(
+            title=title,
+            initial_value=initial_value,
+            confirm_button_id=confirm,
+            cancel_button_id="prompt_cancel",
             mode=mode,
             target=target,
         )
 
     @staticmethod
     def close_prompt() -> PromptState:
-        return PromptState()
+        return close_prompt_runtime()
 
     @staticmethod
     def sync_prompt(state: PromptState, value: str) -> PromptState:
-        prompt = state.prompt
-        if prompt is None:
-            return state
-        return PromptState(
-            prompt=TextPromptView(
-                title=prompt.title,
-                value=value,
-                confirm_button_id=prompt.confirm_button_id,
-                cancel_button_id=prompt.cancel_button_id,
-            ),
-            buffer=value,
-            mode=state.mode,
-            target=state.target,
-        )
+        return sync_prompt_runtime(state, value)
 
     @staticmethod
     def handle_button(state: PromptState, button_id: str) -> PromptInteractionOutcome:
-        if state.prompt is None:
-            return PromptInteractionOutcome(handled=False, state=state)
-        if button_id == "prompt_cancel":
-            return PromptInteractionOutcome(
-                handled=True,
-                state=PromptFlowService.close_prompt(),
-                refresh_buttons=True,
-            )
-        if button_id in {"prompt_confirm_save", "prompt_confirm_rename", "prompt_confirm_overwrite"}:
-            return PromptInteractionOutcome(handled=True, state=state, request_confirm=True)
-        return PromptInteractionOutcome(handled=False, state=state)
+        return handle_prompt_button(
+            state,
+            button_id,
+            confirm_button_ids={"prompt_confirm_save", "prompt_confirm_rename", "prompt_confirm_overwrite"},
+        )
 
     @staticmethod
     def handle_key(state: PromptState, key: str) -> PromptInteractionOutcome:
-        if state.prompt is None:
-            return PromptInteractionOutcome(handled=False, state=state)
-        if key in {"backspace"}:
-            return PromptInteractionOutcome(
-                handled=True,
-                state=PromptFlowService.sync_prompt(state, state.buffer[:-1]),
-            )
-        if key in {"enter"}:
-            return PromptInteractionOutcome(handled=True, state=state, request_confirm=True)
-        if key in {"escape"}:
-            return PromptInteractionOutcome(
-                handled=True,
-                state=PromptFlowService.close_prompt(),
-                refresh_buttons=True,
-            )
-        return PromptInteractionOutcome(handled=False, state=state)
+        return handle_prompt_key(state, key)
 
     @staticmethod
     def handle_char(state: PromptState, ch: str, max_len: int = 32) -> PromptInteractionOutcome:
-        if state.prompt is None:
-            return PromptInteractionOutcome(handled=False, state=state)
-        if len(ch) != 1 or not ch.isprintable():
-            return PromptInteractionOutcome(handled=False, state=state)
-        if len(state.buffer) >= max_len:
-            return PromptInteractionOutcome(handled=False, state=state)
-        return PromptInteractionOutcome(
-            handled=True,
-            state=PromptFlowService.sync_prompt(state, state.buffer + ch),
-        )
+        return handle_prompt_char(state, ch, max_len=max_len)
 
     @staticmethod
     def confirm(

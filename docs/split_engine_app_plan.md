@@ -65,12 +65,21 @@ Rejected for this split phase (would add game or 2D coupling):
 
 ## Execution Plan
 
+## Progress
+
+- Slice A: Done
+- Slice B: Done
+- Slice C: Done
+- Slice D: Done
+- Slice E: Done
+
 ### Slice A: Move generic dispatch helper to engine
 
 - Move:
   - `warships/game/app/services/input_dispatch.py` -> `engine/runtime/action_dispatch.py`
 - Rewire imports in game app services/controller.
 - Keep behavior identical.
+- Status: Done
 
 ### Slice B: Move generic list viewport helpers to engine
 
@@ -82,6 +91,7 @@ Rejected for this split phase (would add game or 2D coupling):
   - `warships/game/app/services/state_projection.py`
   - `warships/game/app/services/preset_flow.py`
 - Keep Warships preset/domain operations in game.
+- Status: Done
 
 ### Slice C: Move generic prompt interaction runtime to engine (partial)
 
@@ -90,12 +100,53 @@ Rejected for this split phase (would add game or 2D coupling):
 - New engine module:
   - `engine/ui_runtime/prompt_runtime.py`
 - Keep game-specific confirm behavior (save/rename/overwrite preset) in game prompt service.
+- Status: Done
 
 ### Slice D: Controller boundary cleanup
 
 - Continue reducing `warships/game/app/controller.py` to orchestration facade.
 - Move non-domain orchestration helpers behind explicit collaborators.
 - Keep domain transitions and game policy in game.
+- Status: Done
+- Implemented in this slice:
+  - Extracted non-domain helper operations into `warships/game/app/services/controller_support.py`.
+  - Delegated controller utility methods (`reset_editor`, button projection refresh, preset-manage scroll check, status set, state announcement, loaded-placement apply, new-game selection apply) to the collaborator.
+  - Kept domain/game policy transitions in `GameController`.
+
+### Slice E: Exit-Criteria Boundary Hardening (Required)
+
+- Goal: satisfy strict exit criteria around app-engine touchpoints.
+- Introduce app-local runtime ports/wrappers under `warships/game/app/ports/` for engine mechanisms currently imported directly in app layer.
+- Rewire `warships/game/app/*` modules to depend on app-local ports instead of importing engine mechanism modules directly.
+- Keep engine contracts/adapters as canonical integration boundary.
+
+Planned concrete tasks:
+1. Add app-local runtime ports module(s), e.g.:
+- `warships/game/app/ports/runtime_primitives.py`
+- `warships/game/app/ports/runtime_services.py`
+
+2. Move app-layer direct imports behind ports:
+- `engine.runtime.action_dispatch`
+- `engine.ui_runtime.scroll`
+- `engine.ui_runtime.board_layout`
+- `engine.ui_runtime.prompt_runtime`
+- `engine.ui_runtime.widgets`
+
+3. Scope rule:
+- Strict boundary applies to `warships/game/app/*`.
+- `warships/game/ui/*` may continue using rendering/runtime contracts where appropriate (presentation layer integration).
+
+4. Update docs and verify:
+- Ensure no direct `engine.*` imports remain in `warships/game/app/*` except contracts/adapters by policy.
+- Status: Done
+- Implemented in this slice:
+  - Added app-local ports:
+    - `warships/game/app/ports/runtime_primitives.py`
+    - `warships/game/app/ports/runtime_services.py`
+  - Rewired `warships/game/app/controller.py`, `warships/game/app/controller_state.py`, `warships/game/app/ui_state.py`, and app service modules to import runtime mechanisms via app-local ports.
+  - Verified remaining direct `engine.*` imports in `warships/game/app/*` are limited to:
+    - engine contracts/adapters (`engine_adapter.py`, `engine_game_module.py`, `engine_hosted_runtime.py`)
+    - app-local ports (`warships/game/app/ports/*`)
 
 ### Deferred (Not in this split-only branch)
 
@@ -116,6 +167,9 @@ These are intentionally not engine migration targets:
 
 1. No `engine -> warships` imports.
 2. Generic mechanism helpers no longer live under `warships/game/app/services`.
-3. Engine-app touchpoints are only engine contracts + adapters.
+3. `warships/game/app/*` engine touchpoints are only:
+- engine contracts/adapters, or
+- app-local runtime ports that wrap engine mechanisms.
 4. `warships/game/app/controller.py` is primarily orchestration, not utility sink.
 5. Runtime behavior remains unchanged from current user-visible flow.
+  - Validation source: manual smoke testing after each modification pass (performed by project owner).

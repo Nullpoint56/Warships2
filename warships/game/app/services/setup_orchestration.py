@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
+from warships.game.app.ports.runtime_services import clamp_scroll
 from warships.game.app.services.new_game_flow import NewGameFlowService
 from warships.game.app.services.preset_flow import PresetFlowService
 from warships.game.app.ui_state import PresetRowView
@@ -50,12 +51,11 @@ def refresh_preset_state(
         visible_rows=new_game_visible_rows,
         logger=logger,
     )
-    max_manage_scroll = max(0, len(result.rows) - preset_manage_visible_rows)
     return RefreshedPresetState(
         rows=result.rows,
         selected_preset=result.selected_preset,
         new_game_scroll=result.scroll,
-        preset_manage_scroll=min(preset_manage_scroll, max_manage_scroll),
+        preset_manage_scroll=clamp_scroll(preset_manage_scroll, preset_manage_visible_rows, len(result.rows)),
     )
 
 

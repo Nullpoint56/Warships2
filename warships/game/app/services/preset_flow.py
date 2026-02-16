@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
+from warships.game.app.ports.runtime_services import can_scroll_list_down, clamp_scroll, visible_slice
 from warships.game.app.ui_state import PresetRowView
 from warships.game.core.models import FleetPlacement, ShipPlacement
 from warships.game.presets.service import PresetService
@@ -54,18 +55,17 @@ class PresetFlowService:
             rows.append(PresetRowView(name=name, placements=list(fleet.ships)))
         names = [row.name for row in rows]
         next_selected = selected_preset if selected_preset in names else None
-        max_scroll = max(0, len(names) - visible_rows)
-        next_scroll = min(scroll, max_scroll)
+        next_scroll = clamp_scroll(scroll, visible_rows, len(names))
         return RefreshRowsResult(rows=rows, selected_preset=next_selected, scroll=next_scroll)
 
     @staticmethod
     def visible_new_game_preset_names(rows: list[PresetRowView], scroll: int, visible_rows: int) -> list[str]:
         names = [row.name for row in rows]
-        return names[scroll : scroll + visible_rows]
+        return visible_slice(names, scroll, visible_rows)
 
     @staticmethod
     def can_scroll_down(rows: list[PresetRowView], scroll: int, visible_rows: int) -> bool:
-        return scroll + visible_rows < len(rows)
+        return can_scroll_list_down(scroll, visible_rows, len(rows))
 
     @staticmethod
     def select_new_game_preset(preset_service: PresetService, name: str) -> SelectPresetResult:
