@@ -63,7 +63,7 @@ class BoardState:
 
     def was_shot(self, coord: Coord) -> bool:
         """Return whether this cell was previously targeted."""
-        return self.shots[coord.row, coord.col] != 0
+        return bool(self.shots[coord.row, coord.col] != 0)
 
     def apply_shot(self, coord: Coord) -> tuple[ShotResult, ShipType | None]:
         """Apply a shot and return result + sunk ship type if any."""

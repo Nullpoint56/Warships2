@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from engine.api.render import RenderAPI as Render2D
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP
 from warships.game.ui.views.common import draw_preset_preview, truncate
 
 
-def draw_new_game_setup(renderer, ui: AppUIState) -> None:
+def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
     panel = NEW_GAME_SETUP.panel_rect()
     renderer.add_rect("newgame:panel", panel.x, panel.y, panel.w, panel.h, "#0f172a", z=0.85)
     renderer.add_text(

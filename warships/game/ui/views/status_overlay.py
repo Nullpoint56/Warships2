@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from engine.api.render import RenderAPI as Render2D
 from warships.game.app.state_machine import AppState
 from warships.game.core.models import Orientation, ShipPlacement, ShipType
 from warships.game.ui.layout_metrics import status_rect
 
 
 def draw_status_bar(
-    renderer,
+    renderer: Render2D,
     state: AppState,
     status: str,
     placement_orientation: Orientation,

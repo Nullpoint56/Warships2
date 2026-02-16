@@ -97,7 +97,7 @@ class InputController:
         self._wheel_events.clear()
         return items
 
-    def _on_pointer_down(self, event: dict) -> None:
+    def _on_pointer_down(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_down":
             return
         button = event.get("button")
@@ -117,7 +117,7 @@ class InputController:
                 "input_click_accepted x=%.1f y=%.1f button=%d", click.x, click.y, click.button
             )
 
-    def _on_pointer_move(self, event: dict) -> None:
+    def _on_pointer_move(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_move":
             return
         x = event.get("x")
@@ -131,7 +131,7 @@ class InputController:
         if self._on_click_queued is not None:
             self._on_click_queued()
 
-    def _on_pointer_up(self, event: dict) -> None:
+    def _on_pointer_up(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_up":
             return
         x = event.get("x")
@@ -145,7 +145,7 @@ class InputController:
         if self._on_click_queued is not None:
             self._on_click_queued()
 
-    def _on_key_down(self, event: dict) -> None:
+    def _on_key_down(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "key_down":
             return
         key = event.get("key")
@@ -154,7 +154,7 @@ class InputController:
             if self._on_click_queued is not None:
                 self._on_click_queued()
 
-    def _on_char(self, event: dict) -> None:
+    def _on_char(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "char":
             return
         char = event.get("data")
@@ -163,7 +163,7 @@ class InputController:
             if self._on_click_queued is not None:
                 self._on_click_queued()
 
-    def _on_wheel(self, event: dict) -> None:
+    def _on_wheel(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "wheel":
             return
         x = event.get("x")
@@ -180,7 +180,7 @@ class InputController:
             self._on_click_queued()
 
     @staticmethod
-    def _on_any_event(event: dict) -> None:
+    def _on_any_event(event: dict[str, Any]) -> None:
         event_type = event.get("event_type")
         if event_type not in {
             "pointer_down",

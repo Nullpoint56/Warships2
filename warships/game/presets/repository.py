@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 
 class PresetRepository:
@@ -27,7 +28,10 @@ class PresetRepository:
         if path is None:
             raise FileNotFoundError(f"Preset '{name}' not found.")
         with path.open("r", encoding="utf-8") as handle:
-            return json.load(handle)
+            payload = json.load(handle)
+        if not isinstance(payload, dict):
+            raise ValueError(f"Preset '{name}' payload is not a JSON object.")
+        return cast(dict[str, object], payload)
 
     def save_payload(self, name: str, payload: dict[str, object]) -> None:
         """Save preset payload by name."""

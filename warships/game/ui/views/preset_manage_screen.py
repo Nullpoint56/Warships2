@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from engine.api.render import RenderAPI as Render2D
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import PRESET_PANEL
 from warships.game.ui.views.common import draw_preset_preview, truncate
 
 
-def draw_preset_manage(renderer, ui: AppUIState) -> None:
+def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
     panel = PRESET_PANEL.panel_rect()
     panel_x = panel.x
     panel_y = panel.y

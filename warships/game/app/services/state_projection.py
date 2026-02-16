@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from warships.game.app.ports.runtime_primitives import Button, PromptView
 from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.placement_editor import PlacementEditorService
@@ -10,7 +11,6 @@ from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState, PresetRowView
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.core.rules import GameSession
-from warships.game.ui.overlays import Button
 
 
 def build_ui_state(
@@ -26,7 +26,7 @@ def build_ui_state(
     preset_rows: list[PresetRowView],
     preset_manage_scroll: int,
     preset_manage_visible_rows: int,
-    prompt,
+    prompt: PromptView | None,
     held_ship_type: ShipType | None,
     held_ship_orientation: Orientation | None,
     held_grab_index: int,

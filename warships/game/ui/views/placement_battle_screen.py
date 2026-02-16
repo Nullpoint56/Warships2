@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from engine.api.render import RenderAPI as Render2D
 from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.core.board import BoardState
 from warships.game.core.models import (
@@ -16,7 +17,7 @@ from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
 
 def draw_placement_panel(
-    renderer, placements: list[ShipPlacement], ship_order: list[ShipType]
+    renderer: Render2D, placements: list[ShipPlacement], ship_order: list[ShipType]
 ) -> None:
     panel = PLACEMENT_PANEL.panel_rect()
     panel_x = panel.x
@@ -59,7 +60,7 @@ def draw_placement_panel(
 
 
 def draw_player_board(
-    renderer,
+    renderer: Render2D,
     layout: GridLayout,
     placements: list[ShipPlacement],
     session: GameSession | None,
@@ -91,14 +92,14 @@ def draw_player_board(
         )
 
 
-def draw_ai_board(renderer, layout: GridLayout, session: GameSession | None) -> None:
+def draw_ai_board(renderer: Render2D, layout: GridLayout, session: GameSession | None) -> None:
     draw_board_frame(renderer, layout, is_ai=True)
     if session is None:
         return
     draw_shots(renderer, layout, session.ai_board, is_ai=True)
 
 
-def draw_board_frame(renderer, layout: GridLayout, is_ai: bool) -> None:
+def draw_board_frame(renderer: Render2D, layout: GridLayout, is_ai: bool) -> None:
     board_key = "ai" if is_ai else "player"
     target = "secondary" if is_ai else "primary"
     rect = layout.rect_for_target(target)
@@ -116,7 +117,7 @@ def draw_board_frame(renderer, layout: GridLayout, is_ai: bool) -> None:
 
 
 def draw_ships_from_placements(
-    renderer, layout: GridLayout, placements: list[ShipPlacement]
+    renderer: Render2D, layout: GridLayout, placements: list[ShipPlacement]
 ) -> None:
     for placement in placements:
         for coord in cells_for_placement(placement):
@@ -132,7 +133,9 @@ def draw_ships_from_placements(
             )
 
 
-def draw_ships_from_board(renderer, layout: GridLayout, board: BoardState, is_ai: bool) -> None:
+def draw_ships_from_board(
+    renderer: Render2D, layout: GridLayout, board: BoardState, is_ai: bool
+) -> None:
     board_key = "ai" if is_ai else "player"
     target = "secondary" if is_ai else "primary"
     for row in range(board.size):
@@ -151,7 +154,7 @@ def draw_ships_from_board(renderer, layout: GridLayout, board: BoardState, is_ai
             )
 
 
-def draw_shots(renderer, layout: GridLayout, board: BoardState, is_ai: bool) -> None:
+def draw_shots(renderer: Render2D, layout: GridLayout, board: BoardState, is_ai: bool) -> None:
     board_key = "ai" if is_ai else "player"
     target = "secondary" if is_ai else "primary"
     for row in range(board.size):
@@ -173,7 +176,7 @@ def draw_shots(renderer, layout: GridLayout, board: BoardState, is_ai: bool) -> 
 
 
 def draw_held_ship_preview(
-    renderer,
+    renderer: Render2D,
     layout: GridLayout,
     ship_type: ShipType,
     orientation: Orientation,

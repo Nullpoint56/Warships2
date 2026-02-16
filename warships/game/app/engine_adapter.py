@@ -23,6 +23,7 @@ from warships.game.app.events import (
 )
 from warships.game.app.shortcut_policy import shortcut_buttons_for_state
 from warships.game.app.state_machine import AppState
+from warships.game.app.ui_state import AppUIState
 from warships.game.core.models import Coord
 from warships.game.ui.framework.widgets import build_modal_text_input_widget
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
@@ -44,7 +45,7 @@ class WarshipsAppAdapter(EngineAppPort):
     def __init__(self, controller: GameController) -> None:
         self._controller = controller
 
-    def ui_state(self):  # noqa: D401
+    def ui_state(self) -> AppUIState:  # noqa: D401
         return self._controller.ui_state()
 
     def modal_widget(self) -> ModalWidgetView | None:

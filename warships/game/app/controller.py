@@ -50,7 +50,7 @@ from warships.game.app.services.transition_orchestration import apply_transition
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.fleet import random_fleet
-from warships.game.core.models import ShipPlacement, ShipType
+from warships.game.core.models import FleetPlacement, ShipPlacement, ShipType
 from warships.game.presets.service import PresetService
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
@@ -558,7 +558,7 @@ class GameController:
         self,
         *,
         selected_preset: str | None,
-        random_fleet,
+        random_fleet: FleetPlacement | None,
         preview: list[ShipPlacement],
         source_label: str | None,
     ) -> None:
