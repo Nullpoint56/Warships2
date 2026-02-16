@@ -66,5 +66,3 @@ class NewGameFlowService:
             source_label="Random Fleet",
             status="Generated random fleet for this game.",
         )
-
-

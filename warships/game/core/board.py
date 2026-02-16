@@ -6,7 +6,14 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from warships.game.core.models import BOARD_SIZE, Coord, ShipPlacement, ShipType, ShotResult, cells_for_placement
+from warships.game.core.models import (
+    BOARD_SIZE,
+    Coord,
+    ShipPlacement,
+    ShipType,
+    ShotResult,
+    cells_for_placement,
+)
 
 
 @dataclass(slots=True)
@@ -14,8 +21,12 @@ class BoardState:
     """Numpy-backed board state."""
 
     size: int = BOARD_SIZE
-    ships: np.ndarray = field(default_factory=lambda: np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.int16))
-    shots: np.ndarray = field(default_factory=lambda: np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.int8))
+    ships: np.ndarray = field(
+        default_factory=lambda: np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.int16)
+    )
+    shots: np.ndarray = field(
+        default_factory=lambda: np.zeros((BOARD_SIZE, BOARD_SIZE), dtype=np.int8)
+    )
     ship_cells: dict[int, list[Coord]] = field(default_factory=dict)
     ship_types: dict[int, ShipType] = field(default_factory=dict)
     ship_remaining: dict[int, int] = field(default_factory=dict)
@@ -75,4 +86,3 @@ class BoardState:
     def all_ships_sunk(self) -> bool:
         """Return whether every ship has been sunk."""
         return all(remaining == 0 for remaining in self.ship_remaining.values())
-

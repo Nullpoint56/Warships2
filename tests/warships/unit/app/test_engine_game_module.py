@@ -57,7 +57,9 @@ class _Host:
 
 
 def test_game_module_forwards_input_events() -> None:
-    module = WarshipsGameModule(controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False)
+    module = WarshipsGameModule(
+        controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False
+    )
     assert module.on_pointer_event(object())
     assert module.on_key_event(object())
     assert module.on_wheel_event(object())
@@ -67,7 +69,9 @@ def test_game_module_frame_and_close_lifecycle() -> None:
     framework = _Framework()
     view = _View()
     host = _Host()
-    module = WarshipsGameModule(controller=_Controller(is_closing=True), framework=framework, view=view, debug_ui=False)
+    module = WarshipsGameModule(
+        controller=_Controller(is_closing=True), framework=framework, view=view, debug_ui=False
+    )
     module.on_start(host)
     module.on_frame(HostFrameContext(frame_index=0))
     assert framework.synced == 1

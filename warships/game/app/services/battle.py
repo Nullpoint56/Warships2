@@ -74,14 +74,22 @@ def start_game(
     )
 
 
-def resolve_player_turn(session: GameSession, ai_strategy: AIStrategy, coord: Coord) -> PlayerTurnResult:
+def resolve_player_turn(
+    session: GameSession, ai_strategy: AIStrategy, coord: Coord
+) -> PlayerTurnResult:
     """Apply player shot and resolve AI response when needed."""
     result = player_fire(session, coord)
     if result in {ShotResult.INVALID, ShotResult.REPEAT}:
-        return PlayerTurnResult(shot_result=result, status="Invalid target. Choose another enemy cell.", winner=session.winner)
+        return PlayerTurnResult(
+            shot_result=result,
+            status="Invalid target. Choose another enemy cell.",
+            winner=session.winner,
+        )
 
     if session.winner is not None:
-        return PlayerTurnResult(shot_result=result, status=session.last_message, winner=session.winner)
+        return PlayerTurnResult(
+            shot_result=result, status=session.last_message, winner=session.winner
+        )
 
     _run_ai_turn(session, ai_strategy)
     return PlayerTurnResult(shot_result=result, status=session.last_message, winner=session.winner)
@@ -119,4 +127,3 @@ class _RandomShotAI(AIStrategy):
 
     def notify_result(self, coord: Coord, result: ShotResult) -> None:
         self._remaining.discard((coord.row, coord.col))
-

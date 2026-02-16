@@ -55,7 +55,9 @@ def refresh_preset_state(
         rows=result.rows,
         selected_preset=result.selected_preset,
         new_game_scroll=result.scroll,
-        preset_manage_scroll=clamp_scroll(preset_manage_scroll, preset_manage_visible_rows, len(result.rows)),
+        preset_manage_scroll=clamp_scroll(
+            preset_manage_scroll, preset_manage_visible_rows, len(result.rows)
+        ),
     )
 
 

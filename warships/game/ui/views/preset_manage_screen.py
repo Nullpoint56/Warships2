@@ -25,7 +25,15 @@ def draw_preset_manage(renderer, ui: AppUIState) -> None:
     )
     for idx, row in enumerate(ui.preset_rows):
         row_rect = PRESET_PANEL.row_rect(idx)
-        renderer.add_rect(f"preset:row:{row.name}", row_rect.x, row_rect.y, row_rect.w, row_rect.h, "#111827", z=0.9)
+        renderer.add_rect(
+            f"preset:row:{row.name}",
+            row_rect.x,
+            row_rect.y,
+            row_rect.w,
+            row_rect.h,
+            "#111827",
+            z=0.9,
+        )
         renderer.add_text(
             key=f"preset:name:{row.name}",
             text=truncate(row.name, PRESET_PANEL.name_max_len),
@@ -94,5 +102,3 @@ def draw_preset_manage(renderer, ui: AppUIState) -> None:
             anchor="middle-left",
             z=1.05,
         )
-
-

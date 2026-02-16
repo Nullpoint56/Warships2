@@ -1,4 +1,8 @@
-from engine.ui_runtime.modal_runtime import ModalInputState, route_modal_key_event, route_modal_pointer_event
+from engine.ui_runtime.modal_runtime import (
+    ModalInputState,
+    route_modal_key_event,
+    route_modal_pointer_event,
+)
 
 from tests.engine.conftest import FakeModalWidget
 
@@ -27,7 +31,9 @@ def test_modal_pointer_routing_targets() -> None:
     assert panel.focus_input is False
     non_left = route_modal_pointer_event(widget, state, 15, 15, button=2)
     assert non_left.swallow and non_left.button_id is None
-    outside = route_modal_pointer_event(widget, ModalInputState(is_open=True, input_focused=True), 500, 500, button=1)
+    outside = route_modal_pointer_event(
+        widget, ModalInputState(is_open=True, input_focused=True), 500, 500, button=1
+    )
     assert outside.focus_input is True
 
 

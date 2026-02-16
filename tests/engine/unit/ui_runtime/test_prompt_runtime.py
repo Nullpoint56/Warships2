@@ -9,7 +9,9 @@ from engine.ui_runtime.prompt_runtime import (
 
 
 def test_open_sync_close_prompt() -> None:
-    state = open_prompt(title="Save", initial_value="abc", confirm_button_id="prompt_confirm", mode="save")
+    state = open_prompt(
+        title="Save", initial_value="abc", confirm_button_id="prompt_confirm", mode="save"
+    )
     assert state.prompt is not None
     assert state.buffer == "abc"
     synced = sync_prompt(state, "xyz")

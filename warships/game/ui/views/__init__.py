@@ -15,4 +15,3 @@ __all__ = [
     "draw_status_bar",
     "is_new_game_custom_button",
 ]
-

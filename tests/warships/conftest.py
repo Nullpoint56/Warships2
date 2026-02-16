@@ -40,6 +40,8 @@ def preset_service(tmp_path) -> PresetService:
 @pytest.fixture
 def controller_factory(preset_service: PresetService):
     def _make(seed: int = 1337, debug_ui: bool = False) -> GameController:
-        return GameController(preset_service=preset_service, rng=random.Random(seed), debug_ui=debug_ui)
+        return GameController(
+            preset_service=preset_service, rng=random.Random(seed), debug_ui=debug_ui
+        )
 
     return _make

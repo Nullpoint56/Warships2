@@ -13,6 +13,9 @@ $env:PYTHONPATH = "."
 Write-Host "Running Ruff lint..."
 uv run ruff check .
 
+Write-Host "Running Ruff format check..."
+uv run ruff format --check .
+
 Write-Host "Running mypy..."
 uv run mypy
 

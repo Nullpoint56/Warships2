@@ -46,7 +46,9 @@ class _Host:
 
 
 def test_engine_module_smoke_lifecycle() -> None:
-    module = WarshipsGameModule(controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False)
+    module = WarshipsGameModule(
+        controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False
+    )
     host = _Host()
     module.on_start(host)
     assert module.on_pointer_event(object())

@@ -4,12 +4,20 @@ from __future__ import annotations
 
 from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.core.board import BoardState
-from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
+from warships.game.core.models import (
+    Coord,
+    Orientation,
+    ShipPlacement,
+    ShipType,
+    cells_for_placement,
+)
 from warships.game.core.rules import GameSession
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
 
-def draw_placement_panel(renderer, placements: list[ShipPlacement], ship_order: list[ShipType]) -> None:
+def draw_placement_panel(
+    renderer, placements: list[ShipPlacement], ship_order: list[ShipType]
+) -> None:
     panel = PLACEMENT_PANEL.panel_rect()
     panel_x = panel.x
     panel_y = panel.y
@@ -107,7 +115,9 @@ def draw_board_frame(renderer, layout: GridLayout, is_ai: bool) -> None:
     )
 
 
-def draw_ships_from_placements(renderer, layout: GridLayout, placements: list[ShipPlacement]) -> None:
+def draw_ships_from_placements(
+    renderer, layout: GridLayout, placements: list[ShipPlacement]
+) -> None:
     for placement in placements:
         for coord in cells_for_placement(placement):
             cell_rect = layout.cell_rect_for_target("primary", row=coord.row, col=coord.col)

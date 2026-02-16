@@ -18,7 +18,9 @@ def draw_status_bar(
     if state is AppState.MAIN_MENU:
         return
     status_box = status_rect()
-    renderer.add_rect("status:bg", status_box.x, status_box.y, status_box.w, status_box.h, "#172554", z=1.0)
+    renderer.add_rect(
+        "status:bg", status_box.x, status_box.y, status_box.w, status_box.h, "#172554", z=1.0
+    )
     renderer.add_text(
         key="status:main",
         text=status,
@@ -58,5 +60,3 @@ def draw_status_bar(
             color="#bfdbfe",
             anchor="middle-left",
         )
-
-

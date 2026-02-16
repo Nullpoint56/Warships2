@@ -24,7 +24,9 @@ def run_engine_hosted_app() -> None:
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
     host_config = EngineHostConfig(window_mode=os.getenv("WARSHIPS_WINDOW_MODE", "windowed"))
     run_pygfx_hosted_runtime(
-        module_factory=lambda renderer, layout: _build_module(controller, renderer, layout, debug_ui),
+        module_factory=lambda renderer, layout: _build_module(
+            controller, renderer, layout, debug_ui
+        ),
         host_config=host_config,
     )
 

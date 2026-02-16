@@ -62,4 +62,3 @@ __all__ = [
     "route_modal_pointer_event",
     "sync_prompt",
 ]
-

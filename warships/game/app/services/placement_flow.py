@@ -66,7 +66,9 @@ class PlacementFlowService:
             placements_by_type[held_state.ship_type] = candidate
             return PlacementActionResult(
                 handled=True,
-                held_state=HeldShipState(ship_type=None, orientation=None, previous=None, grab_index=0),
+                held_state=HeldShipState(
+                    ship_type=None, orientation=None, previous=None, grab_index=0
+                ),
                 status=f"Placed {held_state.ship_type.value}.",
                 refresh_buttons=True,
             )
@@ -83,7 +85,9 @@ class PlacementFlowService:
             return PlacementActionResult(handled=False, held_state=held_state)
         if key == "r":
             orientation = (
-                Orientation.VERTICAL if held_state.orientation is Orientation.HORIZONTAL else Orientation.HORIZONTAL
+                Orientation.VERTICAL
+                if held_state.orientation is Orientation.HORIZONTAL
+                else Orientation.HORIZONTAL
             )
             next_state = HeldShipState(
                 ship_type=held_state.ship_type,
@@ -99,7 +103,9 @@ class PlacementFlowService:
         if key == "d":
             return PlacementActionResult(
                 handled=True,
-                held_state=HeldShipState(ship_type=None, orientation=None, previous=None, grab_index=0),
+                held_state=HeldShipState(
+                    ship_type=None, orientation=None, previous=None, grab_index=0
+                ),
                 status=f"Deleted {held_state.ship_type.value} from hand.",
                 refresh_buttons=True,
             )
@@ -185,5 +191,3 @@ class PlacementFlowService:
             handled=False,
             held_state=HeldShipState(ship_type=None, orientation=None, previous=None, grab_index=0),
         )
-
-

@@ -107,5 +107,3 @@ def resolve_modal_pointer_target(widget: ModalTextInputWidget, x: float, y: floa
     if widget.overlay_rect.contains(x, y):
         return "overlay"
     return None
-
-

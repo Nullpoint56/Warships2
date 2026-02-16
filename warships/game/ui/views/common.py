@@ -24,7 +24,9 @@ def draw_preset_preview(
     """Render a compact 10x10 fleet preview."""
     from warships.game.core.models import cells_for_placement
 
-    renderer.add_rect(f"preset:preview:bg:{key_prefix}", x, y, cell * 10, cell * 10, "#1e3a8a", z=1.0)
+    renderer.add_rect(
+        f"preset:preview:bg:{key_prefix}", x, y, cell * 10, cell * 10, "#1e3a8a", z=1.0
+    )
     for placement in placements:
         for coord in cells_for_placement(placement):
             renderer.add_rect(
@@ -46,5 +48,3 @@ def is_new_game_custom_button(button_id: str) -> bool:
         or button_id.startswith("new_game_diff_option:")
         or button_id.startswith("new_game_select_preset:")
     )
-
-

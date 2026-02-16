@@ -31,5 +31,3 @@ __all__ = [
     "resolve_modal_pointer_target",
     "resolve_pointer_button",
 ]
-
-

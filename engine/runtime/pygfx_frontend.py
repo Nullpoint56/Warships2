@@ -64,5 +64,3 @@ def create_pygfx_window(
 ) -> PygfxFrontendWindow:
     """Build pygfx frontend window from precomposed engine host/runtime services."""
     return PygfxFrontendWindow(renderer=renderer, input_controller=input_controller, host=host)
-
-

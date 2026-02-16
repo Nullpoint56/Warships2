@@ -51,4 +51,3 @@ def route_non_modal_key_event(
         controller_key=mapped,
         shortcut_button_id=plan.shortcut_buttons.get(mapped),
     )
-

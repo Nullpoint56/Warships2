@@ -51,4 +51,3 @@ class CharTyped:
     """Character input event."""
 
     char: str
-

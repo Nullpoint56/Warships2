@@ -29,7 +29,9 @@ def draw_new_game_setup(renderer, ui: AppUIState) -> None:
         anchor="top-left",
     )
     diff_rect = NEW_GAME_SETUP.difficulty_rect()
-    renderer.add_rect("newgame:diff:bg", diff_rect.x, diff_rect.y, diff_rect.w, diff_rect.h, "#1e293b", z=0.9)
+    renderer.add_rect(
+        "newgame:diff:bg", diff_rect.x, diff_rect.y, diff_rect.w, diff_rect.h, "#1e293b", z=0.9
+    )
     renderer.add_text(
         key="newgame:difficulty",
         text=ui.new_game_difficulty or "Normal",
@@ -43,7 +45,9 @@ def draw_new_game_setup(renderer, ui: AppUIState) -> None:
         for idx, name in enumerate(ui.new_game_difficulty_options):
             option = NEW_GAME_SETUP.difficulty_option_rect(idx)
             color = "#2563eb" if name == ui.new_game_difficulty else "#334155"
-            renderer.add_rect(f"newgame:diff:opt:bg:{name}", option.x, option.y, option.w, option.h, color, z=0.95)
+            renderer.add_rect(
+                f"newgame:diff:opt:bg:{name}", option.x, option.y, option.w, option.h, color, z=0.95
+            )
             renderer.add_text(
                 key=f"newgame:diff:opt:text:{name}",
                 text=name,
@@ -56,7 +60,9 @@ def draw_new_game_setup(renderer, ui: AppUIState) -> None:
             )
 
     list_rect = NEW_GAME_SETUP.preset_list_rect()
-    renderer.add_rect("newgame:presets:bg", list_rect.x, list_rect.y, list_rect.w, list_rect.h, "#111827", z=0.88)
+    renderer.add_rect(
+        "newgame:presets:bg", list_rect.x, list_rect.y, list_rect.w, list_rect.h, "#111827", z=0.88
+    )
     renderer.add_text(
         key="newgame:presets:title",
         text="Available Presets",
@@ -82,7 +88,15 @@ def draw_new_game_setup(renderer, ui: AppUIState) -> None:
             z=0.92,
         )
     random_btn = NEW_GAME_SETUP.random_button_rect()
-    renderer.add_rect("newgame:random:bg", random_btn.x, random_btn.y, random_btn.w, random_btn.h, "#7c3aed", z=0.9)
+    renderer.add_rect(
+        "newgame:random:bg",
+        random_btn.x,
+        random_btn.y,
+        random_btn.w,
+        random_btn.h,
+        "#7c3aed",
+        z=0.9,
+    )
     renderer.add_text(
         key="newgame:random:text",
         text="Generate Random Fleet",
@@ -111,5 +125,3 @@ def draw_new_game_setup(renderer, ui: AppUIState) -> None:
         y=preview_y,
         cell=NEW_GAME_SETUP.preview_cell,
     )
-
-

@@ -50,7 +50,9 @@ def test_left_pointer_down_pick_from_board_and_already_placed_palette() -> None:
     assert pick.handled
     assert pick.held_state.ship_type is ShipType.DESTROYER
 
-    placements[ShipType.CARRIER] = ShipPlacement(ShipType.CARRIER, Coord(2, 0), Orientation.HORIZONTAL)
+    placements[ShipType.CARRIER] = ShipPlacement(
+        ShipType.CARRIER, Coord(2, 0), Orientation.HORIZONTAL
+    )
     from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
     row = PLACEMENT_PANEL.row_rect(0)
@@ -69,7 +71,9 @@ def test_left_pointer_down_pick_from_board_and_already_placed_palette() -> None:
 def test_pointer_release_invalid_drop_and_right_click_non_hit_paths() -> None:
     placements = _placements()
     layout = GridLayout()
-    placements[ShipType.CARRIER] = ShipPlacement(ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL)
+    placements[ShipType.CARRIER] = ShipPlacement(
+        ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL
+    )
 
     invalid_drop = PlacementFlowService.on_pointer_release(
         placements_by_type=placements,
@@ -105,7 +109,9 @@ def test_key_and_right_click_when_holding_ship() -> None:
     previous = ShipPlacement(ShipType.DESTROYER, Coord(2, 2), Orientation.VERTICAL)
     held = HeldShipState(ShipType.DESTROYER, Orientation.VERTICAL, previous, 1)
 
-    no_ship = PlacementFlowService.on_key_for_held(key="r", held_state=HeldShipState(None, None, None, 0))
+    no_ship = PlacementFlowService.on_key_for_held(
+        key="r", held_state=HeldShipState(None, None, None, 0)
+    )
     assert not no_ship.handled
 
     returned = PlacementFlowService.on_right_pointer_down(

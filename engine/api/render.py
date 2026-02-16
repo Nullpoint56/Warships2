@@ -73,4 +73,3 @@ class RenderAPI(Protocol):
 
     def close(self) -> None:
         """Close renderer resources and stop the loop."""
-

@@ -4,10 +4,18 @@ from __future__ import annotations
 
 from engine.api.app_port import EngineAppPort
 from engine.api.render import RenderAPI
-from engine.ui_runtime.interactions import can_scroll_with_wheel, resolve_pointer_button, route_non_modal_key_event
+from engine.ui_runtime.interactions import (
+    can_scroll_with_wheel,
+    resolve_pointer_button,
+    route_non_modal_key_event,
+)
 from engine.ui_runtime.keymap import map_key_name
 from engine.ui_runtime.grid_layout import GridLayout
-from engine.ui_runtime.modal_runtime import ModalInputState, route_modal_key_event, route_modal_pointer_event
+from engine.ui_runtime.modal_runtime import (
+    ModalInputState,
+    route_modal_key_event,
+    route_modal_pointer_event,
+)
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 
 
@@ -51,7 +59,9 @@ class EngineUIFramework:
             if interactions.grid_click_target is not None:
                 grid_cell = self._layout.screen_to_cell(interactions.grid_click_target, x, y)
                 if grid_cell is not None:
-                    return self._app.on_grid_click(interactions.grid_click_target, grid_cell.row, grid_cell.col)
+                    return self._app.on_grid_click(
+                        interactions.grid_click_target, grid_cell.row, grid_cell.col
+                    )
         return self._app.on_pointer_down(x=x, y=y, button=event.button)
 
     def handle_key_event(self, event: KeyEvent) -> bool:
@@ -85,4 +95,3 @@ class EngineUIFramework:
         if not can_scroll_with_wheel(interactions, x, y):
             return False
         return self._app.on_wheel(x=x, y=y, dy=event.dy)
-

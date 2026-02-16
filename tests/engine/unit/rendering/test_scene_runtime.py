@@ -55,7 +55,9 @@ class _FakeGlfw:
     def __init__(self) -> None:
         self.calls: list[str] = []
         self.monitor = object()
-        self.video_mode = SimpleNamespace(size=SimpleNamespace(width=1920, height=1080), refresh_rate=60)
+        self.video_mode = SimpleNamespace(
+            size=SimpleNamespace(width=1920, height=1080), refresh_rate=60
+        )
 
     def set_window_attrib(self, window, attr, value) -> None:
         _ = (window, attr, value)
@@ -143,7 +145,9 @@ def test_apply_startup_window_mode_fullscreen(monkeypatch: pytest.MonkeyPatch) -
     assert "set_window_monitor" in glfw.calls
 
 
-def test_apply_startup_window_mode_fallback_maximize_when_no_monitor(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_apply_startup_window_mode_fallback_maximize_when_no_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     glfw = _FakeGlfw()
     glfw.monitor = None
     _install_fake_rendercanvas_glfw(monkeypatch, glfw)

@@ -136,8 +136,7 @@ Implemented now:
    - `.github/workflows/build_windows.yml`
 
 Deferred intentionally:
-1. Formatter enforcement (`ruff format --check`) is postponed to a dedicated formatting pass PR.
-2. Broader mypy scope and stricter Ruff rule sets will be raised incrementally.
+1. Broader mypy scope and stricter Ruff rule sets will be raised incrementally.
 
 ## Next Branch: CI + Code Check Hardening
 
@@ -158,6 +157,13 @@ Objective:
 Exit criteria:
 1. Formatter check passes in CI on new PRs.
 2. No recurring style-drift diffs.
+
+Status:
+1. Implemented.
+2. Repo-wide `ruff format` applied.
+3. `ruff format --check` re-enabled in:
+   - `scripts/check.ps1`
+   - `.github/workflows/quality.yml`
 
 ### H2: Ruff Rule Expansion (Incremental)
 

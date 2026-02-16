@@ -15,7 +15,12 @@ def _empty_placements() -> dict[ShipType, ShipPlacement | None]:
 
 
 def test_on_key_for_held_rotate_delete_and_noop() -> None:
-    held = HeldShipState(ship_type=ShipType.DESTROYER, orientation=Orientation.HORIZONTAL, previous=None, grab_index=0)
+    held = HeldShipState(
+        ship_type=ShipType.DESTROYER,
+        orientation=Orientation.HORIZONTAL,
+        previous=None,
+        grab_index=0,
+    )
     rotate = PlacementFlowService.on_key_for_held(key="r", held_state=held)
     assert rotate.handled
     assert rotate.held_state.orientation is Orientation.VERTICAL
@@ -29,7 +34,12 @@ def test_on_key_for_held_rotate_delete_and_noop() -> None:
 def test_on_pointer_release_places_ship_or_restores() -> None:
     placements = _empty_placements()
     layout = GridLayout()
-    held = HeldShipState(ship_type=ShipType.DESTROYER, orientation=Orientation.HORIZONTAL, previous=None, grab_index=0)
+    held = HeldShipState(
+        ship_type=ShipType.DESTROYER,
+        orientation=Orientation.HORIZONTAL,
+        previous=None,
+        grab_index=0,
+    )
     placed = PlacementFlowService.on_pointer_release(
         placements_by_type=placements,
         held_state=held,
@@ -62,7 +72,13 @@ def test_on_pointer_release_places_ship_or_restores() -> None:
 def test_pointer_down_paths_pick_palette_and_right_click_remove() -> None:
     placements = _empty_placements()
     layout = GridLayout()
-    ship_order = [ShipType.CARRIER, ShipType.BATTLESHIP, ShipType.CRUISER, ShipType.SUBMARINE, ShipType.DESTROYER]
+    ship_order = [
+        ShipType.CARRIER,
+        ShipType.BATTLESHIP,
+        ShipType.CRUISER,
+        ShipType.SUBMARINE,
+        ShipType.DESTROYER,
+    ]
     row0 = PLACEMENT_PANEL.row_rect(0)
     pick = PlacementFlowService.on_left_pointer_down(
         ship_order=ship_order,
@@ -75,7 +91,9 @@ def test_pointer_down_paths_pick_palette_and_right_click_remove() -> None:
     assert pick.handled
     assert pick.held_state.ship_type is ShipType.CARRIER
 
-    placements[ShipType.DESTROYER] = ShipPlacement(ShipType.DESTROYER, Coord(0, 0), Orientation.HORIZONTAL)
+    placements[ShipType.DESTROYER] = ShipPlacement(
+        ShipType.DESTROYER, Coord(0, 0), Orientation.HORIZONTAL
+    )
     removed = PlacementFlowService.on_right_pointer_down(
         placements_by_type=placements,
         held_state=HeldShipState(None, None, None, 0),

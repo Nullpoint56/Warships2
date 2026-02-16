@@ -5,7 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 import logging
 
-from warships.game.app.ports.runtime_services import can_scroll_list_down, clamp_scroll, visible_slice
+from warships.game.app.ports.runtime_services import (
+    can_scroll_list_down,
+    clamp_scroll,
+    visible_slice,
+)
 from warships.game.app.ui_state import PresetRowView
 from warships.game.core.models import FleetPlacement, ShipPlacement
 from warships.game.presets.service import PresetService
@@ -59,7 +63,9 @@ class PresetFlowService:
         return RefreshRowsResult(rows=rows, selected_preset=next_selected, scroll=next_scroll)
 
     @staticmethod
-    def visible_new_game_preset_names(rows: list[PresetRowView], scroll: int, visible_rows: int) -> list[str]:
+    def visible_new_game_preset_names(
+        rows: list[PresetRowView], scroll: int, visible_rows: int
+    ) -> list[str]:
         names = [row.name for row in rows]
         return visible_slice(names, scroll, visible_rows)
 
@@ -92,10 +98,11 @@ class PresetFlowService:
         try:
             fleet = preset_service.load_preset(name)
         except (ValueError, FileNotFoundError) as exc:
-            return EditPresetResult(placements=[], status=f"Failed to load preset '{name}': {exc}", success=False)
+            return EditPresetResult(
+                placements=[], status=f"Failed to load preset '{name}': {exc}", success=False
+            )
         return EditPresetResult(
             placements=list(fleet.ships),
             status=f"Editing preset '{name}'. Drag ships to adjust.",
             success=True,
         )
-

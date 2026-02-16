@@ -67,7 +67,9 @@ def test_bootstrap_uses_window_mode_and_wires_runtime(monkeypatch) -> None:
 
     marker = object()
     config = EngineHostConfig(window_mode="maximized", width=1280, height=720)
-    bootstrap.run_pygfx_hosted_runtime(module_factory=lambda renderer, layout: marker, host_config=config)
+    bootstrap.run_pygfx_hosted_runtime(
+        module_factory=lambda renderer, layout: marker, host_config=config
+    )
 
     assert FakeHost.last_instance is not None
     assert FakeHost.last_instance.module is marker

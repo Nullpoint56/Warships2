@@ -65,5 +65,3 @@ class SessionFlowService:
             status="Manage presets.",
             refresh_preset_rows=True,
         )
-
-

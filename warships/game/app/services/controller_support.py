@@ -64,7 +64,9 @@ class ControllerSupport:
     def refresh_buttons(self) -> None:
         self._state.buttons = compose_buttons(
             state=self._state.app_state,
-            placement_ready=PlacementEditorService.all_ships_placed(self._state.placements_by_type, self._ship_order),
+            placement_ready=PlacementEditorService.all_ships_placed(
+                self._state.placements_by_type, self._ship_order
+            ),
             has_presets=bool(self._state.preset_rows),
             visible_preset_manage_rows=visible_slice(
                 self._state.preset_rows,

@@ -49,4 +49,3 @@ class AppUIState:
     new_game_preview: list[ShipPlacement]
     preset_manage_can_scroll_up: bool = False
     preset_manage_can_scroll_down: bool = False
-

@@ -2,7 +2,10 @@ from engine.ui_runtime.widgets import Button
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.models import Orientation
-from warships.game.ui.framework.widgets import build_modal_text_input_widget, resolve_modal_pointer_target
+from warships.game.ui.framework.widgets import (
+    build_modal_text_input_widget,
+    resolve_modal_pointer_target,
+)
 
 
 class _Prompt:
@@ -49,9 +52,22 @@ def test_build_modal_widget_and_pointer_targets() -> None:
     ui = _ui_with_prompt(_Prompt())
     widget = build_modal_text_input_widget(ui)
     assert widget is not None
-    assert resolve_modal_pointer_target(widget, widget.confirm_button_rect.x + 1, widget.confirm_button_rect.y + 1) == "confirm"
-    assert resolve_modal_pointer_target(widget, widget.cancel_button_rect.x + 1, widget.cancel_button_rect.y + 1) == "cancel"
-    assert resolve_modal_pointer_target(widget, widget.input_rect.x + 1, widget.input_rect.y + 1) == "input"
+    assert (
+        resolve_modal_pointer_target(
+            widget, widget.confirm_button_rect.x + 1, widget.confirm_button_rect.y + 1
+        )
+        == "confirm"
+    )
+    assert (
+        resolve_modal_pointer_target(
+            widget, widget.cancel_button_rect.x + 1, widget.cancel_button_rect.y + 1
+        )
+        == "cancel"
+    )
+    assert (
+        resolve_modal_pointer_target(widget, widget.input_rect.x + 1, widget.input_rect.y + 1)
+        == "input"
+    )
 
 
 def test_build_modal_widget_none_when_prompt_missing() -> None:

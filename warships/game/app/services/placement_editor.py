@@ -16,7 +16,9 @@ class PlacementEditorService:
         return {ship_type: None for ship_type in ship_order}
 
     @staticmethod
-    def placements_list(placements_by_type: dict[ShipType, ShipPlacement | None]) -> list[ShipPlacement]:
+    def placements_list(
+        placements_by_type: dict[ShipType, ShipPlacement | None],
+    ) -> list[ShipPlacement]:
         return [placement for placement in placements_by_type.values() if placement is not None]
 
     @staticmethod
@@ -61,5 +63,3 @@ class PlacementEditorService:
             if row.contains(x, y):
                 return ship_type
         return None
-
-

@@ -91,7 +91,7 @@ class PresetRepository:
         try:
             with path.open("r", encoding="utf-8") as handle:
                 payload = json.load(handle)
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             return None
         if not isinstance(payload, dict):
             return None

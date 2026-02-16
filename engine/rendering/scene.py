@@ -7,14 +7,23 @@ import logging
 from typing import Callable
 from typing import Any
 from typing import cast
-from engine.rendering.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
+from engine.rendering.scene_retained import (
+    hide_inactive_nodes,
+    upsert_grid,
+    upsert_rect,
+    upsert_text,
+)
 from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
     run_backend_loop,
     stop_backend_loop,
 )
-from engine.rendering.scene_viewport import extract_resize_dimensions, to_design_space, viewport_transform
+from engine.rendering.scene_viewport import (
+    extract_resize_dimensions,
+    to_design_space,
+    viewport_transform,
+)
 
 try:
     import pygfx as gfx
@@ -39,7 +48,9 @@ else:
         if not getattr(_rc_size.SizeInfo.set_physical_size, "_warships_size_clamped", False):
             _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
 
-            def _safe_set_physical_size(self: object, width: int, height: int, pixel_ratio: float) -> None:
+            def _safe_set_physical_size(
+                self: object, width: int, height: int, pixel_ratio: float
+            ) -> None:
                 _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
 
             _safe_set_physical_size._warships_size_clamped = True  # type: ignore[attr-defined]
@@ -64,9 +75,15 @@ class SceneRenderer:
     _rect_nodes: dict[str, Any] = field(default_factory=dict)
     _line_nodes: dict[str, Any] = field(default_factory=dict)
     _text_nodes: dict[str, Any] = field(default_factory=dict)
-    _rect_props: dict[str, tuple[float, float, float, float, str, float]] = field(default_factory=dict)
-    _line_props: dict[str, tuple[float, float, float, float, int, str, float]] = field(default_factory=dict)
-    _text_props: dict[str, tuple[str, float, float, float, str, str, float]] = field(default_factory=dict)
+    _rect_props: dict[str, tuple[float, float, float, float, str, float]] = field(
+        default_factory=dict
+    )
+    _line_props: dict[str, tuple[float, float, float, float, int, str, float]] = field(
+        default_factory=dict
+    )
+    _text_props: dict[str, tuple[str, float, float, float, str, str, float]] = field(
+        default_factory=dict
+    )
     _rect_viewport_rev: dict[str, int] = field(default_factory=dict)
     _line_viewport_rev: dict[str, int] = field(default_factory=dict)
     _text_viewport_rev: dict[str, int] = field(default_factory=dict)
@@ -395,4 +412,3 @@ class SceneRenderer:
         if hasattr(self.canvas, "close"):
             self.canvas.close()
         stop_backend_loop(rc_auto)
-

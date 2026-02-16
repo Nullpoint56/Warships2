@@ -40,4 +40,3 @@ class PresetService:
     def delete_preset(self, name: str) -> None:
         """Delete preset."""
         self._repository.delete(name)
-
