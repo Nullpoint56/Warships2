@@ -119,6 +119,30 @@ We only move to the next track when both are true for the current track:
 - If `applicable`, Warships must use it on a real path (not dead code).
 - If `not_applicable`, we must document the reason and the trigger for when it becomes applicable.
 
+Track completion definition (hard requirement):
+1. Engine-side implementation is complete.
+2. New functionality is available through the `engine.api` layer (no direct game dependency on
+   `engine.runtime.*` internals for adopted primitives).
+3. Warships is updated to use applicable new functionality through `engine.api`.
+
+API quality rule (mandatory):
+1. `engine.api` is not allowed to be only a re-export/proxy layer for new features.
+2. For each adopted feature, `engine.api` must define real API surface:
+- protocol contracts and/or API dataclasses/enums
+- public functions/factories with engine-facing semantics
+3. `engine.runtime.*` must implement those API contracts; game code consumes contracts, not runtime internals.
+4. Re-export-only stopgaps are allowed only as transitional compatibility shims and must be tracked
+   with explicit replacement tasks before track closure.
+
+Current API status:
+1. Track A/D adopted primitives now have dedicated API modules:
+- `engine.api.flow`
+- `engine.api.screens`
+- `engine.api.interaction_modes`
+- `engine.api.events`
+2. Warships consumes Track A/D applicable primitives through these dedicated API modules.
+3. `engine.api.runtime_primitives` is compatibility-only and not the preferred import path.
+
 Recommended slice order:
 1. Track D (`time`, `scheduler`, `commands`) as lowest-risk foundational APIs.
 2. Track A (`screen_stack`, `flow`, `interaction_modes`) and migrate game menu/state orchestration.
@@ -139,6 +163,9 @@ Recommended slice order:
 ## Implementation Status
 
 - Done:
+  - Track A1 `engine/runtime/screen_stack.py` (`ScreenStack`, `ScreenLayer`)
+  - Track A2 `engine/runtime/flow.py` (`FlowMachine`, `FlowTransition`, `FlowContext`)
+  - Track A3 `engine/runtime/interaction_modes.py` (`InteractionModeMachine`, `InteractionMode`)
   - Track D1 `engine/runtime/time.py` (`TimeContext`, `FrameClock`, `FixedStepAccumulator`)
   - Track D2 `engine/runtime/scheduler.py` (`Scheduler` with one-shot + recurring tasks)
   - Track D3 `engine/assets/registry.py` (`AssetRegistry`, `AssetHandle`)
@@ -151,6 +178,9 @@ Recommended slice order:
     - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
       in `engine/runtime/framework_engine.py`
   - Engine unit tests added:
+    - `tests/engine/unit/runtime/test_screen_stack.py`
+    - `tests/engine/unit/runtime/test_flow.py`
+    - `tests/engine/unit/runtime/test_interaction_modes.py`
     - `tests/engine/unit/assets/test_registry.py`
     - `tests/engine/unit/runtime/test_commands.py`
     - `tests/engine/unit/runtime/test_events.py`
@@ -192,3 +222,21 @@ Track D gate decision:
 - Warships adoption gate: PASS (`time`, `scheduler`, `commands`, `events` adopted; `assets` documented
   as not currently applicable with explicit trigger)
 - Track D is complete; eligible to proceed to Track A.
+
+Track A adoption matrix:
+1. `screen_stack` (`ScreenStack`, `ScreenLayer`): applicable
+- Used by `GameController` to track root screen transitions and prompt overlay presence
+  in `warships/game/app/controller.py`.
+
+2. `flow` (`FlowMachine`, `FlowTransition`, `FlowContext`): applicable
+- Used by `SessionFlowService.resolve(...)` to compute navigation transitions from triggers
+  in `warships/game/app/services/session_flow.py`.
+
+3. `interaction_modes` (`InteractionModeMachine`, `InteractionMode`): applicable
+- Used by `GameController` input handlers to gate pointer/keyboard/wheel behavior by mode
+  (`default`, `modal`, `captured`) in `warships/game/app/controller.py`.
+
+Track A gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track A is complete; eligible to proceed to Track E.

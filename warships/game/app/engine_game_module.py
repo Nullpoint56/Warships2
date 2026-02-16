@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.api.events import Subscription, create_event_bus
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
-from engine.runtime.events import EventBus, Subscription
 from engine.runtime.framework_engine import EngineUIFramework
 from warships.game.app.controller import GameController
 from warships.game.ui.game_view import GameView
@@ -33,7 +33,7 @@ class WarshipsGameModule(GameModule):
         self._debug_ui = debug_ui
         self._debug_labels_state: list[str] = []
         self._host: HostControl | None = None
-        self._events = EventBus()
+        self._events = create_event_bus()
         self._close_subscription: Subscription | None = None
         self._close_task_id: int | None = None
 

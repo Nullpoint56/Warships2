@@ -3,21 +3,15 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
 from typing import Any, TypeVar
+
+from engine.api.events import Subscription
 
 TEvent = TypeVar("TEvent")
 EventHandler = Callable[[Any], None]
 
 
-@dataclass(frozen=True, slots=True)
-class Subscription:
-    """Opaque subscription token used for unsubscription."""
-
-    id: int
-
-
-class EventBus:
+class RuntimeEventBus:
     """Simple in-process pub/sub for engine-local coordination."""
 
     def __init__(self) -> None:
@@ -47,3 +41,6 @@ class EventBus:
                 handler(event)
                 invoked += 1
         return invoked
+
+
+EventBus = RuntimeEventBus

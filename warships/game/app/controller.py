@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import random
 
+from engine.api.interaction_modes import create_interaction_mode_machine
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.events import (
     BoardCellPressed,
@@ -111,6 +112,10 @@ class GameController:
                 ("preset_delete:", self._on_preset_delete),
             ),
         )
+        self._interaction_modes = create_interaction_mode_machine()
+        self._state_data.screen_stack.set_root(self._screen_id_for_state(self._state_data.app_state))
+        self._sync_prompt_overlay()
+        self._sync_interaction_mode()
         self._refresh_preset_rows()
         self._refresh_buttons()
         self._announce_state()
@@ -154,20 +159,16 @@ class GameController:
         return handled if handled is not None else False
 
     def _on_manage_presets(self) -> bool:
-        self._apply_transition(SessionFlowService.to_manage_presets())
-        return True
+        return self._apply_session_transition("to_manage_presets")
 
     def _on_new_game(self) -> bool:
-        self._apply_transition(SessionFlowService.to_new_game_setup())
-        return True
+        return self._apply_session_transition("to_new_game_setup")
 
     def _on_create_preset(self) -> bool:
-        self._apply_transition(SessionFlowService.to_create_preset())
-        return True
+        return self._apply_session_transition("to_create_preset")
 
     def _on_back_main(self) -> bool:
-        self._apply_transition(SessionFlowService.to_main_menu())
-        return True
+        return self._apply_session_transition("to_main_menu")
 
     def _on_toggle_new_game_difficulty(self) -> bool:
         self._state_data.new_game_difficulty_open = not self._state_data.new_game_difficulty_open
@@ -202,12 +203,10 @@ class GameController:
         return True
 
     def _on_play_again(self) -> bool:
-        self._apply_transition(SessionFlowService.to_new_game_setup())
-        return True
+        return self._apply_session_transition("to_new_game_setup")
 
     def _on_back_to_presets(self) -> bool:
-        self._apply_transition(SessionFlowService.to_back_to_presets())
-        return True
+        return self._apply_session_transition("to_back_to_presets")
 
     def _on_save_preset(self) -> bool:
         if not PlacementEditorService.all_ships_placed(
@@ -219,6 +218,7 @@ class GameController:
         self._state_data.prompt_state = PromptFlowService.open_prompt(
             "Save Preset", default_name, mode="save"
         )
+        self._sync_prompt_overlay()
         self._refresh_buttons()
         return True
 
@@ -226,6 +226,7 @@ class GameController:
         self._state_data.prompt_state = PromptFlowService.open_prompt(
             "Rename Preset", name, mode="rename", target=name
         )
+        self._sync_prompt_overlay()
         self._refresh_buttons()
         return True
 
@@ -258,6 +259,9 @@ class GameController:
 
     def handle_pointer_move(self, event: PointerMoved) -> bool:
         """Update hover cell while dragging in editor."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_pointer():
+            return False
         if not can_handle_pointer_move(self._state_data.app_state):
             return False
         self._state_data.hover_x = event.x
@@ -269,6 +273,9 @@ class GameController:
 
     def handle_pointer_release(self, event: PointerReleased) -> bool:
         """Drop held ship on pointer release."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_pointer():
+            return False
         if not can_handle_pointer_release(self._state_data.app_state, event.button):
             return False
         outcome = PlacementFlowService.on_pointer_release(
@@ -286,15 +293,22 @@ class GameController:
 
     def handle_key_pressed(self, event: KeyPressed) -> bool:
         """Handle key-down events for prompt and placement rotation."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_keyboard():
+            return False
         key = event.key.lower()
         if self._state_data.prompt_state.prompt is not None:
             prompt_outcome = PromptFlowService.handle_key(self._state_data.prompt_state, key)
-            return apply_prompt_interaction_outcome(
+            handled = apply_prompt_interaction_outcome(
                 prompt_outcome,
                 state=self._state_data,
                 confirm_prompt=self._confirm_prompt,
                 refresh_buttons=self._refresh_buttons,
             )
+            if handled:
+                self._sync_prompt_overlay()
+                self._sync_interaction_mode()
+            return handled
 
         if can_handle_key_for_placement(self._state_data.app_state):
             placement_outcome = PlacementFlowService.on_key_for_held(
@@ -310,14 +324,21 @@ class GameController:
 
     def handle_char_typed(self, event: CharTyped) -> bool:
         """Handle text input for prompt."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_keyboard():
+            return False
         outcome = PromptFlowService.handle_char(self._state_data.prompt_state, event.char)
         if not outcome.handled:
             return False
         self._state_data.prompt_state = outcome.state
+        self._sync_prompt_overlay()
         return True
 
     def handle_wheel(self, x: float, y: float, dy: float) -> bool:
         """Handle mouse wheel interactions."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_wheel():
+            return False
         target = resolve_wheel_target(self._state_data.app_state, x, y)
         if target == "preset_manage":
             return self.scroll_preset_manage_rows(dy)
@@ -366,6 +387,7 @@ class GameController:
         self._state_data.prompt_state = PromptFlowService.sync_prompt(
             self._state_data.prompt_state, text[:32]
         )
+        self._sync_prompt_overlay()
         return self._confirm_prompt()
 
     def cancel_prompt(self) -> bool:
@@ -373,11 +395,15 @@ class GameController:
         if self._state_data.prompt_state.prompt is None:
             return False
         self._state_data.prompt_state = PromptFlowService.close_prompt()
+        self._sync_prompt_overlay()
         self._refresh_buttons()
         return True
 
     def handle_pointer_down(self, x: float, y: float, button: int) -> bool:
         """Pick ship from board or palette."""
+        self._sync_interaction_mode()
+        if not self._interaction_modes.allows_pointer():
+            return False
         if not can_handle_pointer_down(
             self._state_data.app_state, has_prompt=self._state_data.prompt_state.prompt is not None
         ):
@@ -417,12 +443,16 @@ class GameController:
 
     def _handle_prompt_button(self, button_id: str) -> bool:
         outcome = PromptFlowService.handle_button(self._state_data.prompt_state, button_id)
-        return apply_prompt_interaction_outcome(
+        handled = apply_prompt_interaction_outcome(
             outcome,
             state=self._state_data,
             confirm_prompt=self._confirm_prompt,
             refresh_buttons=self._refresh_buttons,
         )
+        if handled:
+            self._sync_prompt_overlay()
+            self._sync_interaction_mode()
+        return handled
 
     def _confirm_prompt(self) -> bool:
         outcome = PromptFlowService.confirm(
@@ -435,13 +465,20 @@ class GameController:
             placements=PlacementEditorService.placements_list(self._state_data.placements_by_type),
             preset_service=self._preset_service,
         )
-        return apply_prompt_confirm_outcome(
+        handled = apply_prompt_confirm_outcome(
             outcome,
             state=self._state_data,
             refresh_preset_rows=self._refresh_preset_rows,
             refresh_buttons=self._refresh_buttons,
             announce_state=self._announce_state,
         )
+        if handled:
+            self._sync_prompt_overlay()
+            self._state_data.screen_stack.set_root(
+                self._screen_id_for_state(self._state_data.app_state)
+            )
+            self._sync_interaction_mode()
+        return handled
 
     def _edit_preset(self, name: str) -> bool:
         result = PresetFlowService.load_preset_for_edit(self._preset_service, name)
@@ -476,6 +513,9 @@ class GameController:
             refresh_buttons=self._refresh_buttons,
             announce_state=self._announce_state,
         )
+        self._state_data.screen_stack.set_root(self._screen_id_for_state(self._state_data.app_state))
+        self._sync_prompt_overlay()
+        self._sync_interaction_mode()
 
     def _randomize_editor(self) -> bool:
         self._reset_editor()
@@ -576,6 +616,8 @@ class GameController:
         self._support.apply_loaded_placements(placements)
 
     def _refresh_buttons(self) -> None:
+        self._sync_prompt_overlay()
+        self._sync_interaction_mode()
         self._support.refresh_buttons()
 
     def _preset_manage_can_scroll_down(self) -> bool:
@@ -583,3 +625,36 @@ class GameController:
 
     def _announce_state(self) -> None:
         self._support.announce_state()
+
+    def _apply_session_transition(self, trigger: str) -> bool:
+        transition = SessionFlowService.resolve(self._state_data.app_state, trigger)
+        if transition is None:
+            return False
+        self._apply_transition(transition)
+        return True
+
+    @staticmethod
+    def _screen_id_for_state(state: AppState) -> str:
+        return state.name.lower()
+
+    def _sync_prompt_overlay(self) -> None:
+        if self._state_data.prompt_state.prompt is None:
+            self._state_data.screen_stack.clear_overlays()
+            return
+        top = self._state_data.screen_stack.top()
+        if top is not None and top.kind == "overlay" and top.screen_id == "prompt":
+            return
+        self._state_data.screen_stack.clear_overlays()
+        self._state_data.screen_stack.push_overlay("prompt")
+
+    def _sync_interaction_mode(self) -> None:
+        if self._state_data.prompt_state.prompt is not None:
+            self._interaction_modes.set_mode("modal")
+            return
+        if (
+            self._state_data.app_state is AppState.PLACEMENT_EDIT
+            and self._state_data.held_ship_type is not None
+        ):
+            self._interaction_modes.set_mode("captured")
+            return
+        self._interaction_modes.set_mode("default")

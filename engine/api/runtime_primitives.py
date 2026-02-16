@@ -1,29 +1,21 @@
-"""Public engine API contracts."""
+"""Public runtime primitive exports for game integration."""
 
-from engine.api.app_port import EngineAppPort
 from engine.api.events import EventBus, Subscription, create_event_bus
 from engine.api.flow import FlowContext, FlowMachine, FlowTransition, create_flow_machine
-from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.interaction_modes import (
     InteractionMode,
     InteractionModeMachine,
     create_interaction_mode_machine,
 )
-from engine.api.render import RenderAPI
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
 
 __all__ = [
-    "EngineAppPort",
     "EventBus",
     "FlowContext",
     "FlowMachine",
     "FlowTransition",
-    "GameModule",
-    "HostControl",
-    "HostFrameContext",
     "InteractionMode",
     "InteractionModeMachine",
-    "RenderAPI",
     "ScreenLayer",
     "ScreenStack",
     "Subscription",
