@@ -43,7 +43,7 @@ from warships.game.app.events import BoardCellPressed, ButtonPressed, CharTyped,
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.fleet import random_fleet
-from warships.game.core.models import Orientation, ShipPlacement, ShipType
+from warships.game.core.models import ShipPlacement, ShipType
 from warships.game.presets.service import PresetService
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
