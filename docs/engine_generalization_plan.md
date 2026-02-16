@@ -141,7 +141,6 @@ Current API status:
 - `engine.api.interaction_modes`
 - `engine.api.events`
 2. Warships consumes Track A/D applicable primitives through these dedicated API modules.
-3. `engine.api.runtime_primitives` is compatibility-only and not the preferred import path.
 
 Recommended slice order:
 1. Track D (`time`, `scheduler`, `commands`) as lowest-risk foundational APIs.
