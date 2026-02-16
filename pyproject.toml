@@ -31,8 +31,8 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["F", "I", "E"]
-ignore = ["E501"]
+select = ["F", "I", "E", "B", "UP"]
+ignore = ["E501", "UP042", "UP047"]
 
 [tool.ruff.format]
 quote-style = "double"

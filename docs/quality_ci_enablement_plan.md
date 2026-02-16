@@ -181,7 +181,11 @@ Status:
 2. `I` (import/order hygiene) has been enabled in addition to `F`.
 3. Import-order findings were auto-fixed (`ruff check --fix`) and baseline checks are green.
 4. `E` has been enabled with temporary `E501` ignore to avoid noisy line-length churn.
-5. Next Ruff expansions planned: `B`, then `UP`, and later revisit `E501`.
+5. `B` has been enabled; one assertion-pattern issue was fixed.
+6. `UP` has been enabled with temporary ignores:
+   - `UP042` (`StrEnum` migration)
+   - `UP047` (PEP 695 type-parameter syntax migration)
+7. Next Ruff hardening step: revisit `E501`, `UP042`, and `UP047` in focused cleanup PR(s).
 
 ### H3: Mypy Scope Expansion (Incremental)
 

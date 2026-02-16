@@ -32,7 +32,9 @@ def test_build_board_from_fleet_raises_on_invalid() -> None:
     except ValueError:
         assert True
     else:
-        assert False
+        raise AssertionError(
+            "Expected build_board_from_fleet to raise ValueError for invalid fleet."
+        )
 
 
 def test_random_fleet_is_valid(seeded_rng) -> None:
