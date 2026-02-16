@@ -9,7 +9,7 @@ from pathlib import Path
 from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
 from engine.api.render import RenderAPI
 from engine.api.ui_framework import create_ui_framework
-from engine.ui_runtime.grid_layout import GridLayout
+from engine.api.ui_primitives import GridLayout
 from warships.game.app.controller import GameController
 from warships.game.app.engine_adapter import WarshipsAppAdapter
 from warships.game.app.engine_game_module import WarshipsGameModule

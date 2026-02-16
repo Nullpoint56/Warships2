@@ -17,9 +17,9 @@ from engine.api.gameplay import (
     create_state_store,
     create_update_loop,
 )
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
 from engine.api.ui_framework import UIFramework
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 from warships.game.app.controller import GameController
 from warships.game.ui.game_view import GameView
 

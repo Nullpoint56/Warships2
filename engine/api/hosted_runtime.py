@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from engine.api.game_module import GameModule
 from engine.api.render import RenderAPI
-from engine.ui_runtime.grid_layout import GridLayout
+from engine.api.ui_primitives import GridLayout
 
 
 @dataclass(frozen=True, slots=True)

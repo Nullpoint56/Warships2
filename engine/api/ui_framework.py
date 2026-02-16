@@ -5,9 +5,9 @@ from __future__ import annotations
 from typing import Protocol
 
 from engine.api.app_port import EngineAppPort
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.render import RenderAPI
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
-from engine.ui_runtime.grid_layout import GridLayout
+from engine.api.ui_primitives import GridLayout
 
 
 class UIFramework(Protocol):

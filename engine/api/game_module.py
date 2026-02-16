@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 
 
 @dataclass(frozen=True, slots=True)

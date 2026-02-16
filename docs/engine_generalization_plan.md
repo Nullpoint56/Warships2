@@ -351,3 +351,32 @@ Scope:
 
 N1 Status:
 - PASS. Implemented in engine + Warships integration and tests updated.
+
+## Post-Completion API-Only Consumption Slice (N2)
+
+Goal: ensure `warships/*` consumes engine only through `engine.api.*` modules.
+
+Scope:
+1. Add missing API contracts/modules:
+- `engine.api.input_events` for pointer/key/wheel event contracts used by game modules.
+- `engine.api.ui_primitives` for shared UI primitives/helpers currently needed by Warships
+  (layout primitives, prompt/list/scroll helpers, modal/key routing helpers).
+
+2. Update API surfaces to depend on API contracts:
+- `engine.api.game_module` and `engine.api.ui_framework` use `engine.api.input_events`.
+- hosted runtime and UI framework API signatures use `engine.api.ui_primitives` types.
+
+3. Migrate Warships imports:
+- Replace all `engine.ui_runtime.*` and `engine.input.*` imports in `warships/*`
+  with `engine.api.*` equivalents.
+
+4. Verification gate:
+- `git grep` over `warships/` shows no imports from:
+  - `engine.runtime.*`
+  - `engine.ui_runtime.*`
+  - `engine.input.*`
+  - `engine.rendering.*`
+- quality/test checks pass.
+
+N2 Status:
+- PASS. Warships imports moved to `engine.api.*`; verification and checks passed.

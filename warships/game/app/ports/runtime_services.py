@@ -4,23 +4,18 @@ from engine.api.action_dispatch import (
     ActionDispatcher,
     create_action_dispatcher,
 )
-from engine.ui_runtime.list_viewport import can_scroll_down as can_scroll_list_down
-from engine.ui_runtime.list_viewport import clamp_scroll, visible_slice
-from engine.ui_runtime.prompt_runtime import (
+from engine.api.ui_primitives import (
+    apply_wheel_scroll,
+    can_scroll_list_down,
+    clamp_scroll,
     close_prompt,
+    handle_prompt_button,
+    handle_prompt_char,
+    handle_prompt_key,
     open_prompt,
     sync_prompt,
+    visible_slice,
 )
-from engine.ui_runtime.prompt_runtime import (
-    handle_button as handle_prompt_button,
-)
-from engine.ui_runtime.prompt_runtime import (
-    handle_char as handle_prompt_char,
-)
-from engine.ui_runtime.prompt_runtime import (
-    handle_key as handle_prompt_key,
-)
-from engine.ui_runtime.scroll import apply_wheel_scroll
 
 __all__ = [
     "ActionDispatcher",
