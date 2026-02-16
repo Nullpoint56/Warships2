@@ -200,6 +200,17 @@ Exit criteria:
 1. Expanded mypy scope passes in CI.
 2. No frequent type-gate churn for unchanged modules.
 
+Status:
+1. In progress.
+2. Added to mypy scope:
+   - `engine/runtime`
+   - `engine/input`
+   - `warships/game/app/services`
+3. Type issues found during expansion were resolved:
+   - runtime route/event variable typing in `engine/runtime/framework_engine.py` and `engine/runtime/pygfx_frontend.py`
+   - generalized ship-order parameter typing (`Sequence[ShipType]`) in `warships/game/app/services/placement_editor.py`
+4. Expanded mypy baseline currently passes on `48` source files.
+
 ### H4: CI Gate Tightening
 
 1. Keep `Build Windows EXE` non-required initially.

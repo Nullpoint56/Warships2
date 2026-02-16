@@ -46,12 +46,12 @@ class PygfxFrontendWindow:
 
     def _drain_input_events(self) -> None:
         changed = False
-        for event in self._input.drain_pointer_events():
-            changed = self._host.handle_pointer_event(event) or changed
-        for event in self._input.drain_key_events():
-            changed = self._host.handle_key_event(event) or changed
-        for event in self._input.drain_wheel_events():
-            changed = self._host.handle_wheel_event(event) or changed
+        for pointer_event in self._input.drain_pointer_events():
+            changed = self._host.handle_pointer_event(pointer_event) or changed
+        for key_event in self._input.drain_key_events():
+            changed = self._host.handle_key_event(key_event) or changed
+        for wheel_event in self._input.drain_wheel_events():
+            changed = self._host.handle_wheel_event(wheel_event) or changed
         if changed:
             self._renderer.invalidate()
 

@@ -41,7 +41,7 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.14"
-files = ["engine/api", "engine/ui_runtime", "warships/game/core", "warships/game/presets"]
+files = ["engine", "warships"]
 exclude = "(^build/|^dist/|^tests/)"
 pretty = true
 show_error_codes = true

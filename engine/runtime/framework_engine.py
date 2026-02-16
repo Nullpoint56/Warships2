@@ -69,24 +69,26 @@ class EngineUIFramework:
         modal = self._app.modal_widget()
         if modal is not None:
             mapped = map_key_name(event.value) if event.event_type == "key_down" else None
-            route = route_modal_key_event(event.event_type, event.value, mapped, self._modal_state)
-            if route.char is not None:
-                return self._app.on_char(route.char)
-            if route.key is not None:
-                return self._app.on_key(route.key)
+            modal_route = route_modal_key_event(
+                event.event_type, event.value, mapped, self._modal_state
+            )
+            if modal_route.char is not None:
+                return self._app.on_char(modal_route.char)
+            if modal_route.key is not None:
+                return self._app.on_key(modal_route.key)
             return False
 
         interactions = self._app.interaction_plan()
-        route = route_non_modal_key_event(event.event_type, event.value, interactions)
-        if route.controller_char is not None:
-            return self._app.on_char(route.controller_char)
-        if route.controller_key is None:
+        non_modal_route = route_non_modal_key_event(event.event_type, event.value, interactions)
+        if non_modal_route.controller_char is not None:
+            return self._app.on_char(non_modal_route.controller_char)
+        if non_modal_route.controller_key is None:
             return False
-        if self._app.on_key(route.controller_key):
+        if self._app.on_key(non_modal_route.controller_key):
             return True
-        if route.shortcut_button_id is None:
+        if non_modal_route.shortcut_button_id is None:
             return False
-        return self._app.on_button(route.shortcut_button_id)
+        return self._app.on_button(non_modal_route.shortcut_button_id)
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Route wheel event to app actions."""
