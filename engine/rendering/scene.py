@@ -112,7 +112,8 @@ class SceneRenderer:
             )
         if rc_auto is None:
             raise RuntimeError(
-                "Render canvas backend unavailable. Install a desktop backend such as 'glfw' or 'pyside6'. "
+                "Render canvas backend unavailable. "
+                "Install a desktop backend such as 'glfw' or 'pyside6'. "
                 f"Original error: {_canvas_import_error!r}"
             )
 

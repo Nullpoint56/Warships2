@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 BOARD_SIZE = 10
 
 
-class Orientation(str, Enum):
+class Orientation(StrEnum):
     """Ship orientation."""
 
     HORIZONTAL = "HORIZONTAL"
     VERTICAL = "VERTICAL"
 
 
-class ShipType(str, Enum):
+class ShipType(StrEnum):
     """Classic Battleship ship types."""
 
     CARRIER = "CARRIER"
@@ -46,7 +46,7 @@ DEFAULT_FLEET: tuple[ShipType, ...] = (
 )
 
 
-class ShotResult(str, Enum):
+class ShotResult(StrEnum):
     """Result of a single shot."""
 
     MISS = "MISS"
@@ -56,7 +56,7 @@ class ShotResult(str, Enum):
     INVALID = "INVALID"
 
 
-class Turn(str, Enum):
+class Turn(StrEnum):
     """Current turn owner."""
 
     PLAYER = "PLAYER"

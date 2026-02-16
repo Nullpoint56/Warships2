@@ -51,9 +51,13 @@ def draw_status_bar(
             anchor="bottom-left",
         )
     if state is AppState.PLACEMENT_EDIT and len(placements) < len(ship_order):
+        hint_text = (
+            "Drag and drop ships. Hold a ship and press R to rotate. "
+            f"Orientation: {placement_orientation.value}"
+        )
         renderer.add_text(
             key="status:placement_hint",
-            text=f"Drag and drop ships. Hold a ship and press R to rotate. Orientation: {placement_orientation.value}",
+            text=hint_text,
             x=640.0,
             y=status_box.y + status_box.h / 2.0,
             font_size=15.0,

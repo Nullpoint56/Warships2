@@ -3,12 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
-def visible_slice(items: Sequence[T], scroll: int, visible_count: int) -> list[T]:
+def visible_slice[T](items: Sequence[T], scroll: int, visible_count: int) -> list[T]:
     """Return visible window slice for a list viewport."""
     normalized_visible = max(0, visible_count)
     clamped_scroll = clamp_scroll(scroll, normalized_visible, len(items))

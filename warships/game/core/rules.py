@@ -51,7 +51,8 @@ def player_fire(session: GameSession, coord: Coord) -> ShotResult:
         session.last_message = f"You fired at ({coord.row}, {coord.col}): hit."
         session.turn = Turn.AI
     else:
-        session.last_message = f"You fired at ({coord.row}, {coord.col}): sunk {sunk_type.value if sunk_type else 'ship'}."
+        sunk_label = sunk_type.value if sunk_type else "ship"
+        session.last_message = f"You fired at ({coord.row}, {coord.col}): sunk {sunk_label}."
         session.turn = Turn.AI
 
     session.history.append(session.last_message)
@@ -81,7 +82,8 @@ def ai_fire(session: GameSession, coord: Coord) -> ShotResult:
         session.last_message = f"AI fired at ({coord.row}, {coord.col}): hit."
         session.turn = Turn.PLAYER
     else:
-        session.last_message = f"AI fired at ({coord.row}, {coord.col}): sunk {sunk_type.value if sunk_type else 'ship'}."
+        sunk_label = sunk_type.value if sunk_type else "ship"
+        session.last_message = f"AI fired at ({coord.row}, {coord.col}): sunk {sunk_label}."
         session.turn = Turn.PLAYER
 
     session.history.append(session.last_message)

@@ -177,15 +177,15 @@ Exit criteria:
 2. No high-noise false-positive patterns in active rule families.
 
 Status:
-1. In progress.
+1. Implemented.
 2. `I` (import/order hygiene) has been enabled in addition to `F`.
 3. Import-order findings were auto-fixed (`ruff check --fix`) and baseline checks are green.
-4. `E` has been enabled with temporary `E501` ignore to avoid noisy line-length churn.
+4. `E` has been enabled, including `E501` (line-length) without ignore.
 5. `B` has been enabled; one assertion-pattern issue was fixed.
-6. `UP` has been enabled with temporary ignores:
-   - `UP042` (`StrEnum` migration)
-   - `UP047` (PEP 695 type-parameter syntax migration)
-7. Next Ruff hardening step: revisit `E501`, `UP042`, and `UP047` in focused cleanup PR(s).
+6. `UP` has been enabled, including:
+   - `UP042` resolved via `StrEnum` migration in core models
+   - `UP047` resolved via PEP 695 generic function syntax in list viewport helpers
+7. Current Ruff lint ignore list is empty.
 
 ### H3: Mypy Scope Expansion (Incremental)
 
@@ -201,7 +201,7 @@ Exit criteria:
 2. No frequent type-gate churn for unchanged modules.
 
 Status:
-1. In progress.
+1. Implemented.
 2. Added to mypy scope incrementally:
    - `engine/runtime`
    - `engine/input`
