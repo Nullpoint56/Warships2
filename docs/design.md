@@ -1,171 +1,119 @@
 # Warships Design
 
-## Scope
+Date: 2026-02-16
+Scope: current implemented architecture
 
-This document describes the current architecture as implemented in code.
-It replaces the old `design_v1.md` target/spec document.
+## Goals
 
-Primary goals in the current codebase:
 - Engine-hosted runtime lifecycle
-- Pygfx-based rendering through engine-owned rendering/runtime modules
-- Game-specific rules, state, AI, and UI composition inside `warships.game`
-- Clear engine/app boundary through explicit ports and module contracts
+- PyGFX rendering backend through engine APIs
+- Strict engine/game boundary
+- Game-specific rules/policy/UI composition kept in `warships/game`
 
-## Repository Layout
+## Repository Topology
 
-Top-level runtime/code packages:
-- `engine/`: reusable runtime, rendering, input, and UI runtime helpers
-- `warships/`: game application and domain implementation
-- `warships/game/`: game-specific app/core/ai/presets/ui/infra modules
+- `engine/`: reusable runtime, rendering, input, and UI-runtime mechanisms
+- `warships/game/`: Warships app, domain, AI, presets, and presentation
 
-High-level map:
+Key engine packages:
 - `engine/api/`: contracts (`GameModule`, `EngineAppPort`, `RenderAPI`)
-- `engine/runtime/`: host/bootstrap/frontend and UI framework event routing
-- `engine/rendering/`: `SceneRenderer` and retained scene primitives
-- `engine/input/`: input event collection/normalization
-- `engine/ui_runtime/`: layout math, interaction routing, modal/wheel helpers
-- `warships/game/app/`: controller, adapter, game module, orchestration services
-- `warships/game/core/`: game rules and models
-- `warships/game/ai/`: AI strategies
-- `warships/game/presets/`: preset persistence/services
-- `warships/game/ui/`: game-specific views/widgets/layout metrics
-- `warships/game/infra/`: env loading and logging setup
+- `engine/runtime/`: host, bootstrap, frontend window adapter, UI framework routing
+- `engine/rendering/`: `SceneRenderer` and retained-node helpers
+- `engine/input/`: pointer/key/wheel event collection
+- `engine/ui_runtime/`: geometry, grid hit-testing, modal/key/wheel/list helpers
 
-## Runtime Ownership and Startup
+Key game packages:
+- `warships/game/app/`: controller, adapter, engine module composition
+- `warships/game/core/`: rules and models
+- `warships/game/ai/`: AI strategies
+- `warships/game/presets/`: persistence and services
+- `warships/game/ui/`: Warships-specific layout, widgets, and views
+- `warships/game/infra/`: env + logging setup
+
+## Runtime Ownership
 
 Entry point:
 - `warships/main.py`
 
 Startup flow:
 1. `warships.main.main()` loads env and logging.
-2. Calls `warships.game.app.engine_hosted_runtime.run_engine_hosted_app()`.
-3. Game composition creates controller and module factory.
-4. Engine bootstrap `engine.runtime.bootstrap.run_pygfx_hosted_runtime(...)` creates:
-   - `BoardLayout`
+2. `warships.game.app.engine_hosted_runtime.run_engine_hosted_app()` composes game objects.
+3. `engine.runtime.bootstrap.run_pygfx_hosted_runtime(...)` builds runtime:
+   - `GridLayout`
    - `SceneRenderer`
    - `EngineHost`
    - `InputController`
-   - pygfx window frontend
-5. Frontend drives frame loop and input dispatch through engine host/module hooks.
+   - frontend window adapter
+4. Engine-owned frame/input loop drives the game module.
 
-This is engine-hosted runtime: the engine owns loop/host/frontend, while Warships provides a `GameModule`.
+Window mode ownership:
+- Single owner is `EngineHostConfig.window_mode`.
+- Bootstrap applies mode via frontend methods.
+- Renderer construction has no startup window-mode side effects.
 
 ## Engine Contracts
 
-### Game module lifecycle contract
-- File: `engine/api/game_module.py`
-- Main protocol: `GameModule`
-- Hooks:
-  - `on_start(host)`
-  - `on_pointer_event(event)`
-  - `on_key_event(event)`
-  - `on_wheel_event(event)`
-  - `on_frame(context)`
-  - `should_close()`
-  - `on_shutdown()`
+### `GameModule`
+File: `engine/api/game_module.py`
 
-### App port contract (UI/input bridge)
-- File: `engine/api/app_port.py`
-- Main protocol: `EngineAppPort`
-- Exposes:
-  - UI snapshot/query (`ui_state`, `modal_widget`, `interaction_plan`)
-  - input actions (`on_button`, `on_board_click`, pointer/key/char/wheel handlers)
+Engine calls:
+- `on_start(host)`
+- `on_pointer_event(event)`
+- `on_key_event(event)`
+- `on_wheel_event(event)`
+- `on_frame(context)`
+- `should_close()`
+- `on_shutdown()`
 
-### Render contract
-- File: `engine/api/render.py`
-- Main protocol: `RenderAPI`
-- Used by game views; engine provides implementation (`SceneRenderer`).
+### `EngineAppPort`
+File: `engine/api/app_port.py`
 
-## Warships Engine Integration
+Bridge from engine UI routing to app actions:
+- state queries: `ui_state`, `modal_widget`, `interaction_plan`
+- actions: `on_button`, `on_grid_click`, pointer/key/char/wheel handlers
 
-### Game module adapter
-- File: `warships/game/app/engine_game_module.py`
-- `WarshipsGameModule` implements `GameModule` and delegates to:
-  - `EngineUIFramework` for input routing
-  - `GameController` for state/actions
-  - `GameView` for rendering
+Interaction contract is engine-neutral:
+- `grid_click_target`
+- `wheel_scroll_regions`
 
-### App adapter
-- File: `warships/game/app/engine_adapter.py`
-- `WarshipsAppAdapter` implements `EngineAppPort` over `GameController`.
-- Converts app state into engine-consumable interaction/modal view models.
+### `RenderAPI`
+File: `engine/api/render.py`
 
-### UI framework routing owner
-- File: `engine/runtime/framework_engine.py`
-- `EngineUIFramework` routes pointer/key/wheel events.
-- Uses:
-  - modal helpers from `engine/ui_runtime/modal_runtime.py`
-  - key/shortcut routing from `engine/ui_runtime/interactions.py` and `keymap.py`
-  - board click hit-testing via `engine/ui_runtime/board_layout.py`
+Game UI renders through this API; current implementation is `SceneRenderer`.
 
-## Rendering Architecture
+## Engine UI Runtime
 
-Render backend role:
-- `pygfx` + `wgpu` are the concrete rendering backend.
-- Engine wraps backend behavior in `SceneRenderer` (`engine/rendering/scene.py`) implementing `RenderAPI`.
-
-Render style:
-- Retained keyed primitives (rect/text/grid), synchronized per frame.
-- Window-filling background, design-space coordinate transform, redraw invalidation.
-
-Game drawing:
-- `warships/game/ui/game_view.py` composes state-specific views:
-  - placement/battle boards
-  - setup/preset screens
-  - status and modal overlays
-
-## UI Runtime and Geometry
-
-Engine-owned general runtime helpers:
+Core reusable primitives:
 - `engine/ui_runtime/geometry.py`: `Rect`, `CellCoord`
-- `engine/ui_runtime/board_layout.py`: board layout and screen-to-cell mapping
-- `engine/ui_runtime/scroll.py`: generic wheel/list scroll semantics
-- `engine/ui_runtime/interactions.py`: non-modal button/shortcut/wheel routing checks
-- `engine/ui_runtime/modal_runtime.py`: modal pointer/key routing state machine
-- `engine/ui_runtime/widgets.py`: generic widget primitives (`Button`)
+- `engine/ui_runtime/grid_layout.py`: target-based grid rect/cell hit-testing
+- `engine/ui_runtime/interactions.py`: button/shortcut/wheel region routing helpers
+- `engine/ui_runtime/modal_runtime.py`: modal key/pointer routing state
+- `engine/ui_runtime/scroll.py`: wheel scroll semantics
+- `engine/ui_runtime/list_viewport.py`: list viewport math
+- `engine/ui_runtime/prompt_runtime.py`: generic prompt state transitions
 
-Game-owned UI specifics:
-- `warships/game/ui/layout_metrics.py`: Warships-specific coordinates/regions
-- `warships/game/ui/views/*`: screen-specific rendering logic
-- `warships/game/ui/framework/widgets.py`: game-specific modal widget composition/render helper
+## Game Integration
 
-## Application Layer (Game)
+Engine adapter layer:
+- `warships/game/app/engine_game_module.py`: `GameModule` implementation for Warships
+- `warships/game/app/engine_adapter.py`: `EngineAppPort` implementation over `GameController`
 
-Controller and services:
-- `warships/game/app/controller.py` is the orchestration entrypoint.
-- Supporting service decomposition under `warships/game/app/services/` includes:
-  - transition/state projection
-  - setup/preset/prompt/session flows
-  - input policy/dispatch
-  - mutation orchestration
+Important boundary rule:
+- Engine receives generic grid targets.
+- Warships adapter maps those targets to game semantics (`is_ai_board` etc.).
 
-State model:
-- `warships/game/app/state_machine.py`: app states (`MAIN_MENU`, `NEW_GAME_SETUP`, `PRESET_MANAGE`, `PLACEMENT_EDIT`, `BATTLE`, `RESULT`)
-- `warships/game/app/ui_state.py`: immutable view snapshot (`AppUIState`)
-- `warships/game/app/controller_state.py`: mutable controller-owned runtime state
+## Rendering
 
-## Domain and Data
+Backend:
+- `pygfx` + `wgpu` via `engine/rendering/scene.py`
 
-Game rules/model:
-- `warships/game/core/*` (board/fleet/models/rules/shot resolution)
+Model:
+- Retained keyed primitives (`rect`, `text`, `grid`) with per-frame activation
+- Input uses `to_design_space(...)` to map window coordinates into logical UI design coordinates
 
-AI:
-- `warships/game/ai/*` (hunt/target, probability target, pattern hard)
+## Configuration
 
-Presets:
-- `warships/game/presets/*` (repository/schema/service)
-- Data location: `warships/data/presets/*.json`
-
-## Configuration and Logging
-
-Environment/config:
-- `warships/game/infra/config.py`: `.env` loader and path resolution
-- `engine/rendering/scene_runtime.py`: window/aspect related runtime env interpretation
-
-Logging:
-- `warships/game/infra/logging.py`: JSON/text formatter and root logger setup
-
-Important env flags currently used by startup/runtime:
+Relevant env flags:
 - `WARSHIPS_WINDOW_MODE`
 - `WARSHIPS_UI_ASPECT_MODE`
 - `WARSHIPS_DEBUG_INPUT`
@@ -173,20 +121,18 @@ Important env flags currently used by startup/runtime:
 - `LOG_LEVEL`
 - `LOG_FORMAT`
 
-## Boundary Rules (Current)
+## Boundary Rules
 
-Rules enforced by current architecture direction:
-- Engine modules should not import `warships.*`.
-- Game integrates with engine only via engine contracts (`GameModule`, `EngineAppPort`, `RenderAPI`).
-- Game UI can use engine `RenderAPI` and engine `ui_runtime` utilities, but game screen composition remains in `warships/game/ui`.
-- Runtime lifecycle ownership remains in `engine/runtime`.
+1. `engine/*` must not import `warships.*`.
+2. Game integrates with engine through contracts/adapters.
+3. Domain/policy stays in game package.
+4. Engine contains mechanism and runtime ownership.
 
-## Current Status Summary
+## Current Status
 
-Implemented:
-- Qt-free runtime path (pygfx engine path)
-- Engine-hosted lifecycle bootstrap
-- Engine-owned UI routing core (modal, key, wheel, board hit-test)
-- Decomposed game application services under `warships/game/app/services`
-
-This document is intentionally code-first and should be updated when module boundaries or ownership change.
+Implemented and active:
+- Qt removed from runtime path
+- Engine-hosted lifecycle
+- Neutral engine app-port interaction semantics
+- Neutral engine grid primitives (`GridLayout`)
+- Unified window-mode ownership in runtime bootstrap/host config

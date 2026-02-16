@@ -1,115 +1,81 @@
 # Engine Generalization Plan
 
-Date: 2026-02-15
-Scope: new branch/PR for building reusable engine-level components and mechanisms
+Date: 2026-02-16
+Scope: post-split branch/PR (separate from completed engine-app split work)
 
 ## Goal
 
-Create a generic engine foundation that can support multiple games (2D, 3D, mixed) without engine coupling to Warships domain logic.
+Evolve `engine/` into a reusable foundation for multiple games without coupling to Warships domain logic.
 
-This document is intentionally separate from `docs/architecture_improvement_audit.md`.
+## Non-Goals
 
-## Design Constraints
+- Reopening engine-app split work
+- Moving Warships rules/content/UX policy into engine
+- Large behavior changes in the currently stable runtime path
 
-1. Engine must expose mechanism, not game policy.
-2. Engine APIs must avoid Warships/domain nouns.
-3. New abstractions must be reusable in non-menu, non-2D flows.
-4. Game package remains owner of rules/content/state semantics.
+## Baseline (Already in Place)
 
-## Current Baseline
+- Engine-hosted lifecycle and frame loop
+- Engine render API + PyGFX backend
+- Engine input collection and UI routing
+- Neutral app-port interaction semantics (`grid_click_target`, `wheel_scroll_regions`)
+- Neutral grid primitive (`GridLayout`)
 
-Engine already provides:
-- Runtime lifecycle (`engine/runtime/host.py`, `engine/runtime/bootstrap.py`)
-- Input collection/routing (`engine/input/*`, `engine/runtime/framework_engine.py`)
-- Rendering API and pygfx backend (`engine/api/render.py`, `engine/rendering/*`)
-- UI runtime primitives (modal/key/scroll/layout helpers in `engine/ui_runtime/*`)
+## Priority Tracks
 
-Missing generic components:
-- Flow/state framework for app/game state transitions
-- Screen/layer stack management
-- Interaction mode framework beyond current modal handling
-- Generic gameplay state/update primitives
-- Generic AI primitive contracts/helpers
+### Track A: Runtime Composition Primitives
 
-## Proposed Engine Components
+1. `engine/runtime/screen_stack.py`
+- Push/pop/replace layered screens
+- Overlay support without game-specific assumptions
 
-### A) UI Flow and Screen Runtime
-
-1. `engine/runtime/flow.py`
+2. `engine/runtime/flow.py`
 - Generic state graph + transition executor
-- Guard hooks and transition callbacks
-- Optional transition metadata/context
+- Guard/callback hooks and transition context
 
-2. `engine/runtime/screen_stack.py`
-- Push/pop/replace screen stack
-- Optional overlay layer support
-- No assumptions about concrete screen types
+3. `engine/runtime/interaction_modes.py`
+- Mode machine (`default`, `modal`, `captured`, custom)
+- Routing gates integrated with existing input path
 
-3. `engine/ui_runtime/interaction_modes.py`
-- Generic mode machine (`default`, `modal`, `captured`, custom)
-- Mode-aware input routing gates
+### Track B: Gameplay Host Primitives
 
-4. `engine/runtime/action_map.py`
-- Generic action id -> handler mapping utility
-- Reusable command/action dispatch helper
-
-### B) Gameplay State Primitives
-
-1. `engine/gameplay/state_store.py`
-- Typed state container
-- Snapshot/update helpers
-- Optional reducer-style update pipeline
+1. `engine/gameplay/system.py`
+- Standard system lifecycle protocol
 
 2. `engine/gameplay/update_loop.py`
-- Ordered system tick execution
-- Fixed/variable step support
-- Explicit frame context
+- Ordered system ticks (fixed/variable step)
 
-3. `engine/gameplay/system.py`
-- Base protocol for systems/services in update loop
-- Lifecycle hooks (`start`, `update`, `shutdown`)
+3. `engine/gameplay/state_store.py`
+- Typed state container + snapshot/update helpers
 
-### C) AI Primitives
+### Track C: AI Primitives
 
 1. `engine/ai/agent.py`
-- Generic `Agent` contract (`decide(context) -> action`)
+- `decide(context) -> action` contract
 
 2. `engine/ai/blackboard.py`
-- Shared context bag with typed keys/helpers
+- Shared context storage with typed keys/helpers
 
 3. `engine/ai/utility.py`
-- Scoring/composition helpers for utility-based decisions
+- Generic scoring/composition helpers
 
-4. `engine/ai/planner.py` (optional later)
-- Lightweight planning interface for goal/action evaluators
+## Keep in Game
 
-## What Stays in Game
+- Warships domain states and transitions
+- Fleet/preset/business rules
+- Difficulty and AI strategy policy
+- Concrete UI layout/look-and-feel
 
-- Warships states and transition policy (`MAIN_MENU`, `BATTLE`, etc.)
-- Preset/fleet/shot business rules
-- AI implementations and difficulty policy
-- View/layout aesthetics and text labels
+## Execution Strategy
 
-## Migration Strategy
-
-1. Add engine primitives with adapters first (no behavior change).
-2. Rewire game orchestration onto engine primitives incrementally.
-3. Remove game-local duplicated generic helpers after parity.
-4. Keep domain logic in game package throughout migration.
-
-## Proposed Execution Slices
-
-Slice 1: Action dispatch + list/viewport primitives in engine and game rewiring.
-Slice 2: Flow runtime + screen stack primitives and migration of session/controller flow wiring.
-Slice 3: Interaction mode framework integration with existing modal routing.
-Slice 4: Gameplay state/update primitives adoption in game loop/module.
-Slice 5: AI primitive contracts adoption and adapter layer for existing Warships AI.
+1. Add engine primitives first with adapters (no behavior change).
+2. Adopt incrementally in game orchestration.
+3. Remove redundant game-local generic helpers after parity.
+4. Validate each slice by manual smoke testing.
 
 ## Acceptance Criteria
 
-1. No `engine -> warships` imports introduced.
-2. `warships/game/app/controller.py` orchestration complexity reduced substantially.
-3. Engine primitives can be reused by a second sample game without API changes.
-4. UI flow runtime is dimension-agnostic (works in 2D and 3D/mixed scenes).
-5. AI/gameplay primitives remain generic and do not encode Warships policy.
-
+1. No `engine -> warships` imports.
+2. New engine APIs stay domain-neutral.
+3. A second game could adopt primitives without API redesign.
+4. Runtime remains stable while migrating consumers incrementally.
