@@ -3,6 +3,7 @@
 from engine.api.app_port import EngineAppPort
 from engine.api.assets import AssetHandle, AssetRegistry, create_asset_registry
 from engine.api.commands import Command, CommandMap, create_command_map
+from engine.api.context import RuntimeContext, create_runtime_context
 from engine.api.events import EventBus, Subscription, create_event_bus
 from engine.api.flow import FlowContext, FlowMachine, FlowTransition, create_flow_machine
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
@@ -11,6 +12,7 @@ from engine.api.interaction_modes import (
     InteractionModeMachine,
     create_interaction_mode_machine,
 )
+from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule, create_module_graph
 from engine.api.render import RenderAPI
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
 
@@ -29,7 +31,11 @@ __all__ = [
     "HostFrameContext",
     "InteractionMode",
     "InteractionModeMachine",
+    "ModuleGraph",
+    "ModuleNode",
     "RenderAPI",
+    "RuntimeContext",
+    "RuntimeModule",
     "ScreenLayer",
     "ScreenStack",
     "Subscription",
@@ -38,5 +44,7 @@ __all__ = [
     "create_event_bus",
     "create_flow_machine",
     "create_interaction_mode_machine",
+    "create_module_graph",
+    "create_runtime_context",
     "create_screen_stack",
 ]

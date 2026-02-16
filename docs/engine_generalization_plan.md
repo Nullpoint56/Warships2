@@ -164,6 +164,10 @@ Recommended slice order:
 ## Implementation Status
 
 - Done:
+  - Track E1 `engine/api/context.py` + `engine/runtime/context.py`
+    (`RuntimeContext`, `create_runtime_context`, `RuntimeContextImpl`)
+  - Track E2 `engine/api/module_graph.py` + `engine/runtime/module_graph.py`
+    (`RuntimeModule`, `ModuleNode`, `ModuleGraph`, `create_module_graph`, `RuntimeModuleGraph`)
   - Track A1 `engine/runtime/screen_stack.py` (`ScreenStack`, `ScreenLayer`)
   - Track A2 `engine/runtime/flow.py` (`FlowMachine`, `FlowTransition`, `FlowContext`)
   - Track A3 `engine/runtime/interaction_modes.py` (`InteractionModeMachine`, `InteractionMode`)
@@ -179,6 +183,8 @@ Recommended slice order:
     - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
       in `engine/runtime/framework_engine.py`
   - Engine unit tests added:
+    - `tests/engine/unit/runtime/test_context.py`
+    - `tests/engine/unit/runtime/test_module_graph.py`
     - `tests/engine/unit/runtime/test_screen_stack.py`
     - `tests/engine/unit/runtime/test_flow.py`
     - `tests/engine/unit/runtime/test_interaction_modes.py`
@@ -243,3 +249,20 @@ Track A gate decision:
 - Engine completion gate: PASS
 - Warships adoption gate: PASS
 - Track A is complete; eligible to proceed to Track E.
+
+Track E gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+
+Track E adoption matrix:
+1. `context` (`RuntimeContext`, `create_runtime_context`): applicable
+- Adopted in Warships runtime composition (`WarshipsGameModule`) to hold per-frame services and state.
+
+2. `module_graph` (`RuntimeModule`, `ModuleNode`, `ModuleGraph`, `create_module_graph`): applicable
+- Adopted in Warships runtime composition (`WarshipsGameModule`) to orchestrate
+  framework sync -> view render -> close lifecycle as ordered runtime modules.
+
+Track E gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track E is complete; eligible to proceed to Track B.
