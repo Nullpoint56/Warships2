@@ -11,7 +11,8 @@ dependencies = [
     "glfw>=2.9",
 ]
 
-[project.optional-dependencies]
-test = [
+[dependency-groups]
+dev = [
     "pytest>=8.0",
+    "pyinstaller>=6.19",
 ]
