@@ -2,17 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from engine.api.commands import Command
 
 
-@dataclass(frozen=True, slots=True)
-class Command:
-    """Resolved command token emitted by a command map."""
-
-    name: str
-
-
-class CommandMap:
+class RuntimeCommandMap:
     """Maps raw input triggers to engine-neutral command tokens."""
 
     def __init__(self) -> None:
@@ -55,3 +48,6 @@ class CommandMap:
             return None
         command_name = self._pointer_down_bindings.get(button)
         return Command(command_name) if command_name is not None else None
+
+
+CommandMap = RuntimeCommandMap

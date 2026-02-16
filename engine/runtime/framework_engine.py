@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from engine.api.app_port import EngineAppPort, InteractionPlanView
+from engine.api.commands import create_command_map
 from engine.api.render import RenderAPI
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
-from engine.runtime.commands import CommandMap
 from engine.ui_runtime.grid_layout import GridLayout
 from engine.ui_runtime.interactions import (
     can_scroll_with_wheel,
@@ -109,7 +109,7 @@ class EngineUIFramework:
         key: str,
         interactions: InteractionPlanView,
     ) -> str | None:
-        commands = CommandMap()
+        commands = create_command_map()
         for shortcut_key, button_id in interactions.shortcut_buttons.items():
             commands.bind_key_down(shortcut_key, f"button:{button_id}")
         resolved = commands.resolve_key_event("key_down", key)

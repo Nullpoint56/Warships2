@@ -1,11 +1,12 @@
 """Engine runtime modules."""
 
+from engine.api.commands import Command
 from engine.api.events import Subscription
 from engine.api.flow import FlowContext, FlowTransition
 from engine.api.interaction_modes import InteractionMode
 from engine.api.screens import ScreenLayer
 from engine.runtime.bootstrap import run_pygfx_hosted_runtime
-from engine.runtime.commands import Command, CommandMap
+from engine.runtime.commands import CommandMap
 from engine.runtime.events import EventBus
 from engine.runtime.flow import FlowMachine
 from engine.runtime.framework_engine import EngineUIFramework

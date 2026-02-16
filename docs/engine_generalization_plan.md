@@ -136,6 +136,8 @@ API quality rule (mandatory):
 
 Current API status:
 1. Track A/D adopted primitives now have dedicated API modules:
+- `engine.api.commands`
+- `engine.api.assets`
 - `engine.api.flow`
 - `engine.api.screens`
 - `engine.api.interaction_modes`
@@ -193,8 +195,8 @@ Recommended slice order:
 Track D integration notes:
 - `commands` is now on an active game input path (shortcut routing).
 - `time`/`scheduler` are integrated at host runtime level and available to game modules.
-- `events` and `assets` are currently foundational primitives; adoption will be done in
-  the next tracks where their usage points are introduced.
+- `events` is integrated on Warships runtime close lifecycle path.
+- `assets` is API-defined and remains not-applicable for current Warships runtime content path.
 
 Track D adoption matrix (for next-gate decision):
 1. `time` (`FrameClock`, `TimeContext`): applicable
@@ -207,6 +209,7 @@ Track D adoption matrix (for next-gate decision):
 
 3. `commands` (`CommandMap`): applicable
 - Used in runtime key shortcut routing on active Warships input path.
+- API-defined in `engine.api.commands` and consumed through API constructor.
 
 4. `events` (`EventBus`): applicable
 - Used in Warships runtime close lifecycle signaling (`_CloseRequested`)
@@ -215,6 +218,7 @@ Track D adoption matrix (for next-gate decision):
 5. `assets` (`AssetRegistry`): not_applicable_currently
 - Warships currently has no runtime-loaded engine-managed assets (textures/audio/fonts).
 - Trigger to become applicable: first runtime asset loading path introduced into engine/game runtime.
+- API-defined in `engine.api.assets`.
 
 Track D gate decision:
 - Engine completion gate: PASS
