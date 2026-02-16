@@ -5,39 +5,6 @@ from __future__ import annotations
 import logging
 import random
 
-from warships.game.app.services.battle import resolve_player_turn, start_game
-from warships.game.app.ports.runtime_primitives import GridLayout
-from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
-from warships.game.app.services.input_policy import (
-    can_handle_key_for_placement,
-    can_handle_pointer_down,
-    can_handle_pointer_move,
-    can_handle_pointer_release,
-    pointer_down_action,
-    resolve_wheel_target,
-)
-from warships.game.app.services.new_game_flow import NewGameFlowService
-from warships.game.app.services.mutation_orchestration import (
-    apply_battle_turn_outcome,
-    apply_edit_preset_result,
-    apply_placement_outcome,
-)
-from warships.game.app.services.controller_support import ControllerSupport
-from warships.game.app.services.placement_editor import PlacementEditorService
-from warships.game.app.services.placement_flow import HeldShipState, PlacementFlowService
-from warships.game.app.services.preset_flow import PresetFlowService
-from warships.game.app.services.prompt_flow import PromptFlowService
-from warships.game.app.services.prompt_orchestration import (
-    apply_prompt_confirm_outcome,
-    apply_prompt_interaction_outcome,
-)
-from warships.game.app.services.setup_orchestration import (
-    refresh_preset_state,
-    resolve_new_game_selection,
-)
-from warships.game.app.services.state_projection import build_ui_state
-from warships.game.app.services.session_flow import AppTransition, SessionFlowService
-from warships.game.app.services.transition_orchestration import apply_transition
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.events import (
     BoardCellPressed,
@@ -47,6 +14,39 @@ from warships.game.app.events import (
     PointerMoved,
     PointerReleased,
 )
+from warships.game.app.ports.runtime_primitives import GridLayout
+from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
+from warships.game.app.services.battle import resolve_player_turn, start_game
+from warships.game.app.services.controller_support import ControllerSupport
+from warships.game.app.services.input_policy import (
+    can_handle_key_for_placement,
+    can_handle_pointer_down,
+    can_handle_pointer_move,
+    can_handle_pointer_release,
+    pointer_down_action,
+    resolve_wheel_target,
+)
+from warships.game.app.services.mutation_orchestration import (
+    apply_battle_turn_outcome,
+    apply_edit_preset_result,
+    apply_placement_outcome,
+)
+from warships.game.app.services.new_game_flow import NewGameFlowService
+from warships.game.app.services.placement_editor import PlacementEditorService
+from warships.game.app.services.placement_flow import HeldShipState, PlacementFlowService
+from warships.game.app.services.preset_flow import PresetFlowService
+from warships.game.app.services.prompt_flow import PromptFlowService
+from warships.game.app.services.prompt_orchestration import (
+    apply_prompt_confirm_outcome,
+    apply_prompt_interaction_outcome,
+)
+from warships.game.app.services.session_flow import AppTransition, SessionFlowService
+from warships.game.app.services.setup_orchestration import (
+    refresh_preset_state,
+    resolve_new_game_selection,
+)
+from warships.game.app.services.state_projection import build_ui_state
+from warships.game.app.services.transition_orchestration import apply_transition
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.fleet import random_fleet

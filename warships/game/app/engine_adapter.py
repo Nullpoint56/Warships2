@@ -4,6 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.api.app_port import (
+    ButtonView,
+    EngineAppPort,
+    InteractionPlanView,
+    ModalWidgetView,
+    RectView,
+)
 from warships.game.app.controller import GameController
 from warships.game.app.events import (
     BoardCellPressed,
@@ -13,16 +20,9 @@ from warships.game.app.events import (
     PointerMoved,
     PointerReleased,
 )
-from warships.game.app.state_machine import AppState
 from warships.game.app.shortcut_policy import shortcut_buttons_for_state
+from warships.game.app.state_machine import AppState
 from warships.game.core.models import Coord
-from engine.api.app_port import (
-    ButtonView,
-    EngineAppPort,
-    InteractionPlanView,
-    ModalWidgetView,
-    RectView,
-)
 from warships.game.ui.framework.widgets import build_modal_text_input_widget
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 

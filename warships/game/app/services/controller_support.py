@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.controller_state import ControllerState
+from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.app.services.ui_buttons import compose_buttons
 from warships.game.core.models import FleetPlacement, ShipPlacement, ShipType

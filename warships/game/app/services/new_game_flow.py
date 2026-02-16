@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 
 from warships.game.app.services.preset_flow import PresetFlowService
 from warships.game.app.ui_state import PresetRowView

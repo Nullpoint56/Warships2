@@ -3,8 +3,8 @@ from __future__ import annotations
 from engine.input.input_controller import PointerEvent, WheelEvent
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.ui_runtime.grid_layout import GridLayout
-from warships.game.app.events import ButtonPressed
 from warships.game.app.engine_adapter import WarshipsAppAdapter
+from warships.game.app.events import ButtonPressed
 from warships.game.presets.repository import PresetRepository
 from warships.game.presets.service import PresetService
 
@@ -16,8 +16,9 @@ class _Renderer:
 
 
 def test_framework_click_through_adapter_moves_to_new_game(tmp_path) -> None:
-    from warships.game.app.controller import GameController
     import random
+
+    from warships.game.app.controller import GameController
 
     controller = GameController(PresetService(PresetRepository(tmp_path)), random.Random(1))
     adapter = WarshipsAppAdapter(controller)
@@ -33,8 +34,9 @@ def test_framework_click_through_adapter_moves_to_new_game(tmp_path) -> None:
 
 
 def test_framework_wheel_routing_through_adapter(tmp_path, valid_fleet) -> None:
-    from warships.game.app.controller import GameController
     import random
+
+    from warships.game.app.controller import GameController
     from warships.game.ui.layout_metrics import PRESET_PANEL
 
     service = PresetService(PresetRepository(tmp_path))

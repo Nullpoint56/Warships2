@@ -11,10 +11,16 @@ from warships.game.app.ports.runtime_primitives import (
 )
 from warships.game.app.ports.runtime_services import (
     close_prompt as close_prompt_runtime,
+)
+from warships.game.app.ports.runtime_services import (
     handle_prompt_button,
     handle_prompt_char,
     handle_prompt_key,
+)
+from warships.game.app.ports.runtime_services import (
     open_prompt as open_prompt_runtime,
+)
+from warships.game.app.ports.runtime_services import (
     sync_prompt as sync_prompt_runtime,
 )
 from warships.game.core.models import FleetPlacement, ShipPlacement

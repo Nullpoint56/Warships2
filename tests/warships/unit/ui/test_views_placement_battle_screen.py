@@ -1,4 +1,5 @@
 from engine.ui_runtime.grid_layout import GridLayout
+from tests.warships.unit.ui.helpers import FakeRenderer
 from warships.game.core.board import BoardState
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.ui.views.placement_battle_screen import (
@@ -9,8 +10,6 @@ from warships.game.ui.views.placement_battle_screen import (
     draw_player_board,
     draw_ships_from_placements,
 )
-
-from tests.warships.unit.ui.helpers import FakeRenderer
 
 
 def test_draw_board_and_placement_panel() -> None:

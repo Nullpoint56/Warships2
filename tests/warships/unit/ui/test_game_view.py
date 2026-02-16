@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from engine.ui_runtime.grid_layout import GridLayout
+from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 from warships.game.app.state_machine import AppState
 from warships.game.ui.game_view import GameView
-
-from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 
 
 class _Render(FakeRenderer):

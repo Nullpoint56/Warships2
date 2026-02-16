@@ -1,7 +1,6 @@
+from tests.warships.unit.ui.helpers import FakeRenderer
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.ui.views.common import draw_preset_preview, is_new_game_custom_button, truncate
-
-from tests.warships.unit.ui.helpers import FakeRenderer
 
 
 def test_truncate_behavior() -> None:

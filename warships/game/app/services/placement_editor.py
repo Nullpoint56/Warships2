@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from warships.game.core.board import BoardState
 from warships.game.app.ports.runtime_primitives import GridLayout
+from warships.game.core.board import BoardState
 from warships.game.core.models import Coord, ShipPlacement, ShipType
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 

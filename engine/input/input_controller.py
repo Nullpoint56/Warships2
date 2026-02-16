@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
 import logging
 import os
-from typing import Any
-from typing import Callable
+from collections import deque
+from dataclasses import dataclass
+from typing import Any, Callable
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,3 +1,5 @@
+from warships.game.app.services.new_game_flow import DIFFICULTIES
+from warships.game.app.services.prompt_flow import PromptFlowService
 from warships.game.app.services.ui_buttons import (
     compose_buttons,
     new_game_setup_buttons,
@@ -7,8 +9,6 @@ from warships.game.app.services.ui_buttons import (
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import PresetRowView
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
-from warships.game.app.services.new_game_flow import DIFFICULTIES
-from warships.game.app.services.prompt_flow import PromptFlowService
 
 
 def _row(name: str) -> PresetRowView:

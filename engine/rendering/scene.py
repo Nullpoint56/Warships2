@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
-from typing import Callable
-from typing import Any
-from typing import cast
+from dataclasses import dataclass, field
+from typing import Any, Callable, cast
+
 from engine.rendering.scene_retained import (
     hide_inactive_nodes,
     upsert_grid,

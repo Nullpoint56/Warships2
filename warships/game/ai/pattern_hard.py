@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 
 from warships.game.ai.strategy import AIStrategy
 from warships.game.core.models import BOARD_SIZE, Coord, ShotResult

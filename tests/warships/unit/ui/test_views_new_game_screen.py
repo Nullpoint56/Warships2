@@ -1,7 +1,6 @@
+from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 from warships.game.app.state_machine import AppState
 from warships.game.ui.views.new_game_screen import draw_new_game_setup
-
-from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 
 
 def test_draw_new_game_setup_renders_core_elements() -> None:

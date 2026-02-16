@@ -5,11 +5,17 @@ from engine.ui_runtime.list_viewport import can_scroll_down as can_scroll_list_d
 from engine.ui_runtime.list_viewport import clamp_scroll, visible_slice
 from engine.ui_runtime.prompt_runtime import (
     close_prompt,
-    handle_button as handle_prompt_button,
-    handle_char as handle_prompt_char,
-    handle_key as handle_prompt_key,
     open_prompt,
     sync_prompt,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_button as handle_prompt_button,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_char as handle_prompt_char,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_key as handle_prompt_key,
 )
 from engine.ui_runtime.scroll import apply_wheel_scroll
 

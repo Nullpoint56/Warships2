@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 
 from warships.game.app.ports.runtime_services import (
     can_scroll_list_down,

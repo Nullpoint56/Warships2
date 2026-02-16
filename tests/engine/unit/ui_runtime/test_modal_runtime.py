@@ -3,7 +3,6 @@ from engine.ui_runtime.modal_runtime import (
     route_modal_key_event,
     route_modal_pointer_event,
 )
-
 from tests.engine.conftest import FakeModalWidget
 
 

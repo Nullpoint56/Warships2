@@ -176,6 +176,13 @@ Exit criteria:
 1. Expanded rule set runs green in CI.
 2. No high-noise false-positive patterns in active rule families.
 
+Status:
+1. In progress.
+2. `I` (import/order hygiene) has been enabled in addition to `F`.
+3. Import-order findings were auto-fixed (`ruff check --fix`) and baseline checks are green.
+4. `E` has been enabled with temporary `E501` ignore to avoid noisy line-length churn.
+5. Next Ruff expansions planned: `B`, then `UP`, and later revisit `E501`.
+
 ### H3: Mypy Scope Expansion (Incremental)
 
 1. Expand mypy scope in this order:

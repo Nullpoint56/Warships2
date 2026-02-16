@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from warships.game.app.state_machine import AppState
 from warships.game.app.ports.runtime_primitives import Button, PromptView
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.preset_flow import PresetFlowService
+from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import PresetRowView
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL, PROMPT
 from warships.game.ui.overlays import buttons_for_state

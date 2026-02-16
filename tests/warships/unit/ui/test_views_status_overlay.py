@@ -1,8 +1,7 @@
+from tests.warships.unit.ui.helpers import FakeRenderer
 from warships.game.app.state_machine import AppState
 from warships.game.core.models import Orientation, ShipType
 from warships.game.ui.views.status_overlay import draw_status_bar
-
-from tests.warships.unit.ui.helpers import FakeRenderer
 
 
 def test_draw_status_bar_skips_main_menu() -> None:
