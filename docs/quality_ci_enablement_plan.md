@@ -138,3 +138,75 @@ Implemented now:
 Deferred intentionally:
 1. Formatter enforcement (`ruff format --check`) is postponed to a dedicated formatting pass PR.
 2. Broader mypy scope and stricter Ruff rule sets will be raised incrementally.
+
+## Next Branch: CI + Code Check Hardening
+
+Recommended branch name:
+1. `chore/ci-quality-hardening`
+
+Objective:
+1. Move from baseline quality gates to stricter, low-noise enforcement without disrupting delivery flow.
+
+### H1: Formatter Rollout
+
+1. Run repository-wide `ruff format` in a dedicated formatting-only PR.
+2. Keep that PR free of behavior changes.
+3. After merge, enable formatter checks:
+   - local: add `uv run ruff format --check .` back to `scripts/check.ps1`
+   - CI: add formatter check step back to `.github/workflows/quality.yml`
+
+Exit criteria:
+1. Formatter check passes in CI on new PRs.
+2. No recurring style-drift diffs.
+
+### H2: Ruff Rule Expansion (Incremental)
+
+1. Expand Ruff from `F` baseline to `I` (import/order hygiene).
+2. Fix resulting issues in one focused pass.
+3. Expand next to `E`, then `B`, then `UP` in small batches.
+4. Keep each rule-family expansion in separate commits/PR sections for easy rollback.
+
+Exit criteria:
+1. Expanded rule set runs green in CI.
+2. No high-noise false-positive patterns in active rule families.
+
+### H3: Mypy Scope Expansion (Incremental)
+
+1. Expand mypy scope in this order:
+   - `engine/runtime`
+   - `engine/input`
+   - stable `warships/game/app/services/*`
+2. Keep boundary pragmatism (`ignore_missing_imports = true`) while expanding.
+3. Resolve type issues module-by-module before widening scope again.
+
+Exit criteria:
+1. Expanded mypy scope passes in CI.
+2. No frequent type-gate churn for unchanged modules.
+
+### H4: CI Gate Tightening
+
+1. Keep `Build Windows EXE` non-required initially.
+2. Evaluate stability over multiple PRs/main runs.
+3. Decide whether to make build required once flakiness is near-zero.
+
+Exit criteria:
+1. Required checks remain fast and reliable.
+2. Build job policy is explicitly documented (required vs informational).
+
+### H5: Docs and Developer UX
+
+1. Update this document after each hardening milestone.
+2. Add a short `README` section for standard quality commands:
+   - `scripts/check.ps1`
+   - build script usage
+3. Keep local and CI commands aligned.
+
+Exit criteria:
+1. New contributors can run the same checks locally as CI with minimal setup.
+
+### Hardening Done Criteria
+
+1. `ruff check` + `ruff format --check` enforced in CI.
+2. Mypy scope expanded beyond baseline modules with stable signal.
+3. Existing test/coverage gates continue passing.
+4. Branch protection rules map cleanly to maintained CI jobs.
