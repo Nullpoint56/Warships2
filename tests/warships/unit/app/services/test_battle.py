@@ -53,3 +53,9 @@ def test_resolve_player_turn_invalid_and_regular_paths(valid_fleet) -> None:
     session.turn = Turn.PLAYER
     regular = resolve_player_turn(session, ai, Coord(9, 9))
     assert regular.shot_result in {ShotResult.MISS, ShotResult.HIT, ShotResult.SUNK}
+
+
+def test_build_ai_strategy_defaults_unknown_difficulty_to_normal() -> None:
+    ai = build_ai_strategy("Impossible", random.Random(4))
+    # "Normal" maps to hunt-target.
+    assert ai.__class__.__name__ == "HuntTargetAI"

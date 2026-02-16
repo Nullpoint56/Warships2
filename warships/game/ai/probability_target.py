@@ -12,6 +12,7 @@ class ProbabilityTargetAI(AIStrategy):
     """Hard AI that scores cells from all valid ship placements."""
 
     def __init__(self, rng: random.Random, size: int = BOARD_SIZE) -> None:
+        super().__init__()
         self._rng = rng
         self._size = size
         self._remaining: set[tuple[int, int]] = {(r, c) for r in range(size) for c in range(size)}

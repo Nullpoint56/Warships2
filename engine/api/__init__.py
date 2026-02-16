@@ -6,6 +6,16 @@ from engine.api.action_dispatch import (
     PrefixedActionHandler,
     create_action_dispatcher,
 )
+from engine.api.ai import (
+    Agent,
+    Blackboard,
+    DecisionContext,
+    best_action,
+    combine_weighted_scores,
+    create_blackboard,
+    create_functional_agent,
+    normalize_scores,
+)
 from engine.api.app_port import EngineAppPort
 from engine.api.assets import AssetHandle, AssetRegistry, create_asset_registry
 from engine.api.commands import Command, CommandMap, create_command_map
@@ -35,10 +45,13 @@ from engine.api.ui_framework import UIFramework, create_ui_framework
 
 __all__ = [
     "ActionDispatcher",
+    "Agent",
     "AssetHandle",
     "AssetRegistry",
+    "Blackboard",
     "Command",
     "CommandMap",
+    "DecisionContext",
     "DirectActionHandler",
     "EngineAppPort",
     "EventBus",
@@ -65,13 +78,18 @@ __all__ = [
     "SystemSpec",
     "UIFramework",
     "UpdateLoop",
+    "best_action",
+    "combine_weighted_scores",
     "create_action_dispatcher",
     "create_asset_registry",
+    "create_blackboard",
     "create_command_map",
     "create_event_bus",
+    "create_functional_agent",
     "create_flow_machine",
     "create_interaction_mode_machine",
     "create_ui_framework",
+    "normalize_scores",
     "run_pygfx_hosted_runtime",
     "create_module_graph",
     "create_runtime_context",

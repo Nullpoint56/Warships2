@@ -164,6 +164,12 @@ Recommended slice order:
 ## Implementation Status
 
 - Done:
+  - Track C1 `engine/api/ai.py` + `engine/ai/agent.py`
+    (`Agent`, `DecisionContext`, `create_functional_agent`, `FunctionalAgent`)
+  - Track C2 `engine/api/ai.py` + `engine/ai/blackboard.py`
+    (`Blackboard`, `create_blackboard`, `RuntimeBlackboard`)
+  - Track C3 `engine/api/ai.py` + `engine/ai/utility.py`
+    (`normalize_scores`, `best_action`, `combine_weighted_scores`)
   - Track B1 `engine/api/gameplay.py` + `engine/gameplay/system.py`
     (`GameplaySystem`, `SystemSpec`)
   - Track B2 `engine/api/gameplay.py` + `engine/gameplay/update_loop.py`
@@ -189,6 +195,9 @@ Recommended slice order:
     - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
       in `engine/runtime/framework_engine.py`
   - Engine unit tests added:
+    - `tests/engine/unit/ai/test_agent.py`
+    - `tests/engine/unit/ai/test_blackboard.py`
+    - `tests/engine/unit/ai/test_utility.py`
     - `tests/engine/unit/gameplay/test_state_store.py`
     - `tests/engine/unit/gameplay/test_update_loop.py`
     - `tests/engine/unit/runtime/test_context.py`
@@ -295,3 +304,22 @@ Track B gate decision:
 - Engine completion gate: PASS
 - Warships adoption gate: PASS
 - Track B is complete; eligible to proceed to Track C.
+
+Track C adoption matrix:
+1. `agent` (`Agent`, `DecisionContext`, `create_functional_agent`): applicable
+- Warships AI strategies now implement the engine `Agent` contract via
+  `AIStrategy.decide(...)` and AI turns execute through `DecisionContext`
+  in `warships/game/app/services/battle.py`.
+
+2. `blackboard` (`Blackboard`, `create_blackboard`): applicable
+- Warships strategies now own an engine blackboard and pass decided shots through it
+  (`AIStrategy.blackboard`, `AIStrategy.take_decided_shot(...)`) on the live battle path.
+
+3. `utility` (`best_action`, `normalize_scores`, `combine_weighted_scores`): applicable
+- Warships difficulty normalization now resolves through `best_action(...)`
+  (`warships/game/app/services/battle.py`), replacing ad-hoc selection branching.
+
+Track C gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track C is complete.
