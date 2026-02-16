@@ -202,14 +202,17 @@ Exit criteria:
 
 Status:
 1. In progress.
-2. Added to mypy scope:
+2. Added to mypy scope incrementally:
    - `engine/runtime`
    - `engine/input`
    - `warships/game/app/services`
-3. Type issues found during expansion were resolved:
+3. Mypy scope has been expanded to full package coverage:
+   - `engine`
+   - `warships`
+4. Type issues found during expansion were resolved:
    - runtime route/event variable typing in `engine/runtime/framework_engine.py` and `engine/runtime/pygfx_frontend.py`
    - generalized ship-order parameter typing (`Sequence[ShipType]`) in `warships/game/app/services/placement_editor.py`
-4. Expanded mypy baseline currently passes on `48` source files.
+5. Full-package mypy currently passes on `92` source files.
 
 ### H4: CI Gate Tightening
 

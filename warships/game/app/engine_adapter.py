@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import cast
 
 from engine.api.app_port import (
     ButtonView,
@@ -27,7 +28,7 @@ from warships.game.ui.framework.widgets import build_modal_text_input_widget
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(slots=True)
 class _EngineInteractionPlan:
     """Engine runtime-compatible interaction plan."""
 
@@ -47,7 +48,9 @@ class WarshipsAppAdapter(EngineAppPort):
         return self._controller.ui_state()
 
     def modal_widget(self) -> ModalWidgetView | None:
-        return build_modal_text_input_widget(self._controller.ui_state())
+        return cast(
+            ModalWidgetView | None, build_modal_text_input_widget(self._controller.ui_state())
+        )
 
     def interaction_plan(self) -> InteractionPlanView:
         ui = self._controller.ui_state()
@@ -58,7 +61,7 @@ class WarshipsAppAdapter(EngineAppPort):
         if state is AppState.PRESET_MANAGE:
             wheel_scroll_regions.append(PRESET_PANEL.panel_rect())
         return _EngineInteractionPlan(
-            buttons=tuple(ui.buttons),
+            buttons=tuple(cast(ButtonView, button) for button in ui.buttons),
             shortcut_buttons=shortcut_buttons_for_state(state),
             grid_click_target="secondary" if state is AppState.BATTLE else None,
             wheel_scroll_regions=tuple(wheel_scroll_regions),

@@ -25,6 +25,7 @@ from engine.rendering.scene_viewport import (
     viewport_transform,
 )
 
+_gfx_import_error: Exception | None
 try:
     import pygfx as gfx
 except Exception as exc:  # pragma: no cover - import guard for environments without graphics deps
@@ -33,6 +34,7 @@ except Exception as exc:  # pragma: no cover - import guard for environments wit
 else:
     _gfx_import_error = None
 
+_canvas_import_error: Exception | None
 try:
     import rendercanvas.auto as rc_auto
 except Exception as exc:  # pragma: no cover - missing GUI backend
@@ -43,7 +45,7 @@ else:
     try:
         # Guard against transient zero-size events (e.g. snap/resize on Windows) before they
         # propagate into rendercanvas internals.
-        from rendercanvas import _size as _rc_size  # type: ignore
+        from rendercanvas import _size as _rc_size
 
         if not getattr(_rc_size.SizeInfo.set_physical_size, "_warships_size_clamped", False):
             _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
@@ -53,8 +55,9 @@ else:
             ) -> None:
                 _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
 
-            _safe_set_physical_size._warships_size_clamped = True  # type: ignore[attr-defined]
-            _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size  # type: ignore
+            marker_target = cast(Any, _safe_set_physical_size)
+            marker_target._warships_size_clamped = True
+            _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size
     except Exception:
         pass
 

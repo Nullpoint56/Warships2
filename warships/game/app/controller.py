@@ -288,19 +288,21 @@ class GameController:
         """Handle key-down events for prompt and placement rotation."""
         key = event.key.lower()
         if self._state_data.prompt_state.prompt is not None:
-            outcome = PromptFlowService.handle_key(self._state_data.prompt_state, key)
+            prompt_outcome = PromptFlowService.handle_key(self._state_data.prompt_state, key)
             return apply_prompt_interaction_outcome(
-                outcome,
+                prompt_outcome,
                 state=self._state_data,
                 confirm_prompt=self._confirm_prompt,
                 refresh_buttons=self._refresh_buttons,
             )
 
         if can_handle_key_for_placement(self._state_data.app_state):
-            outcome = PlacementFlowService.on_key_for_held(key=key, held_state=self._held_state())
-            if outcome.handled:
+            placement_outcome = PlacementFlowService.on_key_for_held(
+                key=key, held_state=self._held_state()
+            )
+            if placement_outcome.handled:
                 return apply_placement_outcome(
-                    outcome,
+                    placement_outcome,
                     state=self._state_data,
                     refresh_buttons=self._refresh_buttons,
                 )
