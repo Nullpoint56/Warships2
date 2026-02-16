@@ -70,10 +70,10 @@ File: `engine/api/app_port.py`
 
 Bridge from engine UI routing to app actions:
 - state queries: `ui_state`, `modal_widget`, `interaction_plan`
-- actions: `on_button`, `on_grid_click`, pointer/key/char/wheel handlers
+- actions: `on_button`, `on_cell_click`, pointer/key/char/wheel handlers
 
 Interaction contract is engine-neutral:
-- `grid_click_target`
+- `cell_click_surface`
 - `wheel_scroll_regions`
 
 ### `RenderAPI`
@@ -114,8 +114,8 @@ Model:
 ## Configuration
 
 Relevant env flags:
-- `WARSHIPS_WINDOW_MODE`
-- `WARSHIPS_UI_ASPECT_MODE`
+- `ENGINE_WINDOW_MODE` (with `WARSHIPS_WINDOW_MODE` fallback)
+- `ENGINE_UI_ASPECT_MODE` (with `WARSHIPS_UI_ASPECT_MODE` fallback)
 - `WARSHIPS_DEBUG_INPUT`
 - `WARSHIPS_DEBUG_UI`
 - `LOG_LEVEL`

@@ -50,20 +50,20 @@ class _StubController:
 def test_adapter_interaction_plan_maps_state() -> None:
     battle = WarshipsAppAdapter(_StubController(AppState.BATTLE))
     plan_battle = battle.interaction_plan()
-    assert plan_battle.grid_click_target == "secondary"
+    assert plan_battle.cell_click_surface == "secondary"
 
     manage = WarshipsAppAdapter(_StubController(AppState.PRESET_MANAGE))
     plan_manage = manage.interaction_plan()
-    assert plan_manage.grid_click_target is None
+    assert plan_manage.cell_click_surface is None
     assert len(plan_manage.wheel_scroll_regions) == 1
 
 
-def test_adapter_on_grid_click_maps_target_to_ai_flag() -> None:
+def test_adapter_on_cell_click_maps_target_to_ai_flag() -> None:
     controller = _StubController(AppState.BATTLE)
     adapter = WarshipsAppAdapter(controller)
-    assert adapter.on_grid_click("secondary", 2, 3)
+    assert adapter.on_cell_click("secondary", 2, 3)
     assert controller.calls[-1] == ("board", (True, 2, 3))
-    assert adapter.on_grid_click("primary", 1, 1)
+    assert adapter.on_cell_click("primary", 1, 1)
     assert controller.calls[-1] == ("board", (False, 1, 1))
 
 

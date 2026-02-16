@@ -47,7 +47,7 @@ else:
         # propagate into rendercanvas internals.
         from rendercanvas import _size as _rc_size
 
-        if not getattr(_rc_size.SizeInfo.set_physical_size, "_warships_size_clamped", False):
+        if not getattr(_rc_size.SizeInfo.set_physical_size, "_engine_size_clamped", False):
             _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
 
             def _safe_set_physical_size(
@@ -56,7 +56,7 @@ else:
                 _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
 
             marker_target = cast(Any, _safe_set_physical_size)
-            marker_target._warships_size_clamped = True
+            marker_target._engine_size_clamped = True
             _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size
     except Exception:
         pass
@@ -73,7 +73,7 @@ class SceneRenderer:
     design_width: int = 1200
     design_height: int = 720
     preserve_aspect: bool = False
-    title: str = "Warships V1"
+    title: str = "Engine Runtime"
     _dynamic_nodes: list[object] = field(default_factory=list)
     _rect_nodes: dict[str, Any] = field(default_factory=dict)
     _line_nodes: dict[str, Any] = field(default_factory=dict)

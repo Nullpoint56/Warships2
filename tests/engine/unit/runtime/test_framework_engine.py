@@ -26,14 +26,14 @@ def test_pointer_down_routes_to_button_click() -> None:
 
 def test_pointer_down_routes_to_grid_click_when_target_present() -> None:
     app = FakeApp()
-    app.set_plan(FakeInteractionPlan(grid_click_target="secondary"))
+    app.set_plan(FakeInteractionPlan(cell_click_surface="secondary"))
     layout = GridLayout(
         primary_origin_x=0, secondary_origin_x=100, origin_y=0, cell_size=10, grid_size=10
     )
     framework = EngineUIFramework(app=app, renderer=FakeRenderer(), layout=layout)
     changed = framework.handle_pointer_event(PointerEvent("pointer_down", 115, 25, 1))
     assert changed
-    assert app.calls[-1] == ("on_grid_click", ("secondary", 2, 1))
+    assert app.calls[-1] == ("on_cell_click", ("secondary", 2, 1))
 
 
 def test_pointer_down_modal_takes_precedence() -> None:

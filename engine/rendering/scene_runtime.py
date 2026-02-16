@@ -8,13 +8,17 @@ from typing import Any
 
 def resolve_preserve_aspect() -> bool:
     """Read aspect mode from env and normalize into preserve_aspect flag."""
-    aspect_mode = os.getenv("WARSHIPS_UI_ASPECT_MODE", "contain").strip().lower()
+    aspect_mode = os.getenv(
+        "ENGINE_UI_ASPECT_MODE", os.getenv("WARSHIPS_UI_ASPECT_MODE", "contain")
+    ).strip().lower()
     return aspect_mode in {"contain", "preserve", "fixed"}
 
 
 def resolve_window_mode() -> str:
     """Read startup window mode from environment."""
-    return os.getenv("WARSHIPS_WINDOW_MODE", "windowed").strip().lower()
+    return os.getenv(
+        "ENGINE_WINDOW_MODE", os.getenv("WARSHIPS_WINDOW_MODE", "windowed")
+    ).strip().lower()
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:

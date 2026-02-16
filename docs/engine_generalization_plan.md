@@ -18,7 +18,7 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 - Engine-hosted lifecycle and frame loop
 - Engine render API + PyGFX backend
 - Engine input collection and UI routing
-- Neutral app-port interaction semantics (`grid_click_target`, `wheel_scroll_regions`)
+- Neutral app-port interaction semantics (`cell_click_surface`, `wheel_scroll_regions`)
 - Neutral grid primitive (`GridLayout`)
 
 ## Priority Tracks
@@ -323,3 +323,31 @@ Track C gate decision:
 - Engine completion gate: PASS
 - Warships adoption gate: PASS
 - Track C is complete.
+
+## Post-Completion Neutralization Slice (N1)
+
+Goal: remove remaining Warships/game-flavored naming from engine runtime and API surfaces
+without changing runtime behavior.
+
+Scope:
+1. Env/config neutralization:
+- Prefer `ENGINE_WINDOW_MODE` and `ENGINE_UI_ASPECT_MODE` in engine runtime.
+- Keep fallback to existing `WARSHIPS_*` env vars for compatibility.
+
+2. Rendering naming neutralization:
+- Replace internal rendercanvas monkey-patch marker `_warships_size_clamped`
+  with `_engine_size_clamped`.
+- Replace `SceneRenderer` default window title with engine-neutral default.
+
+3. Interaction API neutralization:
+- Rename app-port interaction semantics:
+  - `grid_click_target` -> `cell_click_surface`
+  - `on_grid_click(...)` -> `on_cell_click(...)`
+- Keep same runtime behavior (cell hit-testing on named surface targets).
+
+4. Grid target alias neutralization:
+- Restrict engine `GridLayout` targets to neutral `primary` and `secondary`.
+- Remove game-flavored aliases (`enemy`, `opponent`, `player`, `ai`, `self`).
+
+N1 Status:
+- PASS. Implemented in engine + Warships integration and tests updated.

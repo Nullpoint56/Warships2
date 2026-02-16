@@ -22,7 +22,9 @@ def run_engine_hosted_app() -> None:
     """Compose and run Warships on the engine-hosted lifecycle path."""
     controller = _build_controller()
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
-    host_config = HostedRuntimeConfig(window_mode=os.getenv("WARSHIPS_WINDOW_MODE", "windowed"))
+    host_config = HostedRuntimeConfig(
+        window_mode=os.getenv("ENGINE_WINDOW_MODE", os.getenv("WARSHIPS_WINDOW_MODE", "windowed"))
+    )
     run_pygfx_hosted_runtime(
         module_factory=lambda renderer, layout: _build_module(
             controller, renderer, layout, debug_ui

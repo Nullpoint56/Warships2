@@ -35,7 +35,7 @@ class _EngineInteractionPlan:
 
     buttons: tuple[ButtonView, ...]
     shortcut_buttons: dict[str, str]
-    grid_click_target: str | None
+    cell_click_surface: str | None
     wheel_scroll_regions: tuple[RectView, ...]
 
 
@@ -64,15 +64,15 @@ class WarshipsAppAdapter(EngineAppPort):
         return _EngineInteractionPlan(
             buttons=tuple(cast(ButtonView, button) for button in ui.buttons),
             shortcut_buttons=shortcut_buttons_for_state(state),
-            grid_click_target="secondary" if state is AppState.BATTLE else None,
+            cell_click_surface="secondary" if state is AppState.BATTLE else None,
             wheel_scroll_regions=tuple(wheel_scroll_regions),
         )
 
     def on_button(self, button_id: str) -> bool:
         return self._controller.handle_button(ButtonPressed(button_id))
 
-    def on_grid_click(self, grid_target: str, row: int, col: int) -> bool:
-        is_ai_board = grid_target.strip().lower() in {"secondary", "opponent", "enemy", "ai"}
+    def on_cell_click(self, surface_target: str, row: int, col: int) -> bool:
+        is_ai_board = surface_target.strip().lower() == "secondary"
         return self._controller.handle_board_click(
             BoardCellPressed(is_ai_board, Coord(row=row, col=col))
         )

@@ -116,7 +116,7 @@ Use fake `EngineAppPort`, fake `RenderAPI`, and real `GridLayout`.
 1. Pointer routing:
    - modal path precedence
    - button click path
-   - grid click path through `grid_click_target`
+   - cell click path through `cell_click_surface`
    - fallback `on_pointer_down`
 2. Key routing:
    - modal key/char path

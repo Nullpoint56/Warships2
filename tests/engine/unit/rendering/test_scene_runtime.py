@@ -93,12 +93,12 @@ def _install_fake_rendercanvas_glfw(monkeypatch: pytest.MonkeyPatch, glfw_obj: _
 
 
 def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WARSHIPS_UI_ASPECT_MODE", "contain")
+    monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "contain")
     assert resolve_preserve_aspect()
-    monkeypatch.setenv("WARSHIPS_UI_ASPECT_MODE", "stretch")
+    monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "stretch")
     assert not resolve_preserve_aspect()
 
-    monkeypatch.setenv("WARSHIPS_WINDOW_MODE", "FULLSCREEN")
+    monkeypatch.setenv("ENGINE_WINDOW_MODE", "FULLSCREEN")
     assert resolve_window_mode() == "fullscreen"
 
 

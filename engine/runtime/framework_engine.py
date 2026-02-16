@@ -57,11 +57,11 @@ class EngineUIFramework:
             button_id = resolve_pointer_button(interactions, x, y)
             if button_id is not None:
                 return self._app.on_button(button_id)
-            if interactions.grid_click_target is not None:
-                grid_cell = self._layout.screen_to_cell(interactions.grid_click_target, x, y)
+            if interactions.cell_click_surface is not None:
+                grid_cell = self._layout.screen_to_cell(interactions.cell_click_surface, x, y)
                 if grid_cell is not None:
-                    return self._app.on_grid_click(
-                        interactions.grid_click_target, grid_cell.row, grid_cell.col
+                    return self._app.on_cell_click(
+                        interactions.cell_click_surface, grid_cell.row, grid_cell.col
                     )
         return self._app.on_pointer_down(x=x, y=y, button=event.button)
 
