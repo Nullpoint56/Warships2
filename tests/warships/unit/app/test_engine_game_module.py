@@ -51,9 +51,27 @@ class _Controller:
 class _Host:
     def __init__(self) -> None:
         self.closed = 0
+        self.cancelled: list[int] = []
+        self.next_task_id = 1
 
     def close(self) -> None:
         self.closed += 1
+
+    def call_later(self, delay_seconds: float, callback) -> int:
+        _ = delay_seconds
+        task_id = self.next_task_id
+        self.next_task_id += 1
+        callback()
+        return task_id
+
+    def call_every(self, interval_seconds: float, callback) -> int:
+        _ = (interval_seconds, callback)
+        task_id = self.next_task_id
+        self.next_task_id += 1
+        return task_id
+
+    def cancel_task(self, task_id: int) -> None:
+        self.cancelled.append(task_id)
 
 
 def test_game_module_forwards_input_events() -> None:
@@ -73,8 +91,8 @@ def test_game_module_frame_and_close_lifecycle() -> None:
         controller=_Controller(is_closing=True), framework=framework, view=view, debug_ui=False
     )
     module.on_start(host)
-    module.on_frame(HostFrameContext(frame_index=0))
+    module.on_frame(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))
     assert framework.synced == 1
     assert view.calls == 1
     assert host.closed == 1
-    assert module.should_close()
+    assert not module.should_close()

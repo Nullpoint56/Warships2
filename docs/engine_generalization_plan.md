@@ -59,12 +59,45 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 3. `engine/ai/utility.py`
 - Generic scoring/composition helpers
 
+### Track D: Core Engine Services (Missing Today)
+
+1. `engine/runtime/time.py`
+- Frame time and delta provider (`TimeContext`)
+- Fixed-step accumulator helper for deterministic updates
+
+2. `engine/runtime/scheduler.py`
+- Engine-owned deferred/interval task scheduler
+- Replaces ad-hoc frame-index timing in game orchestration
+
+3. `engine/assets/registry.py`
+- Typed asset handle + registry/load lifecycle hooks
+- Keeps renderer/game modules from directly coupling to file loading policy
+
+4. `engine/runtime/commands.py`
+- Input-to-command mapping primitives (`Command`, `CommandBinding`, `CommandMap`)
+- Decouples game actions from raw key names and wheel/button plumbing
+
+5. `engine/runtime/events.py`
+- Lightweight event bus contract for module/system boundaries
+- Pub/sub primitives only (no game-domain event types)
+
+### Track E: Module/Subsystem Composition
+
+1. `engine/runtime/module_graph.py`
+- Ordered module startup/shutdown/update dependency graph
+- Avoids custom lifecycle wiring per game module
+
+2. `engine/runtime/context.py`
+- Shared engine context object (render/input/time/scheduler/services)
+- Stable injection point for modules/systems without reaching into runtime internals
+
 ## Keep in Game
 
 - Warships domain states and transitions
 - Fleet/preset/business rules
 - Difficulty and AI strategy policy
 - Concrete UI layout/look-and-feel
+- Game-domain content loading and persistence schema
 
 ## Execution Strategy
 
@@ -73,9 +106,89 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 3. Remove redundant game-local generic helpers after parity.
 4. Validate each slice by manual smoke testing.
 
+## Track Execution Contract (Strict)
+
+We only move to the next track when both are true for the current track:
+
+1. Engine completion gate:
+- All items listed in the track are implemented in `engine/`.
+- Unit tests for new engine primitives exist and pass.
+
+2. Warships adoption gate:
+- Every new engine primitive is evaluated as `applicable` or `not_applicable` for Warships.
+- If `applicable`, Warships must use it on a real path (not dead code).
+- If `not_applicable`, we must document the reason and the trigger for when it becomes applicable.
+
+Recommended slice order:
+1. Track D (`time`, `scheduler`, `commands`) as lowest-risk foundational APIs.
+2. Track A (`screen_stack`, `flow`, `interaction_modes`) and migrate game menu/state orchestration.
+3. Track E (`module_graph`, `context`) to simplify runtime composition.
+4. Track B (`system`, `update_loop`, `state_store`) for gameplay loop standardization.
+5. Track C (`ai/*`) once gameplay system boundaries are stable.
+
 ## Acceptance Criteria
 
 1. No `engine -> warships` imports.
 2. New engine APIs stay domain-neutral.
 3. A second game could adopt primitives without API redesign.
 4. Runtime remains stable while migrating consumers incrementally.
+5. Raw input handling can route through engine command mapping without app-specific key plumbing.
+6. Frame timing and deferred work are engine-owned primitives (no game-side ad-hoc schedulers).
+7. Module lifecycle composition is declarative (graph/context) rather than per-game wiring.
+
+## Implementation Status
+
+- Done:
+  - Track D1 `engine/runtime/time.py` (`TimeContext`, `FrameClock`, `FixedStepAccumulator`)
+  - Track D2 `engine/runtime/scheduler.py` (`Scheduler` with one-shot + recurring tasks)
+  - Track D3 `engine/assets/registry.py` (`AssetRegistry`, `AssetHandle`)
+  - Track D4 `engine/runtime/commands.py` (`CommandMap`, `Command`)
+  - Track D5 `engine/runtime/events.py` (`EventBus`, `Subscription`)
+  - Host integration:
+    - `HostFrameContext` now carries `delta_seconds` and `elapsed_seconds`
+    - `EngineHost` advances scheduler each frame and exposes `call_later/call_every/cancel_task`
+  - Runtime adoption:
+    - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
+      in `engine/runtime/framework_engine.py`
+  - Engine unit tests added:
+    - `tests/engine/unit/assets/test_registry.py`
+    - `tests/engine/unit/runtime/test_commands.py`
+    - `tests/engine/unit/runtime/test_events.py`
+    - `tests/engine/unit/runtime/test_time.py`
+    - `tests/engine/unit/runtime/test_scheduler.py`
+- Verified:
+  - `uv run mypy`
+  - `uv run ruff check .`
+  - `uv run pytest tests/engine --cov=engine --cov-fail-under=75`
+
+Track D integration notes:
+- `commands` is now on an active game input path (shortcut routing).
+- `time`/`scheduler` are integrated at host runtime level and available to game modules.
+- `events` and `assets` are currently foundational primitives; adoption will be done in
+  the next tracks where their usage points are introduced.
+
+Track D adoption matrix (for next-gate decision):
+1. `time` (`FrameClock`, `TimeContext`): applicable
+- Used by host frame loop and passed to Warships module via `HostFrameContext`.
+
+2. `scheduler` (`Scheduler`): applicable
+- Integrated into `EngineHost` and available through host control API.
+- Used by Warships runtime close lifecycle path via `HostControl.call_later(...)`
+  in `warships/game/app/engine_game_module.py`.
+
+3. `commands` (`CommandMap`): applicable
+- Used in runtime key shortcut routing on active Warships input path.
+
+4. `events` (`EventBus`): applicable
+- Used in Warships runtime close lifecycle signaling (`_CloseRequested`)
+  in `warships/game/app/engine_game_module.py`.
+
+5. `assets` (`AssetRegistry`): not_applicable_currently
+- Warships currently has no runtime-loaded engine-managed assets (textures/audio/fonts).
+- Trigger to become applicable: first runtime asset loading path introduced into engine/game runtime.
+
+Track D gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS (`time`, `scheduler`, `commands`, `events` adopted; `assets` documented
+  as not currently applicable with explicit trigger)
+- Track D is complete; eligible to proceed to Track A.

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -13,6 +14,8 @@ class HostFrameContext:
     """Per-frame context passed from engine host to game module."""
 
     frame_index: int
+    delta_seconds: float
+    elapsed_seconds: float
 
 
 class HostControl(Protocol):
@@ -20,6 +23,15 @@ class HostControl(Protocol):
 
     def close(self) -> None:
         """Request host shutdown."""
+
+    def call_later(self, delay_seconds: float, callback: Callable[[], None]) -> int:
+        """Schedule a one-shot callback in host runtime time."""
+
+    def call_every(self, interval_seconds: float, callback: Callable[[], None]) -> int:
+        """Schedule a recurring callback in host runtime time."""
+
+    def cancel_task(self, task_id: int) -> None:
+        """Cancel a previously scheduled task."""
 
 
 class GameModule(Protocol):
