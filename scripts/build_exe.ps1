@@ -26,7 +26,6 @@ $args = @(
     '--collect-all', 'wgpu',
     '--collect-all', 'rendercanvas',
     '--add-binary', "$glfwDll;.",
-    '--add-data', 'warships\data\presets;warships\data\presets',
     $entry
 )
 
@@ -40,6 +39,10 @@ if (Test-Path $pyinstallerExe) {
     & $venvPython -m PyInstaller @args
 } else {
     py -m PyInstaller @args
+}
+
+if ($LASTEXITCODE -ne 0) {
+    throw "PyInstaller failed with exit code $LASTEXITCODE."
 }
 
 Write-Host "Build complete: dist\\$name\\$name.exe"
