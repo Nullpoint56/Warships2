@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.runtime.scheduler import Scheduler
 from engine.runtime.time import FrameClock
 

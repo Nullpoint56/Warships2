@@ -7,11 +7,11 @@ from typing import Any
 
 from engine.api.game_module import GameModule
 from engine.api.render import RenderAPI
+from engine.api.ui_primitives import GridLayout
 from engine.input.input_controller import InputController
 from engine.rendering.scene import SceneRenderer
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.pygfx_frontend import create_pygfx_window
-from engine.ui_runtime.grid_layout import GridLayout
 
 
 def run_pygfx_hosted_runtime(

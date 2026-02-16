@@ -380,3 +380,19 @@ Scope:
 
 N2 Status:
 - PASS. Warships imports moved to `engine.api.*`; verification and checks passed.
+
+## Post-Completion API Hardening Slice (N3)
+
+Goal: remove façade-only API re-exports and make API modules own their runtime contracts.
+
+Scope:
+1. Replace `engine.api.input_events` re-export façade with API-owned dataclasses
+   (`PointerEvent`, `KeyEvent`, `WheelEvent`).
+2. Make `engine.input.input_controller` produce API-owned input event dataclasses.
+3. Replace `engine.api.ui_primitives` re-export façade with API-owned primitive
+   types and helper functions (geometry/grid/widgets/list/prompt/modal/key routing/scroll).
+4. Rewire runtime modules (`framework_engine`, `host`, `bootstrap`) to use API-owned
+   contracts/primitives.
+
+N3 Status:
+- PASS. API façade re-exports removed; runtime rewired to API-owned contracts.

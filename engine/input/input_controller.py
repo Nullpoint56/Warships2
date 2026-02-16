@@ -9,6 +9,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+
 
 @dataclass(frozen=True, slots=True)
 class PointerClick:
@@ -17,33 +19,6 @@ class PointerClick:
     x: float
     y: float
     button: int
-
-
-@dataclass(frozen=True, slots=True)
-class PointerEvent:
-    """Raw pointer event in canvas coordinates."""
-
-    event_type: str
-    x: float
-    y: float
-    button: int
-
-
-@dataclass(frozen=True, slots=True)
-class KeyEvent:
-    """Raw key/char event."""
-
-    event_type: str
-    value: str
-
-
-@dataclass(frozen=True, slots=True)
-class WheelEvent:
-    """Mouse wheel event in canvas coordinates."""
-
-    x: float
-    y: float
-    dy: float
 
 
 logger = logging.getLogger(__name__)
