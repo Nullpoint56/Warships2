@@ -10,8 +10,8 @@ from engine.api.context import RuntimeContext, create_runtime_context
 from engine.api.events import Subscription, create_event_bus
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
+from engine.api.ui_framework import UIFramework
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
-from engine.runtime.framework_engine import EngineUIFramework
 from warships.game.app.controller import GameController
 from warships.game.ui.game_view import GameView
 
@@ -28,7 +28,7 @@ class _FrameworkSyncModule(RuntimeModule):
         _ = context
 
     def update(self, context: RuntimeContext) -> None:
-        framework = cast(EngineUIFramework, context.require("framework"))
+        framework = cast(UIFramework, context.require("framework"))
         framework.sync_ui_state()
 
     def shutdown(self, context: RuntimeContext) -> None:
@@ -78,7 +78,7 @@ class WarshipsGameModule(GameModule):
     def __init__(
         self,
         controller: GameController,
-        framework: EngineUIFramework,
+        framework: UIFramework,
         view: GameView,
         debug_ui: bool,
     ) -> None:

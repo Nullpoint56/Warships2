@@ -1,6 +1,9 @@
 """App-local runtime service ports that wrap engine mechanisms."""
 
-from engine.runtime.action_dispatch import ActionDispatcher
+from engine.api.action_dispatch import (
+    ActionDispatcher,
+    create_action_dispatcher,
+)
 from engine.ui_runtime.list_viewport import can_scroll_down as can_scroll_list_down
 from engine.ui_runtime.list_viewport import clamp_scroll, visible_slice
 from engine.ui_runtime.prompt_runtime import (
@@ -28,6 +31,7 @@ __all__ = [
     "handle_prompt_button",
     "handle_prompt_char",
     "handle_prompt_key",
+    "create_action_dispatcher",
     "open_prompt",
     "sync_prompt",
     "visible_slice",

@@ -6,9 +6,9 @@ import os
 import random
 from pathlib import Path
 
+from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
 from engine.api.render import RenderAPI
-from engine.runtime import EngineHostConfig, run_pygfx_hosted_runtime
-from engine.runtime.framework_engine import EngineUIFramework
+from engine.api.ui_framework import create_ui_framework
 from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.app.controller import GameController
 from warships.game.app.engine_adapter import WarshipsAppAdapter
@@ -22,7 +22,7 @@ def run_engine_hosted_app() -> None:
     """Compose and run Warships on the engine-hosted lifecycle path."""
     controller = _build_controller()
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
-    host_config = EngineHostConfig(window_mode=os.getenv("WARSHIPS_WINDOW_MODE", "windowed"))
+    host_config = HostedRuntimeConfig(window_mode=os.getenv("WARSHIPS_WINDOW_MODE", "windowed"))
     run_pygfx_hosted_runtime(
         module_factory=lambda renderer, layout: _build_module(
             controller, renderer, layout, debug_ui
@@ -46,7 +46,7 @@ def _build_module(
 ) -> WarshipsGameModule:
     view = GameView(renderer, layout)
     app = WarshipsAppAdapter(controller)
-    framework = EngineUIFramework(app=app, renderer=renderer, layout=layout)
+    framework = create_ui_framework(app=app, renderer=renderer, layout=layout)
     return WarshipsGameModule(
         controller=controller,
         framework=framework,

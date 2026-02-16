@@ -16,7 +16,7 @@ from warships.game.app.events import (
     PointerReleased,
 )
 from warships.game.app.ports.runtime_primitives import GridLayout
-from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
+from warships.game.app.ports.runtime_services import apply_wheel_scroll, create_action_dispatcher
 from warships.game.app.services.battle import resolve_player_turn, start_game
 from warships.game.app.services.controller_support import ControllerSupport
 from warships.game.app.services.input_policy import (
@@ -89,7 +89,7 @@ class GameController:
             logger=logger,
             debug_ui=debug_ui,
         )
-        self._button_dispatcher = ActionDispatcher(
+        self._button_dispatcher = create_action_dispatcher(
             direct_handlers={
                 "manage_presets": self._on_manage_presets,
                 "new_game": self._on_new_game,
