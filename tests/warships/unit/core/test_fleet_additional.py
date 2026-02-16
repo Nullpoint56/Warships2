@@ -1,6 +1,11 @@
 import random
 
-from warships.game.core.fleet import _generate_relaxed_fleet, build_board_from_fleet, random_fleet, validate_fleet
+from warships.game.core.fleet import (
+    _generate_relaxed_fleet,
+    build_board_from_fleet,
+    random_fleet,
+    validate_fleet,
+)
 from warships.game.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
 
 

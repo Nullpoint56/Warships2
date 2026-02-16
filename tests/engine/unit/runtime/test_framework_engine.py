@@ -1,8 +1,14 @@
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.ui_runtime.grid_layout import GridLayout
-
-from tests.engine.conftest import Box, FakeApp, FakeButton, FakeInteractionPlan, FakeModalWidget, FakeRenderer
+from tests.engine.conftest import (
+    Box,
+    FakeApp,
+    FakeButton,
+    FakeInteractionPlan,
+    FakeModalWidget,
+    FakeRenderer,
+)
 
 
 def test_pointer_down_routes_to_button_click() -> None:
@@ -21,7 +27,9 @@ def test_pointer_down_routes_to_button_click() -> None:
 def test_pointer_down_routes_to_grid_click_when_target_present() -> None:
     app = FakeApp()
     app.set_plan(FakeInteractionPlan(grid_click_target="secondary"))
-    layout = GridLayout(primary_origin_x=0, secondary_origin_x=100, origin_y=0, cell_size=10, grid_size=10)
+    layout = GridLayout(
+        primary_origin_x=0, secondary_origin_x=100, origin_y=0, cell_size=10, grid_size=10
+    )
     framework = EngineUIFramework(app=app, renderer=FakeRenderer(), layout=layout)
     changed = framework.handle_pointer_event(PointerEvent("pointer_down", 115, 25, 1))
     assert changed

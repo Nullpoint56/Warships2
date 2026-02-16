@@ -6,7 +6,6 @@ from dataclasses import dataclass
 
 from engine.ui_runtime.geometry import Rect
 
-
 DESIGN_WIDTH = 1200.0
 DESIGN_HEIGHT = 720.0
 
@@ -147,7 +146,9 @@ class PromptLayout:
 
     def cancel_button_rect(self) -> Rect:
         first = self.confirm_button_rect()
-        return Rect(first.x + self.button_w + self.button_gap, first.y, self.button_w, self.button_h)
+        return Rect(
+            first.x + self.button_w + self.button_gap, first.y, self.button_w, self.button_h
+        )
 
 
 PLACEMENT_PANEL = PlacementPanelLayout()
@@ -188,7 +189,12 @@ class NewGameSetupLayout:
 
     def difficulty_rect(self) -> Rect:
         panel = self.panel_rect()
-        return Rect(panel.x + self.difficulty_x_pad, panel.y + self.difficulty_y, self.difficulty_w, self.difficulty_h)
+        return Rect(
+            panel.x + self.difficulty_x_pad,
+            panel.y + self.difficulty_y,
+            self.difficulty_w,
+            self.difficulty_h,
+        )
 
     def difficulty_option_rect(self, index: int) -> Rect:
         base = self.difficulty_rect()
@@ -201,7 +207,11 @@ class NewGameSetupLayout:
 
     def preset_row_rect(self, visible_index: int) -> Rect:
         list_rect = self.preset_list_rect()
-        y = list_rect.y + self.list_row_top_pad + visible_index * (self.list_row_h + self.list_row_gap)
+        y = (
+            list_rect.y
+            + self.list_row_top_pad
+            + visible_index * (self.list_row_h + self.list_row_gap)
+        )
         return Rect(list_rect.x + 12.0, y, list_rect.w - 24.0, self.list_row_h)
 
     def visible_row_capacity(self) -> int:
@@ -213,7 +223,12 @@ class NewGameSetupLayout:
 
     def random_button_rect(self) -> Rect:
         panel = self.panel_rect()
-        return Rect(panel.x + self.list_x_pad, panel.y + self.random_btn_y, self.random_btn_w, self.random_btn_h)
+        return Rect(
+            panel.x + self.list_x_pad,
+            panel.y + self.random_btn_y,
+            self.random_btn_w,
+            self.random_btn_h,
+        )
 
     def preview_origin(self) -> tuple[float, float]:
         panel = self.panel_rect()
@@ -221,4 +236,3 @@ class NewGameSetupLayout:
 
 
 NEW_GAME_SETUP = NewGameSetupLayout()
-

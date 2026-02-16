@@ -70,4 +70,3 @@ def to_design_space(
     if sx <= 0.0 or sy <= 0.0:
         return x, y
     return (x - ox) / sx, (y - oy) / sy
-

@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from engine.rendering.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
+from engine.rendering.scene_retained import (
+    hide_inactive_nodes,
+    upsert_grid,
+    upsert_rect,
+    upsert_text,
+)
 
 
 class _MeshBasicMaterial:
@@ -81,7 +86,11 @@ class _Scene:
 def test_hide_inactive_nodes_hides_non_static_missing_keys() -> None:
     active = {"a"}
     static = {"s"}
-    nodes = {"a": SimpleNamespace(visible=True), "b": SimpleNamespace(visible=True), "s": SimpleNamespace(visible=True)}
+    nodes = {
+        "a": SimpleNamespace(visible=True),
+        "b": SimpleNamespace(visible=True),
+        "s": SimpleNamespace(visible=True),
+    }
     hide_inactive_nodes(nodes, static, active)
     assert nodes["a"].visible
     assert not nodes["b"].visible

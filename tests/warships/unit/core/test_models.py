@@ -1,4 +1,10 @@
-from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
+from warships.game.core.models import (
+    Coord,
+    Orientation,
+    ShipPlacement,
+    ShipType,
+    cells_for_placement,
+)
 
 
 def test_ship_type_size_mapping() -> None:

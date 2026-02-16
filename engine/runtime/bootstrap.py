@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from engine.api.game_module import GameModule
 from engine.api.render import RenderAPI
@@ -31,7 +32,7 @@ def run_pygfx_hosted_runtime(
     window.run()
 
 
-def _apply_window_mode(window, mode: str, width: int, height: int) -> None:
+def _apply_window_mode(window: Any, mode: str, width: int, height: int) -> None:
     normalized_mode = mode.strip().lower()
     if normalized_mode == "fullscreen":
         window.show_fullscreen()

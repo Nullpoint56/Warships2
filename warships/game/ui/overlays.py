@@ -84,4 +84,3 @@ def button_label(button_id: str) -> str:
         "prompt_cancel": "Cancel",
     }
     return labels.get(button_id, button_id)
-

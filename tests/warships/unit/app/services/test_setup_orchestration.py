@@ -1,6 +1,9 @@
 import logging
 
-from warships.game.app.services.setup_orchestration import refresh_preset_state, resolve_new_game_selection
+from warships.game.app.services.setup_orchestration import (
+    refresh_preset_state,
+    resolve_new_game_selection,
+)
 from warships.game.app.ui_state import PresetRowView
 from warships.game.presets.repository import PresetRepository
 from warships.game.presets.service import PresetService

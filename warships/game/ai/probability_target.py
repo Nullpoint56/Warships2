@@ -108,5 +108,3 @@ class ProbabilityTargetAI(AIStrategy):
 
 def _is_adjacent(a: Coord, b: Coord) -> bool:
     return abs(a.row - b.row) + abs(a.col - b.col) == 1
-
-

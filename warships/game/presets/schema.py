@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.game.core.models import BOARD_SIZE, Coord, FleetPlacement, Orientation, ShipPlacement, ShipType
+from warships.game.core.models import (
+    BOARD_SIZE,
+    Coord,
+    FleetPlacement,
+    Orientation,
+    ShipPlacement,
+    ShipType,
+)
 
 
 @dataclass(slots=True)
@@ -69,6 +76,7 @@ def payload_to_fleet(payload: dict[str, object]) -> tuple[str, FleetPlacement]:
             orientation = Orientation(str(item["orientation"]))
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError("Malformed ship entry in preset payload.") from exc
-        ships.append(ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation))
+        ships.append(
+            ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation)
+        )
     return name, FleetPlacement(ships=ships)
-

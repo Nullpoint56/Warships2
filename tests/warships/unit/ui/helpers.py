@@ -37,7 +37,13 @@ def make_ui_state(
         placements=[],
         placement_orientation=Orientation.HORIZONTAL,
         session=None,
-        ship_order=[ShipType.CARRIER, ShipType.BATTLESHIP, ShipType.CRUISER, ShipType.SUBMARINE, ShipType.DESTROYER],
+        ship_order=[
+            ShipType.CARRIER,
+            ShipType.BATTLESHIP,
+            ShipType.CRUISER,
+            ShipType.SUBMARINE,
+            ShipType.DESTROYER,
+        ],
         is_closing=False,
         preset_rows=preset_rows or [],
         prompt=None,
@@ -51,7 +57,9 @@ def make_ui_state(
         new_game_difficulty_open=new_game_difficulty_open,
         new_game_difficulty_options=["Easy", "Normal", "Hard"],
         new_game_visible_presets=new_game_visible_presets or [],
-        new_game_selected_preset=(new_game_visible_presets or [None])[0] if new_game_visible_presets else None,
+        new_game_selected_preset=(new_game_visible_presets or [None])[0]
+        if new_game_visible_presets
+        else None,
         new_game_can_scroll_up=False,
         new_game_can_scroll_down=False,
         new_game_source=None,

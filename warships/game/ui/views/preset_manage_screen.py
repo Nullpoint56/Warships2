@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from engine.api.render import RenderAPI as Render2D
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import PRESET_PANEL
 from warships.game.ui.views.common import draw_preset_preview, truncate
 
 
-def draw_preset_manage(renderer, ui: AppUIState) -> None:
+def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
     panel = PRESET_PANEL.panel_rect()
     panel_x = panel.x
     panel_y = panel.y
@@ -25,7 +26,15 @@ def draw_preset_manage(renderer, ui: AppUIState) -> None:
     )
     for idx, row in enumerate(ui.preset_rows):
         row_rect = PRESET_PANEL.row_rect(idx)
-        renderer.add_rect(f"preset:row:{row.name}", row_rect.x, row_rect.y, row_rect.w, row_rect.h, "#111827", z=0.9)
+        renderer.add_rect(
+            f"preset:row:{row.name}",
+            row_rect.x,
+            row_rect.y,
+            row_rect.w,
+            row_rect.h,
+            "#111827",
+            z=0.9,
+        )
         renderer.add_text(
             key=f"preset:name:{row.name}",
             text=truncate(row.name, PRESET_PANEL.name_max_len),
@@ -94,5 +103,3 @@ def draw_preset_manage(renderer, ui: AppUIState) -> None:
             anchor="middle-left",
             z=1.05,
         )
-
-

@@ -3,7 +3,6 @@ from engine.ui_runtime.interactions import (
     resolve_pointer_button,
     route_non_modal_key_event,
 )
-
 from tests.engine.conftest import Box, FakeButton, FakeInteractionPlan
 
 

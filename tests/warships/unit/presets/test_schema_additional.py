@@ -15,4 +15,6 @@ def test_schema_rejects_malformed_ship_entries() -> None:
     with pytest.raises(ValueError):
         payload_to_fleet({**base, "ships": "bad"})
     with pytest.raises(ValueError):
-        payload_to_fleet({**base, "ships": [{"type": "DESTROYER", "bow": [0], "orientation": "HORIZONTAL"}]})
+        payload_to_fleet(
+            {**base, "ships": [{"type": "DESTROYER", "bow": [0], "orientation": "HORIZONTAL"}]}
+        )

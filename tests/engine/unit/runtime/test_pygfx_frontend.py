@@ -76,14 +76,18 @@ class _Host:
 
 def test_show_windowed_sets_size_when_supported() -> None:
     renderer = _RendererWithSize()
-    window = frontend_mod.PygfxFrontendWindow(renderer=renderer, input_controller=_Input(), host=_Host())
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer, input_controller=_Input(), host=_Host()
+    )
     window.show_windowed(800, 600)
     assert renderer.canvas_size_calls == [(800, 600)]
 
 
 def test_show_windowed_noop_without_setter() -> None:
     renderer = _RendererWithoutSize()
-    window = frontend_mod.PygfxFrontendWindow(renderer=renderer, input_controller=_Input(), host=_Host())
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer, input_controller=_Input(), host=_Host()
+    )
     window.show_windowed(800, 600)
     assert renderer.canvas_size_calls == []
 
@@ -97,7 +101,9 @@ def test_show_fullscreen_and_maximized_delegate_to_runtime(monkeypatch) -> None:
 
     monkeypatch.setattr(frontend_mod, "apply_startup_window_mode", _apply)
     renderer = _RendererWithSize()
-    window = frontend_mod.PygfxFrontendWindow(renderer=renderer, input_controller=_Input(), host=_Host())
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer, input_controller=_Input(), host=_Host()
+    )
     window.show_fullscreen()
     window.show_maximized()
     assert calls == ["fullscreen", "maximized"]

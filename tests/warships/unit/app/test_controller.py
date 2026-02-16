@@ -12,7 +12,9 @@ def test_controller_initial_state_main_menu(controller_factory) -> None:
     assert any(button.id == "new_game" for button in ui.buttons)
 
 
-def test_controller_new_game_and_start_game_flow(controller_factory, preset_service, valid_fleet) -> None:
+def test_controller_new_game_and_start_game_flow(
+    controller_factory, preset_service, valid_fleet
+) -> None:
     preset_service.save_preset("alpha", valid_fleet)
     controller = controller_factory()
     assert controller.handle_button(ButtonPressed("new_game"))
@@ -23,7 +25,9 @@ def test_controller_new_game_and_start_game_flow(controller_factory, preset_serv
     assert ui.session is not None
 
 
-def test_controller_manage_presets_and_wheel_scroll(controller_factory, preset_service, valid_fleet) -> None:
+def test_controller_manage_presets_and_wheel_scroll(
+    controller_factory, preset_service, valid_fleet
+) -> None:
     for idx in range(12):
         preset_service.save_preset(f"preset_{idx:02d}", valid_fleet)
     controller = controller_factory()

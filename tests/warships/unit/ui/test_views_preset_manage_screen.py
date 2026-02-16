@@ -1,9 +1,8 @@
+from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import PresetRowView
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.ui.views.preset_manage_screen import draw_preset_manage
-
-from tests.warships.unit.ui.helpers import FakeRenderer, make_ui_state
 
 
 def test_draw_preset_manage_renders_rows_and_buttons() -> None:

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.game.app.state_machine import AppState
 from warships.game.app.ports.runtime_primitives import Button, PromptView
+from warships.game.app.state_machine import AppState
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
 from warships.game.core.rules import GameSession
 
@@ -49,4 +49,3 @@ class AppUIState:
     new_game_preview: list[ShipPlacement]
     preset_manage_can_scroll_up: bool = False
     preset_manage_can_scroll_down: bool = False
-

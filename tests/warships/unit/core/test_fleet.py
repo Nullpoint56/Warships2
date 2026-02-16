@@ -24,13 +24,17 @@ def test_validate_fleet_rejects_duplicate_ship_type() -> None:
 
 
 def test_build_board_from_fleet_raises_on_invalid() -> None:
-    invalid = FleetPlacement(ships=[ShipPlacement(ShipType.DESTROYER, Coord(0, 9), Orientation.HORIZONTAL)])
+    invalid = FleetPlacement(
+        ships=[ShipPlacement(ShipType.DESTROYER, Coord(0, 9), Orientation.HORIZONTAL)]
+    )
     try:
         build_board_from_fleet(invalid)
     except ValueError:
         assert True
     else:
-        assert False
+        raise AssertionError(
+            "Expected build_board_from_fleet to raise ValueError for invalid fleet."
+        )
 
 
 def test_random_fleet_is_valid(seeded_rng) -> None:

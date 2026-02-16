@@ -4,13 +4,23 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.game.app.ports.runtime_primitives import PromptInteractionOutcome, PromptState, PromptView
+from warships.game.app.ports.runtime_primitives import (
+    PromptInteractionOutcome,
+    PromptState,
+    PromptView,
+)
 from warships.game.app.ports.runtime_services import (
     close_prompt as close_prompt_runtime,
+)
+from warships.game.app.ports.runtime_services import (
     handle_prompt_button,
     handle_prompt_char,
     handle_prompt_key,
+)
+from warships.game.app.ports.runtime_services import (
     open_prompt as open_prompt_runtime,
+)
+from warships.game.app.ports.runtime_services import (
     sync_prompt as sync_prompt_runtime,
 )
 from warships.game.core.models import FleetPlacement, ShipPlacement
@@ -39,7 +49,9 @@ class PromptFlowService:
     """Pure prompt confirmation operations for controller orchestration."""
 
     @staticmethod
-    def open_prompt(title: str, initial_value: str, mode: str, target: str | None = None) -> PromptState:
+    def open_prompt(
+        title: str, initial_value: str, mode: str, target: str | None = None
+    ) -> PromptState:
         if mode == "save":
             confirm = "prompt_confirm_save"
         elif mode == "rename":
@@ -104,7 +116,9 @@ class PromptFlowService:
             fleet = FleetPlacement(ships=list(placements))
             exists = stripped in preset_names
             if exists and stripped != (editing_preset_name or ""):
-                prompt_state = PromptFlowService.open_prompt("Preset exists. Overwrite?", stripped, mode="overwrite")
+                prompt_state = PromptFlowService.open_prompt(
+                    "Preset exists. Overwrite?", stripped, mode="overwrite"
+                )
                 return PromptConfirmOutcome(
                     handled=True,
                     status=None,
@@ -211,4 +225,3 @@ class PromptFlowService:
             pending_save_name=pending_save_name,
             editing_preset_name=editing_preset_name,
         )
-

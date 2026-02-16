@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.controller_state import ControllerState
+from warships.game.app.ports.runtime_services import can_scroll_list_down, visible_slice
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.app.services.ui_buttons import compose_buttons
 from warships.game.core.models import FleetPlacement, ShipPlacement, ShipType
@@ -64,7 +64,9 @@ class ControllerSupport:
     def refresh_buttons(self) -> None:
         self._state.buttons = compose_buttons(
             state=self._state.app_state,
-            placement_ready=PlacementEditorService.all_ships_placed(self._state.placements_by_type, self._ship_order),
+            placement_ready=PlacementEditorService.all_ships_placed(
+                self._state.placements_by_type, self._ship_order
+            ),
             has_presets=bool(self._state.preset_rows),
             visible_preset_manage_rows=visible_slice(
                 self._state.preset_rows,

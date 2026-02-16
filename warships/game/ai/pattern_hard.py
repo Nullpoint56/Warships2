@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 
 from warships.game.ai.strategy import AIStrategy
 from warships.game.core.models import BOARD_SIZE, Coord, ShotResult
@@ -124,7 +124,9 @@ class PatternHardAI(AIStrategy):
             self._accumulate_scores_for_length(ship_len, scores)
         return scores
 
-    def _accumulate_scores_for_length(self, ship_len: int, scores: dict[tuple[int, int], float]) -> None:
+    def _accumulate_scores_for_length(
+        self, ship_len: int, scores: dict[tuple[int, int], float]
+    ) -> None:
         placements: list[list[tuple[int, int]]] = []
         for row in range(self._size):
             for col in range(self._size - ship_len + 1):
@@ -156,7 +158,9 @@ class PatternHardAI(AIStrategy):
         return True
 
     def _record_hit(self, hit: tuple[int, int]) -> _HitCluster:
-        touching = [cluster for cluster in self._active_clusters if self._touches_cluster(hit, cluster)]
+        touching = [
+            cluster for cluster in self._active_clusters if self._touches_cluster(hit, cluster)
+        ]
         if not touching:
             cluster = _HitCluster(hits={hit}, last_updated=self._shot_index)
             self._active_clusters.append(cluster)
@@ -194,7 +198,9 @@ class PatternHardAI(AIStrategy):
         return None
 
     def _ordered_clusters(self) -> list[_HitCluster]:
-        return sorted(self._active_clusters, key=lambda c: (len(c.hits), c.last_updated), reverse=True)
+        return sorted(
+            self._active_clusters, key=lambda c: (len(c.hits), c.last_updated), reverse=True
+        )
 
     def _consume_ship_length(self, length: int) -> None:
         if length in self._remaining_ship_lengths:
@@ -213,4 +219,3 @@ class PatternHardAI(AIStrategy):
         best_score = max(score_map.get((c.row, c.col), 0) for c in coords)
         best = [c for c in coords if score_map.get((c.row, c.col), 0) == best_score]
         return self._rng.choice(best)
-

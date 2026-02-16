@@ -23,11 +23,17 @@ from engine.ui_runtime.prompt_runtime import (
     PromptState,
     PromptView,
     close_prompt,
-    handle_button as handle_prompt_button,
-    handle_char as handle_prompt_char,
-    handle_key as handle_prompt_key,
     open_prompt,
     sync_prompt,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_button as handle_prompt_button,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_char as handle_prompt_char,
+)
+from engine.ui_runtime.prompt_runtime import (
+    handle_key as handle_prompt_key,
 )
 from engine.ui_runtime.scroll import ScrollOutcome, apply_wheel_scroll
 from engine.ui_runtime.widgets import Button
@@ -62,4 +68,3 @@ __all__ = [
     "route_modal_pointer_event",
     "sync_prompt",
 ]
-

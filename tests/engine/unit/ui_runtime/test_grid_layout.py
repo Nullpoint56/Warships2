@@ -4,7 +4,9 @@ from engine.ui_runtime.grid_layout import GridLayout
 
 
 def test_rect_for_primary_and_secondary() -> None:
-    layout = GridLayout(primary_origin_x=10, secondary_origin_x=100, origin_y=5, cell_size=4, grid_size=3)
+    layout = GridLayout(
+        primary_origin_x=10, secondary_origin_x=100, origin_y=5, cell_size=4, grid_size=3
+    )
     primary = layout.rect_for_target("primary")
     secondary = layout.rect_for_target("secondary")
     assert (primary.x, primary.y, primary.w, primary.h) == (10, 5, 12, 12)

@@ -9,8 +9,12 @@ def test_reset_and_all_ships_placed() -> None:
     placements = PlacementEditorService.reset(ship_order)
     assert set(placements.keys()) == set(ship_order)
     assert not PlacementEditorService.all_ships_placed(placements, ship_order)
-    placements[ShipType.CARRIER] = ShipPlacement(ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL)
-    placements[ShipType.DESTROYER] = ShipPlacement(ShipType.DESTROYER, Coord(2, 0), Orientation.HORIZONTAL)
+    placements[ShipType.CARRIER] = ShipPlacement(
+        ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL
+    )
+    placements[ShipType.DESTROYER] = ShipPlacement(
+        ShipType.DESTROYER, Coord(2, 0), Orientation.HORIZONTAL
+    )
     assert PlacementEditorService.all_ships_placed(placements, ship_order)
 
 

@@ -20,7 +20,7 @@ def resolve_window_mode() -> str:
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
     """Set startup window mode for GLFW backend when available."""
     try:
-        import rendercanvas.glfw as rc_glfw  # type: ignore
+        import rendercanvas.glfw as rc_glfw
     except Exception:
         return
     window = getattr(canvas, "_window", None)

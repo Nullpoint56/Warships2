@@ -4,11 +4,19 @@ from __future__ import annotations
 
 from engine.api.app_port import EngineAppPort
 from engine.api.render import RenderAPI
-from engine.ui_runtime.interactions import can_scroll_with_wheel, resolve_pointer_button, route_non_modal_key_event
-from engine.ui_runtime.keymap import map_key_name
-from engine.ui_runtime.grid_layout import GridLayout
-from engine.ui_runtime.modal_runtime import ModalInputState, route_modal_key_event, route_modal_pointer_event
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.ui_runtime.grid_layout import GridLayout
+from engine.ui_runtime.interactions import (
+    can_scroll_with_wheel,
+    resolve_pointer_button,
+    route_non_modal_key_event,
+)
+from engine.ui_runtime.keymap import map_key_name
+from engine.ui_runtime.modal_runtime import (
+    ModalInputState,
+    route_modal_key_event,
+    route_modal_pointer_event,
+)
 
 
 class EngineUIFramework:
@@ -51,7 +59,9 @@ class EngineUIFramework:
             if interactions.grid_click_target is not None:
                 grid_cell = self._layout.screen_to_cell(interactions.grid_click_target, x, y)
                 if grid_cell is not None:
-                    return self._app.on_grid_click(interactions.grid_click_target, grid_cell.row, grid_cell.col)
+                    return self._app.on_grid_click(
+                        interactions.grid_click_target, grid_cell.row, grid_cell.col
+                    )
         return self._app.on_pointer_down(x=x, y=y, button=event.button)
 
     def handle_key_event(self, event: KeyEvent) -> bool:
@@ -59,24 +69,26 @@ class EngineUIFramework:
         modal = self._app.modal_widget()
         if modal is not None:
             mapped = map_key_name(event.value) if event.event_type == "key_down" else None
-            route = route_modal_key_event(event.event_type, event.value, mapped, self._modal_state)
-            if route.char is not None:
-                return self._app.on_char(route.char)
-            if route.key is not None:
-                return self._app.on_key(route.key)
+            modal_route = route_modal_key_event(
+                event.event_type, event.value, mapped, self._modal_state
+            )
+            if modal_route.char is not None:
+                return self._app.on_char(modal_route.char)
+            if modal_route.key is not None:
+                return self._app.on_key(modal_route.key)
             return False
 
         interactions = self._app.interaction_plan()
-        route = route_non_modal_key_event(event.event_type, event.value, interactions)
-        if route.controller_char is not None:
-            return self._app.on_char(route.controller_char)
-        if route.controller_key is None:
+        non_modal_route = route_non_modal_key_event(event.event_type, event.value, interactions)
+        if non_modal_route.controller_char is not None:
+            return self._app.on_char(non_modal_route.controller_char)
+        if non_modal_route.controller_key is None:
             return False
-        if self._app.on_key(route.controller_key):
+        if self._app.on_key(non_modal_route.controller_key):
             return True
-        if route.shortcut_button_id is None:
+        if non_modal_route.shortcut_button_id is None:
             return False
-        return self._app.on_button(route.shortcut_button_id)
+        return self._app.on_button(non_modal_route.shortcut_button_id)
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Route wheel event to app actions."""
@@ -85,4 +97,3 @@ class EngineUIFramework:
         if not can_scroll_with_wheel(interactions, x, y):
             return False
         return self._app.on_wheel(x=x, y=y, dy=event.dy)
-

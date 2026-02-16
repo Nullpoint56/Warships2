@@ -17,4 +17,3 @@ class AIStrategy(ABC):
     @abstractmethod
     def notify_result(self, coord: Coord, result: ShotResult) -> None:
         """Update strategy state with shot result."""
-

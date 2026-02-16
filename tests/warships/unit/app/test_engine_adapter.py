@@ -77,4 +77,12 @@ def test_adapter_forwards_input_methods() -> None:
     adapter.on_key("escape")
     adapter.on_char("x")
     adapter.on_wheel(7.0, 8.0, 1.0)
-    assert [name for name, _ in controller.calls] == ["button", "move", "up", "down", "key", "char", "wheel"]
+    assert [name for name, _ in controller.calls] == [
+        "button",
+        "move",
+        "up",
+        "down",
+        "key",
+        "char",
+        "wheel",
+    ]

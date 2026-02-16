@@ -90,7 +90,9 @@ def _candidate_placements(
         max_col = size - ship_type.size + 1 if orientation is Orientation.HORIZONTAL else size
         for row in range(max_row):
             for col in range(max_col):
-                placement = ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation)
+                placement = ShipPlacement(
+                    ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation
+                )
                 cells = cells_for_placement(placement)
                 if _touches_existing(cells, occupied, size):
                     continue
@@ -122,7 +124,9 @@ def _generate_relaxed_fleet(rng: random.Random, size: int) -> FleetPlacement:
             orientation = rng.choice([Orientation.HORIZONTAL, Orientation.VERTICAL])
             row = rng.randrange(size)
             col = rng.randrange(size)
-            placement = ShipPlacement(ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation)
+            placement = ShipPlacement(
+                ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation
+            )
             if board.can_place(placement):
                 board.place_ship(len(placements) + 1, placement)
                 placements.append(placement)
@@ -132,4 +136,3 @@ def _generate_relaxed_fleet(rng: random.Random, size: int) -> FleetPlacement:
             raise RuntimeError("Failed to generate random fleet placement.")
 
     return FleetPlacement(ships=placements)
-

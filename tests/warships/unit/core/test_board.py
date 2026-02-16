@@ -7,7 +7,9 @@ def test_board_can_place_and_reject_overlap_or_oob() -> None:
     carrier = ShipPlacement(ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL)
     assert board.can_place(carrier)
     board.place_ship(1, carrier)
-    assert not board.can_place(ShipPlacement(ShipType.DESTROYER, Coord(0, 0), Orientation.HORIZONTAL))
+    assert not board.can_place(
+        ShipPlacement(ShipType.DESTROYER, Coord(0, 0), Orientation.HORIZONTAL)
+    )
     assert not board.can_place(ShipPlacement(ShipType.CARRIER, Coord(0, 8), Orientation.HORIZONTAL))
 
 

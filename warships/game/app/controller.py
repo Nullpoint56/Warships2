@@ -5,9 +5,19 @@ from __future__ import annotations
 import logging
 import random
 
-from warships.game.app.services.battle import resolve_player_turn, start_game
+from warships.game.app.controller_state import ControllerState
+from warships.game.app.events import (
+    BoardCellPressed,
+    ButtonPressed,
+    CharTyped,
+    KeyPressed,
+    PointerMoved,
+    PointerReleased,
+)
 from warships.game.app.ports.runtime_primitives import GridLayout
 from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
+from warships.game.app.services.battle import resolve_player_turn, start_game
+from warships.game.app.services.controller_support import ControllerSupport
 from warships.game.app.services.input_policy import (
     can_handle_key_for_placement,
     can_handle_pointer_down,
@@ -16,13 +26,12 @@ from warships.game.app.services.input_policy import (
     pointer_down_action,
     resolve_wheel_target,
 )
-from warships.game.app.services.new_game_flow import NewGameFlowService
 from warships.game.app.services.mutation_orchestration import (
     apply_battle_turn_outcome,
     apply_edit_preset_result,
     apply_placement_outcome,
 )
-from warships.game.app.services.controller_support import ControllerSupport
+from warships.game.app.services.new_game_flow import NewGameFlowService
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.app.services.placement_flow import HeldShipState, PlacementFlowService
 from warships.game.app.services.preset_flow import PresetFlowService
@@ -31,19 +40,17 @@ from warships.game.app.services.prompt_orchestration import (
     apply_prompt_confirm_outcome,
     apply_prompt_interaction_outcome,
 )
+from warships.game.app.services.session_flow import AppTransition, SessionFlowService
 from warships.game.app.services.setup_orchestration import (
     refresh_preset_state,
     resolve_new_game_selection,
 )
 from warships.game.app.services.state_projection import build_ui_state
-from warships.game.app.services.session_flow import AppTransition, SessionFlowService
 from warships.game.app.services.transition_orchestration import apply_transition
-from warships.game.app.controller_state import ControllerState
-from warships.game.app.events import BoardCellPressed, ButtonPressed, CharTyped, KeyPressed, PointerMoved, PointerReleased
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.fleet import random_fleet
-from warships.game.core.models import ShipPlacement, ShipType
+from warships.game.core.models import FleetPlacement, ShipPlacement, ShipType
 from warships.game.presets.service import PresetService
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
 
@@ -64,7 +71,9 @@ _PRESET_MANAGE_VISIBLE_ROWS = PRESET_PANEL.visible_row_capacity()
 class GameController:
     """Handles app events and owns editor state."""
 
-    def __init__(self, preset_service: PresetService, rng: random.Random, debug_ui: bool = False) -> None:
+    def __init__(
+        self, preset_service: PresetService, rng: random.Random, debug_ui: bool = False
+    ) -> None:
         self._preset_service = preset_service
         self._rng = rng
 
@@ -166,7 +175,9 @@ class GameController:
         return True
 
     def _on_new_game_diff_option(self, diff: str) -> bool:
-        new_index, status = NewGameFlowService.choose_difficulty(self._state_data.new_game_difficulty_index, diff)
+        new_index, status = NewGameFlowService.choose_difficulty(
+            self._state_data.new_game_difficulty_index, diff
+        )
         if status is None:
             return False
         self._state_data.new_game_difficulty_index = new_index
@@ -199,16 +210,22 @@ class GameController:
         return True
 
     def _on_save_preset(self) -> bool:
-        if not PlacementEditorService.all_ships_placed(self._state_data.placements_by_type, _SHIP_ORDER):
+        if not PlacementEditorService.all_ships_placed(
+            self._state_data.placements_by_type, _SHIP_ORDER
+        ):
             self._set_status("Place all ships before saving.")
             return True
         default_name = self._state_data.editing_preset_name or "new_preset"
-        self._state_data.prompt_state = PromptFlowService.open_prompt("Save Preset", default_name, mode="save")
+        self._state_data.prompt_state = PromptFlowService.open_prompt(
+            "Save Preset", default_name, mode="save"
+        )
         self._refresh_buttons()
         return True
 
     def _on_preset_rename(self, name: str) -> bool:
-        self._state_data.prompt_state = PromptFlowService.open_prompt("Rename Preset", name, mode="rename", target=name)
+        self._state_data.prompt_state = PromptFlowService.open_prompt(
+            "Rename Preset", name, mode="rename", target=name
+        )
         self._refresh_buttons()
         return True
 
@@ -221,11 +238,17 @@ class GameController:
 
     def handle_board_click(self, event: BoardCellPressed) -> bool:
         """Handle board click for battle firing."""
-        if self._state_data.app_state is not AppState.BATTLE or self._state_data.session is None or self._state_data.ai_strategy is None:
+        if (
+            self._state_data.app_state is not AppState.BATTLE
+            or self._state_data.session is None
+            or self._state_data.ai_strategy is None
+        ):
             return False
         if not event.is_ai_board:
             return False
-        turn = resolve_player_turn(self._state_data.session, self._state_data.ai_strategy, event.coord)
+        turn = resolve_player_turn(
+            self._state_data.session, self._state_data.ai_strategy, event.coord
+        )
         apply_battle_turn_outcome(
             turn,
             state=self._state_data,
@@ -239,7 +262,9 @@ class GameController:
             return False
         self._state_data.hover_x = event.x
         self._state_data.hover_y = event.y
-        self._state_data.hover_cell = PlacementEditorService.to_primary_grid_cell(_GRID_LAYOUT, event.x, event.y)
+        self._state_data.hover_cell = PlacementEditorService.to_primary_grid_cell(
+            _GRID_LAYOUT, event.x, event.y
+        )
         return self._state_data.held_ship_type is not None
 
     def handle_pointer_release(self, event: PointerReleased) -> bool:
@@ -263,19 +288,21 @@ class GameController:
         """Handle key-down events for prompt and placement rotation."""
         key = event.key.lower()
         if self._state_data.prompt_state.prompt is not None:
-            outcome = PromptFlowService.handle_key(self._state_data.prompt_state, key)
+            prompt_outcome = PromptFlowService.handle_key(self._state_data.prompt_state, key)
             return apply_prompt_interaction_outcome(
-                outcome,
+                prompt_outcome,
                 state=self._state_data,
                 confirm_prompt=self._confirm_prompt,
                 refresh_buttons=self._refresh_buttons,
             )
 
         if can_handle_key_for_placement(self._state_data.app_state):
-            outcome = PlacementFlowService.on_key_for_held(key=key, held_state=self._held_state())
-            if outcome.handled:
+            placement_outcome = PlacementFlowService.on_key_for_held(
+                key=key, held_state=self._held_state()
+            )
+            if placement_outcome.handled:
                 return apply_placement_outcome(
-                    outcome,
+                    placement_outcome,
                     state=self._state_data,
                     refresh_buttons=self._refresh_buttons,
                 )
@@ -306,7 +333,9 @@ class GameController:
             dy=dy,
             current_scroll=self._state_data.new_game_preset_scroll,
             can_scroll_down=PresetFlowService.can_scroll_down(
-                self._state_data.preset_rows, self._state_data.new_game_preset_scroll, _NEW_GAME_VISIBLE_PRESET_ROWS
+                self._state_data.preset_rows,
+                self._state_data.new_game_preset_scroll,
+                _NEW_GAME_VISIBLE_PRESET_ROWS,
             ),
         )
         if outcome.handled:
@@ -334,7 +363,9 @@ class GameController:
         """Set current prompt text and confirm it."""
         if self._state_data.prompt_state.prompt is None:
             return False
-        self._state_data.prompt_state = PromptFlowService.sync_prompt(self._state_data.prompt_state, text[:32])
+        self._state_data.prompt_state = PromptFlowService.sync_prompt(
+            self._state_data.prompt_state, text[:32]
+        )
         return self._confirm_prompt()
 
     def cancel_prompt(self) -> bool:
@@ -347,7 +378,9 @@ class GameController:
 
     def handle_pointer_down(self, x: float, y: float, button: int) -> bool:
         """Pick ship from board or palette."""
-        if not can_handle_pointer_down(self._state_data.app_state, has_prompt=self._state_data.prompt_state.prompt is not None):
+        if not can_handle_pointer_down(
+            self._state_data.app_state, has_prompt=self._state_data.prompt_state.prompt is not None
+        ):
             return False
         action = pointer_down_action(button)
         if action is None:
@@ -525,7 +558,7 @@ class GameController:
         self,
         *,
         selected_preset: str | None,
-        random_fleet,
+        random_fleet: FleetPlacement | None,
         preview: list[ShipPlacement],
         source_label: str | None,
     ) -> None:
@@ -550,7 +583,3 @@ class GameController:
 
     def _announce_state(self) -> None:
         self._support.announce_state()
-
-
-
-

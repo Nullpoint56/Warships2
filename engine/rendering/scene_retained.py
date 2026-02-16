@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
-from typing import cast
+from typing import Any, cast
 
 from engine.rendering.scene_primitives import grid_positions
 
 
-def hide_inactive_nodes(nodes: dict[str, Any], static_keys: set[str], active_keys: set[str]) -> None:
+def hide_inactive_nodes(
+    nodes: dict[str, Any], static_keys: set[str], active_keys: set[str]
+) -> None:
     """Hide retained nodes that were not touched this frame."""
     for key, node in nodes.items():
         if key in static_keys:
@@ -46,7 +47,9 @@ def upsert_rect(
     if key is not None and key in rect_nodes:
         node = rect_nodes[key]
         new_props = (x, y, w, h, color, z)
-        needs_update = rect_props.get(key) != new_props or rect_viewport_rev.get(key, -1) != viewport_revision
+        needs_update = (
+            rect_props.get(key) != new_props or rect_viewport_rev.get(key, -1) != viewport_revision
+        )
         if needs_update:
             node.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
             node.geometry = gfx.plane_geometry(tw, th)
@@ -104,7 +107,9 @@ def upsert_grid(
     new_props = (x, y, width, height, lines, color, z)
     if key in line_nodes:
         node = line_nodes[key]
-        needs_update = line_props.get(key) != new_props or line_viewport_rev.get(key, -1) != viewport_revision
+        needs_update = (
+            line_props.get(key) != new_props or line_viewport_rev.get(key, -1) != viewport_revision
+        )
         if needs_update:
             positions = grid_positions(x=tx, y=ty, width=tw, height=th, lines=lines, z=z)
             node.geometry = gfx.Geometry(positions=positions)
@@ -121,7 +126,9 @@ def upsert_grid(
 
     positions = grid_positions(x=tx, y=ty, width=tw, height=th, lines=lines, z=z)
     geometry = gfx.Geometry(positions=positions)
-    material = gfx.LineSegmentMaterial(color=cast(Any, color), thickness=1.0, thickness_space="screen")
+    material = gfx.LineSegmentMaterial(
+        color=cast(Any, color), thickness=1.0, thickness_space="screen"
+    )
     line = gfx.Line(geometry, material)
     scene.add(line)
     line_nodes[key] = line
@@ -162,7 +169,9 @@ def upsert_text(
     if key is not None and key in text_nodes:
         node = text_nodes[key]
         new_props = (text, x, y, font_size, color, anchor, z)
-        needs_update = text_props.get(key) != new_props or text_viewport_rev.get(key, -1) != viewport_revision
+        needs_update = (
+            text_props.get(key) != new_props or text_viewport_rev.get(key, -1) != viewport_revision
+        )
         if needs_update:
             node.set_text(text)
             node.local.position = (tx, ty, z)
@@ -198,4 +207,3 @@ def upsert_text(
             static_text_keys.add(key)
         else:
             active_text_keys.add(key)
-

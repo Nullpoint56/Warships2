@@ -16,7 +16,9 @@ def test_service_save_load_and_delete(tmp_path, valid_fleet) -> None:
 
 def test_service_rejects_invalid_fleet(tmp_path) -> None:
     service = PresetService(PresetRepository(tmp_path))
-    invalid = FleetPlacement(ships=[ShipPlacement(ShipType.DESTROYER, Coord(0, 9), Orientation.HORIZONTAL)])
+    invalid = FleetPlacement(
+        ships=[ShipPlacement(ShipType.DESTROYER, Coord(0, 9), Orientation.HORIZONTAL)]
+    )
     with pytest.raises(ValueError):
         service.save_preset("bad", invalid)
 

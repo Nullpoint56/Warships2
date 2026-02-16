@@ -74,4 +74,3 @@ class HuntTargetAI(AIStrategy):
         elif len(cols) == 1:
             col = next(iter(cols))
             self._target_queue = deque(coord for coord in self._target_queue if coord.col == col)
-

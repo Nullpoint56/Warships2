@@ -31,7 +31,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["F"]
+select = ["F", "I", "E", "B", "UP"]
 
 [tool.ruff.format]
 quote-style = "double"
@@ -40,13 +40,25 @@ line-ending = "lf"
 
 [tool.mypy]
 python_version = "3.14"
-files = ["engine/api", "engine/ui_runtime", "warships/game/core", "warships/game/presets"]
+files = ["engine", "warships"]
 exclude = "(^build/|^dist/|^tests/)"
 pretty = true
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-warn_return_any = false
-disallow_untyped_defs = false
+warn_return_any = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_any_generics = true
+strict_equality = true
+no_implicit_reexport = true
 check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pygfx.*",
+    "wgpu.*",
+    "rendercanvas.*",
+    "freetype.*",
+]
 ignore_missing_imports = true

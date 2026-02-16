@@ -17,4 +17,3 @@ def bow_from_grab_index(cell: Coord, orientation: Orientation, grab_index: int) 
     if orientation is Orientation.HORIZONTAL:
         return Coord(row=cell.row, col=cell.col - grab_index)
     return Coord(row=cell.row - grab_index, col=cell.col)
-

@@ -20,4 +20,3 @@ def map_key_name(key_name: str) -> str | None:
     if len(normalized) == 1 and normalized.isalpha():
         return normalized
     return None
-

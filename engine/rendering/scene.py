@@ -2,20 +2,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
-from typing import Callable
-from typing import Any
-from typing import cast
-from engine.rendering.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any, cast
+
+from engine.rendering.scene_retained import (
+    hide_inactive_nodes,
+    upsert_grid,
+    upsert_rect,
+    upsert_text,
+)
 from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
     run_backend_loop,
     stop_backend_loop,
 )
-from engine.rendering.scene_viewport import extract_resize_dimensions, to_design_space, viewport_transform
+from engine.rendering.scene_viewport import (
+    extract_resize_dimensions,
+    to_design_space,
+    viewport_transform,
+)
 
+_gfx_import_error: Exception | None
 try:
     import pygfx as gfx
 except Exception as exc:  # pragma: no cover - import guard for environments without graphics deps
@@ -24,6 +34,7 @@ except Exception as exc:  # pragma: no cover - import guard for environments wit
 else:
     _gfx_import_error = None
 
+_canvas_import_error: Exception | None
 try:
     import rendercanvas.auto as rc_auto
 except Exception as exc:  # pragma: no cover - missing GUI backend
@@ -34,16 +45,19 @@ else:
     try:
         # Guard against transient zero-size events (e.g. snap/resize on Windows) before they
         # propagate into rendercanvas internals.
-        from rendercanvas import _size as _rc_size  # type: ignore
+        from rendercanvas import _size as _rc_size
 
         if not getattr(_rc_size.SizeInfo.set_physical_size, "_warships_size_clamped", False):
             _orig_set_physical_size = _rc_size.SizeInfo.set_physical_size
 
-            def _safe_set_physical_size(self: object, width: int, height: int, pixel_ratio: float) -> None:
+            def _safe_set_physical_size(
+                self: object, width: int, height: int, pixel_ratio: float
+            ) -> None:
                 _orig_set_physical_size(self, max(1, int(width)), max(1, int(height)), pixel_ratio)
 
-            _safe_set_physical_size._warships_size_clamped = True  # type: ignore[attr-defined]
-            _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size  # type: ignore
+            marker_target = cast(Any, _safe_set_physical_size)
+            marker_target._warships_size_clamped = True
+            _rc_size.SizeInfo.set_physical_size = _safe_set_physical_size
     except Exception:
         pass
 
@@ -64,9 +78,15 @@ class SceneRenderer:
     _rect_nodes: dict[str, Any] = field(default_factory=dict)
     _line_nodes: dict[str, Any] = field(default_factory=dict)
     _text_nodes: dict[str, Any] = field(default_factory=dict)
-    _rect_props: dict[str, tuple[float, float, float, float, str, float]] = field(default_factory=dict)
-    _line_props: dict[str, tuple[float, float, float, float, int, str, float]] = field(default_factory=dict)
-    _text_props: dict[str, tuple[str, float, float, float, str, str, float]] = field(default_factory=dict)
+    _rect_props: dict[str, tuple[float, float, float, float, str, float]] = field(
+        default_factory=dict
+    )
+    _line_props: dict[str, tuple[float, float, float, float, int, str, float]] = field(
+        default_factory=dict
+    )
+    _text_props: dict[str, tuple[str, float, float, float, str, str, float]] = field(
+        default_factory=dict
+    )
     _rect_viewport_rev: dict[str, int] = field(default_factory=dict)
     _line_viewport_rev: dict[str, int] = field(default_factory=dict)
     _text_viewport_rev: dict[str, int] = field(default_factory=dict)
@@ -92,7 +112,8 @@ class SceneRenderer:
             )
         if rc_auto is None:
             raise RuntimeError(
-                "Render canvas backend unavailable. Install a desktop backend such as 'glfw' or 'pyside6'. "
+                "Render canvas backend unavailable. "
+                "Install a desktop backend such as 'glfw' or 'pyside6'. "
                 f"Original error: {_canvas_import_error!r}"
             )
 
@@ -395,4 +416,3 @@ class SceneRenderer:
         if hasattr(self.canvas, "close"):
             self.canvas.close()
         stop_backend_loop(rc_auto)
-

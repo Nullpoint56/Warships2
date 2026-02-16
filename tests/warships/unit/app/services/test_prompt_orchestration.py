@@ -1,7 +1,14 @@
 from warships.game.app.controller_state import ControllerState
-from warships.game.app.ports.runtime_primitives import PromptInteractionOutcome, PromptState, PromptView
+from warships.game.app.ports.runtime_primitives import (
+    PromptInteractionOutcome,
+    PromptState,
+    PromptView,
+)
 from warships.game.app.services.prompt_flow import PromptConfirmOutcome
-from warships.game.app.services.prompt_orchestration import apply_prompt_confirm_outcome, apply_prompt_interaction_outcome
+from warships.game.app.services.prompt_orchestration import (
+    apply_prompt_confirm_outcome,
+    apply_prompt_interaction_outcome,
+)
 from warships.game.app.state_machine import AppState
 
 

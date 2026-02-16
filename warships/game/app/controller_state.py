@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from warships.game.app.ports.runtime_primitives import Button, PromptState
 from warships.game.ai.strategy import AIStrategy
+from warships.game.app.ports.runtime_primitives import Button, PromptState
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import PresetRowView
 from warships.game.core.models import Coord, FleetPlacement, Orientation, ShipPlacement, ShipType

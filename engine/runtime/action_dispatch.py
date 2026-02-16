@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-
 DirectActionHandler = Callable[[], bool]
 PrefixedActionHandler = Callable[[str], bool]
 

@@ -96,4 +96,9 @@ def test_apply_edit_preset_result_paths() -> None:
     )
     assert ok
     assert state.app_state is AppState.PLACEMENT_EDIT
-    assert calls["reset"] == 1 and calls["apply"] == 1 and calls["refresh"] == 1 and calls["announce"] == 1
+    assert (
+        calls["reset"] == 1
+        and calls["apply"] == 1
+        and calls["refresh"] == 1
+        and calls["announce"] == 1
+    )

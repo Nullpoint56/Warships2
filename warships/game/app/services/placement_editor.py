@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
-from warships.game.core.board import BoardState
+from collections.abc import Sequence
+
 from warships.game.app.ports.runtime_primitives import GridLayout
+from warships.game.core.board import BoardState
 from warships.game.core.models import Coord, ShipPlacement, ShipType
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
@@ -12,17 +14,19 @@ class PlacementEditorService:
     """Pure helpers for placement editor state transitions."""
 
     @staticmethod
-    def reset(ship_order: list[ShipType]) -> dict[ShipType, ShipPlacement | None]:
+    def reset(ship_order: Sequence[ShipType]) -> dict[ShipType, ShipPlacement | None]:
         return {ship_type: None for ship_type in ship_order}
 
     @staticmethod
-    def placements_list(placements_by_type: dict[ShipType, ShipPlacement | None]) -> list[ShipPlacement]:
+    def placements_list(
+        placements_by_type: dict[ShipType, ShipPlacement | None],
+    ) -> list[ShipPlacement]:
         return [placement for placement in placements_by_type.values() if placement is not None]
 
     @staticmethod
     def all_ships_placed(
         placements_by_type: dict[ShipType, ShipPlacement | None],
-        ship_order: list[ShipType],
+        ship_order: Sequence[ShipType],
     ) -> bool:
         return all(placements_by_type[ship_type] is not None for ship_type in ship_order)
 
@@ -52,7 +56,9 @@ class PlacementEditorService:
         return Coord(row=cell.row, col=cell.col)
 
     @staticmethod
-    def palette_ship_at_point(ship_order: list[ShipType], x: float, y: float) -> ShipType | None:
+    def palette_ship_at_point(
+        ship_order: Sequence[ShipType], x: float, y: float
+    ) -> ShipType | None:
         panel = PLACEMENT_PANEL.panel_rect()
         if not panel.contains(x, y):
             return None
@@ -61,5 +67,3 @@ class PlacementEditorService:
             if row.contains(x, y):
                 return ship_type
         return None
-
-

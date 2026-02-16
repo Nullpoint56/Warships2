@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from collections import deque
-from dataclasses import dataclass
 import logging
 import os
+from collections import deque
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
-from typing import Callable
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,7 +97,7 @@ class InputController:
         self._wheel_events.clear()
         return items
 
-    def _on_pointer_down(self, event: dict) -> None:
+    def _on_pointer_down(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_down":
             return
         button = event.get("button")
@@ -113,9 +113,11 @@ class InputController:
         if self._on_click_queued is not None:
             self._on_click_queued()
         if self._debug:
-            logger.debug("input_click_accepted x=%.1f y=%.1f button=%d", click.x, click.y, click.button)
+            logger.debug(
+                "input_click_accepted x=%.1f y=%.1f button=%d", click.x, click.y, click.button
+            )
 
-    def _on_pointer_move(self, event: dict) -> None:
+    def _on_pointer_move(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_move":
             return
         x = event.get("x")
@@ -123,11 +125,13 @@ class InputController:
         if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
             return
         button = event.get("button")
-        self._pointer_events.append(PointerEvent("pointer_move", float(x), float(y), int(button or 0)))
+        self._pointer_events.append(
+            PointerEvent("pointer_move", float(x), float(y), int(button or 0))
+        )
         if self._on_click_queued is not None:
             self._on_click_queued()
 
-    def _on_pointer_up(self, event: dict) -> None:
+    def _on_pointer_up(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "pointer_up":
             return
         x = event.get("x")
@@ -141,7 +145,7 @@ class InputController:
         if self._on_click_queued is not None:
             self._on_click_queued()
 
-    def _on_key_down(self, event: dict) -> None:
+    def _on_key_down(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "key_down":
             return
         key = event.get("key")
@@ -150,7 +154,7 @@ class InputController:
             if self._on_click_queued is not None:
                 self._on_click_queued()
 
-    def _on_char(self, event: dict) -> None:
+    def _on_char(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "char":
             return
         char = event.get("data")
@@ -159,22 +163,32 @@ class InputController:
             if self._on_click_queued is not None:
                 self._on_click_queued()
 
-    def _on_wheel(self, event: dict) -> None:
+    def _on_wheel(self, event: dict[str, Any]) -> None:
         if event.get("event_type") != "wheel":
             return
         x = event.get("x")
         y = event.get("y")
         dy = event.get("dy")
-        if not isinstance(x, (int, float)) or not isinstance(y, (int, float)) or not isinstance(dy, (int, float)):
+        if (
+            not isinstance(x, (int, float))
+            or not isinstance(y, (int, float))
+            or not isinstance(dy, (int, float))
+        ):
             return
         self._wheel_events.append(WheelEvent(float(x), float(y), float(dy)))
         if self._on_click_queued is not None:
             self._on_click_queued()
 
     @staticmethod
-    def _on_any_event(event: dict) -> None:
+    def _on_any_event(event: dict[str, Any]) -> None:
         event_type = event.get("event_type")
-        if event_type not in {"pointer_down", "pointer_up", "pointer_move", "double_click", "wheel"}:
+        if event_type not in {
+            "pointer_down",
+            "pointer_up",
+            "pointer_move",
+            "double_click",
+            "wheel",
+        }:
             return
         logger.debug(
             "input_event type=%s button=%s buttons=%s x=%s y=%s dy=%s",

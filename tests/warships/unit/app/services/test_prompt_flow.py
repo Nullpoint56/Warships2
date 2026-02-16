@@ -9,7 +9,10 @@ def test_open_prompt_sets_mode_specific_confirm_button() -> None:
     overwrite = PromptFlowService.open_prompt("Overwrite", "x", mode="overwrite")
     assert save.prompt is not None and save.prompt.confirm_button_id == "prompt_confirm_save"
     assert rename.prompt is not None and rename.prompt.confirm_button_id == "prompt_confirm_rename"
-    assert overwrite.prompt is not None and overwrite.prompt.confirm_button_id == "prompt_confirm_overwrite"
+    assert (
+        overwrite.prompt is not None
+        and overwrite.prompt.confirm_button_id == "prompt_confirm_overwrite"
+    )
 
 
 def test_confirm_rejects_empty_name(tmp_path, valid_fleet) -> None:

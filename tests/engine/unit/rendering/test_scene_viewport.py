@@ -1,4 +1,8 @@
-from engine.rendering.scene_viewport import extract_resize_dimensions, to_design_space, viewport_transform
+from engine.rendering.scene_viewport import (
+    extract_resize_dimensions,
+    to_design_space,
+    viewport_transform,
+)
 
 
 def test_extract_resize_dimensions_from_multiple_payload_shapes() -> None:
