@@ -12,6 +12,17 @@ PyGFX-based Warships game running on an engine-hosted runtime.
 1. Build: `.\scripts\build_exe.ps1`
 2. Packaging docs: `docs/build_windows_exe.md`
 
+## Quality Checks
+
+1. Run full local gate: `.\scripts\check.ps1`
+2. Equivalent manual commands:
+   - `uv run ruff check .`
+   - `uv run ruff format --check .`
+   - `uv run mypy`
+   - `uv run pytest tests/engine --cov=engine --cov-report=term-missing --cov-fail-under=75`
+   - `uv run pytest tests/warships --cov=warships.game --cov-report=term-missing --cov-fail-under=75`
+   - `uv run pytest tests/warships/unit/core tests/warships/unit/presets tests/warships/unit/app/services --cov=warships.game.core --cov=warships.game.presets --cov=warships.game.app.services --cov-report=term-missing --cov-fail-under=90`
+
 ## Runtime Env Flags
 
 - `WARSHIPS_WINDOW_MODE`: `windowed` | `maximized` | `fullscreen` | `borderless`

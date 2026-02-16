@@ -224,6 +224,11 @@ Exit criteria:
 1. Required checks remain fast and reliable.
 2. Build job policy is explicitly documented (required vs informational).
 
+Status:
+1. Implemented.
+2. `Build Windows EXE` is required for `main` branch policy.
+3. Quality checks + build checks are configured to support branch protection.
+
 ### H5: Docs and Developer UX
 
 1. Update this document after each hardening milestone.
@@ -234,6 +239,13 @@ Exit criteria:
 
 Exit criteria:
 1. New contributors can run the same checks locally as CI with minimal setup.
+
+Status:
+1. Implemented.
+2. `README.md` now documents:
+   - `.\scripts\check.ps1`
+   - equivalent `uv` quality commands
+   - Windows build entrypoint and docs link
 
 ### Hardening Done Criteria
 
