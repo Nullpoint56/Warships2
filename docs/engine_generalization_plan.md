@@ -164,6 +164,12 @@ Recommended slice order:
 ## Implementation Status
 
 - Done:
+  - Track B1 `engine/api/gameplay.py` + `engine/gameplay/system.py`
+    (`GameplaySystem`, `SystemSpec`)
+  - Track B2 `engine/api/gameplay.py` + `engine/gameplay/update_loop.py`
+    (`UpdateLoop`, `create_update_loop`, `RuntimeUpdateLoop`)
+  - Track B3 `engine/api/gameplay.py` + `engine/gameplay/state_store.py`
+    (`StateStore`, `StateSnapshot`, `create_state_store`, `RuntimeStateStore`)
   - Track E1 `engine/api/context.py` + `engine/runtime/context.py`
     (`RuntimeContext`, `create_runtime_context`, `RuntimeContextImpl`)
   - Track E2 `engine/api/module_graph.py` + `engine/runtime/module_graph.py`
@@ -183,6 +189,8 @@ Recommended slice order:
     - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
       in `engine/runtime/framework_engine.py`
   - Engine unit tests added:
+    - `tests/engine/unit/gameplay/test_state_store.py`
+    - `tests/engine/unit/gameplay/test_update_loop.py`
     - `tests/engine/unit/runtime/test_context.py`
     - `tests/engine/unit/runtime/test_module_graph.py`
     - `tests/engine/unit/runtime/test_screen_stack.py`
@@ -266,3 +274,24 @@ Track E gate decision:
 - Engine completion gate: PASS
 - Warships adoption gate: PASS
 - Track E is complete; eligible to proceed to Track B.
+
+Track B gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+
+Track B adoption matrix:
+1. `system` (`GameplaySystem`, `SystemSpec`): applicable
+- Adopted in Warships runtime composition via gameplay systems:
+  `_FrameworkSyncSystem`, `_ViewRenderSystem`, `_CloseLifecycleSystem`.
+
+2. `update_loop` (`UpdateLoop`, `create_update_loop`): applicable
+- Adopted in `WarshipsGameModule` to execute ordered per-frame gameplay/system ticks.
+
+3. `state_store` (`StateStore`, `create_state_store`): applicable
+- Adopted in `WarshipsGameModule` to store per-frame transient state
+  (`debug_labels`, `ui_state`) as `_FrameState`.
+
+Track B gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track B is complete; eligible to proceed to Track C.

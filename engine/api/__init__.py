@@ -13,6 +13,15 @@ from engine.api.context import RuntimeContext, create_runtime_context
 from engine.api.events import EventBus, Subscription, create_event_bus
 from engine.api.flow import FlowContext, FlowMachine, FlowTransition, create_flow_machine
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
+from engine.api.gameplay import (
+    GameplaySystem,
+    StateSnapshot,
+    StateStore,
+    SystemSpec,
+    UpdateLoop,
+    create_state_store,
+    create_update_loop,
+)
 from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
 from engine.api.interaction_modes import (
     InteractionMode,
@@ -37,6 +46,7 @@ __all__ = [
     "FlowMachine",
     "FlowTransition",
     "GameModule",
+    "GameplaySystem",
     "HostControl",
     "HostFrameContext",
     "HostedRuntimeConfig",
@@ -49,8 +59,12 @@ __all__ = [
     "RuntimeModule",
     "ScreenLayer",
     "ScreenStack",
+    "StateSnapshot",
+    "StateStore",
     "Subscription",
+    "SystemSpec",
     "UIFramework",
+    "UpdateLoop",
     "create_action_dispatcher",
     "create_asset_registry",
     "create_command_map",
@@ -62,5 +76,7 @@ __all__ = [
     "create_module_graph",
     "create_runtime_context",
     "create_screen_stack",
+    "create_state_store",
+    "create_update_loop",
     "PrefixedActionHandler",
 ]

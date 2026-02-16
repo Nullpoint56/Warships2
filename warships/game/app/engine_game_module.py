@@ -9,6 +9,14 @@ from typing import cast
 from engine.api.context import RuntimeContext, create_runtime_context
 from engine.api.events import Subscription, create_event_bus
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
+from engine.api.gameplay import (
+    GameplaySystem,
+    StateStore,
+    SystemSpec,
+    UpdateLoop,
+    create_state_store,
+    create_update_loop,
+)
 from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
 from engine.api.ui_framework import UIFramework
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
@@ -21,13 +29,22 @@ class _CloseRequested:
     """Internal runtime event used to decouple close signaling."""
 
 
-class _FrameworkSyncModule(RuntimeModule):
+@dataclass(frozen=True, slots=True)
+class _FrameState:
+    """Per-frame transient state stored in gameplay state-store."""
+
+    debug_labels: list[str]
+    ui_state: object | None = None
+
+
+class _FrameworkSyncSystem(GameplaySystem):
     """Sync framework state before rendering."""
 
     def start(self, context: RuntimeContext) -> None:
         _ = context
 
-    def update(self, context: RuntimeContext) -> None:
+    def update(self, context: RuntimeContext, delta_seconds: float) -> None:
+        _ = delta_seconds
         framework = cast(UIFramework, context.require("framework"))
         framework.sync_ui_state()
 
@@ -35,34 +52,37 @@ class _FrameworkSyncModule(RuntimeModule):
         _ = context
 
 
-class _ViewRenderModule(RuntimeModule):
-    """Render frame and store transient UI data."""
+class _ViewRenderSystem(GameplaySystem):
+    """Render frame and update transient frame state."""
 
     def start(self, context: RuntimeContext) -> None:
-        context.provide("debug_labels", [])
+        _ = context
 
-    def update(self, context: RuntimeContext) -> None:
+    def update(self, context: RuntimeContext, delta_seconds: float) -> None:
+        _ = delta_seconds
         controller = cast(GameController, context.require("controller"))
         view = cast(GameView, context.require("view"))
         debug_ui = cast(bool, context.require("debug_ui"))
-        labels = cast(list[str], context.require("debug_labels"))
+        state_store = cast(StateStore[_FrameState], context.require("frame_state_store"))
+        frame_state = state_store.get()
         ui = controller.ui_state()
-        next_labels = view.render(ui, debug_ui, labels)
-        context.provide("debug_labels", next_labels)
-        context.provide("ui_state", ui)
+        next_labels = view.render(ui, debug_ui, frame_state.debug_labels)
+        state_store.set(_FrameState(debug_labels=next_labels, ui_state=ui))
 
     def shutdown(self, context: RuntimeContext) -> None:
         _ = context
 
 
-class _CloseLifecycleModule(RuntimeModule):
+class _CloseLifecycleSystem(GameplaySystem):
     """Request close when UI enters closing state."""
 
     def start(self, context: RuntimeContext) -> None:
         _ = context
 
-    def update(self, context: RuntimeContext) -> None:
-        ui_state = context.get("ui_state")
+    def update(self, context: RuntimeContext, delta_seconds: float) -> None:
+        _ = delta_seconds
+        state_store = cast(StateStore[_FrameState], context.require("frame_state_store"))
+        ui_state = state_store.get().ui_state
         if ui_state is None or not getattr(ui_state, "is_closing", False):
             return
         request_close = cast(Callable[[], None], context.require("request_close"))
@@ -70,6 +90,24 @@ class _CloseLifecycleModule(RuntimeModule):
 
     def shutdown(self, context: RuntimeContext) -> None:
         _ = context
+
+
+class _GameplayLoopModule(RuntimeModule):
+    """Adapter that drives gameplay update-loop from module graph."""
+
+    def __init__(self, update_loop: UpdateLoop) -> None:
+        self._update_loop = update_loop
+
+    def start(self, context: RuntimeContext) -> None:
+        self._update_loop.start(context)
+
+    def update(self, context: RuntimeContext) -> None:
+        frame_context = cast(HostFrameContext | None, context.get("frame_context"))
+        delta_seconds = frame_context.delta_seconds if frame_context is not None else 0.0
+        self._update_loop.step(context, delta_seconds)
+
+    def shutdown(self, context: RuntimeContext) -> None:
+        self._update_loop.shutdown(context)
 
 
 class WarshipsGameModule(GameModule):
@@ -96,14 +134,16 @@ class WarshipsGameModule(GameModule):
         self._context.provide("view", view)
         self._context.provide("debug_ui", debug_ui)
         self._context.provide("request_close", self._schedule_close_request)
+        self._frame_state_store = create_state_store(_FrameState(debug_labels=[]))
+        self._context.provide("frame_state_store", self._frame_state_store)
+        self._update_loop = create_update_loop()
+        self._update_loop.add_system(SystemSpec("framework_sync", _FrameworkSyncSystem(), order=0))
+        self._update_loop.add_system(SystemSpec("view_render", _ViewRenderSystem(), order=10))
+        self._update_loop.add_system(
+            SystemSpec("close_lifecycle", _CloseLifecycleSystem(), order=20)
+        )
         self._graph = create_module_graph()
-        self._graph.add_node(ModuleNode("framework_sync", _FrameworkSyncModule()))
-        self._graph.add_node(
-            ModuleNode("view_render", _ViewRenderModule(), depends_on=("framework_sync",))
-        )
-        self._graph.add_node(
-            ModuleNode("close_lifecycle", _CloseLifecycleModule(), depends_on=("view_render",))
-        )
+        self._graph.add_node(ModuleNode("gameplay_loop", _GameplayLoopModule(self._update_loop)))
 
     def on_start(self, host: HostControl) -> None:
         self._host = host
