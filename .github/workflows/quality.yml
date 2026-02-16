@@ -1,0 +1,87 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint_format_typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Mypy
+        run: uv run mypy
+
+  test_engine:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Engine tests coverage gate
+        run: uv run pytest tests/engine --cov=engine --cov-report=term-missing --cov-fail-under=75
+
+  test_warships:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Warships tests coverage gate
+        run: uv run pytest tests/warships --cov=warships.game --cov-report=term-missing --cov-fail-under=75
+
+      - name: Warships critical coverage gate
+        run: >
+          uv run pytest
+          tests/warships/unit/core
+          tests/warships/unit/presets
+          tests/warships/unit/app/services
+          --cov=warships.game.core
+          --cov=warships.game.presets
+          --cov=warships.game.app.services
+          --cov-report=term-missing
+          --cov-fail-under=90

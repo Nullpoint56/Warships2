@@ -1,5 +1,4 @@
 import logging
-import os
 
 from warships.game.infra.logging import JsonFormatter, setup_logging
 

@@ -1,0 +1,140 @@
+# Quality + CI Enablement Plan
+
+Date: 2026-02-16  
+Scope: repository-wide (`engine/*`, `warships/*`, tests, packaging)
+
+## What This Step Is Called
+
+This is both:
+1. **Repository hygiene**: defining local quality standards and developer checks.
+2. **CI enablement**: enforcing those checks automatically on pull requests and main.
+
+Practical name for this project: **Quality Gates + CI Rollout**.
+
+## Goals
+
+1. Make code quality checks easy to run locally.
+2. Enforce the same checks in GitHub Actions.
+3. Keep build and test reliability high while avoiding heavy process overhead.
+
+## Non-Goals (for now)
+
+1. Full release/deployment automation.
+2. Strict typing in every module from day one.
+3. Blocking PRs on optional diagnostics dashboards.
+
+## Baseline Gates To Introduce
+
+1. Ruff linting (`ruff check`).
+2. Type checking (initially: mypy with scoped modules).
+3. Existing pytest + coverage gates:
+   - Engine coverage policy from `docs/engine_test_plan.md`.
+   - Warships coverage policy from `docs/warships_test_plan.md`.
+
+## Phased Rollout
+
+## Phase Q1: Local Tooling and Config
+
+1. Add dev dependencies:
+   - `ruff`
+   - `mypy`
+2. Add tool config in `pyproject.toml`:
+   - Ruff baseline rule set.
+   - Type checker include/exclude and initial scope profile.
+3. Add a local quality script:
+   - `scripts/check.ps1`
+   - Runs lint -> type check -> tests with coverage.
+
+Exit criteria:
+1. `uv run` can execute all quality checks locally with one command.
+2. No IDE-only dependency for running checks.
+
+## Phase Q2: GitHub Actions CI
+
+1. Add workflow for PR/push quality gates.
+2. Jobs (initial):
+   - `lint` (ruff)
+   - `typecheck` (mypy)
+   - `test_engine` (coverage gate)
+   - `test_warships` (coverage gate)
+3. Cache `uv` dependencies to keep CI fast.
+4. Fail PR when required gates fail.
+
+Exit criteria:
+1. Every PR runs all required quality jobs.
+2. Branch protection can require these checks.
+
+## Phase Q3: Packaging CI
+
+1. Add Windows build workflow using existing packaging approach from `docs/build_windows_exe.md`.
+2. Run on:
+   - `main` pushes
+   - tags (release candidates/finals)
+3. Upload `dist/` artifact.
+4. Keep this job non-blocking for PRs initially (or main-only) until stable.
+
+Exit criteria:
+1. Reproducible CI-built executable artifact is available from workflow runs.
+
+## Phase Q4: Quality Hardening
+
+1. Tighten type-checking scope incrementally:
+   - Start with `engine/*` core boundaries.
+   - Expand to `warships/game/app/services/*`, then broader modules.
+2. Raise Ruff strictness in controlled steps.
+3. Optionally add SonarQube as dashboard/reporting:
+   - Track maintainability and smells.
+   - Keep hard pass/fail logic in Ruff/type/tests.
+
+Exit criteria:
+1. Stable CI signal with low false positives.
+2. Clear documented thresholds and ownership of failures.
+
+## Proposed CI Commands (Initial)
+
+1. `uv run ruff check .`
+2. `uv run mypy`
+3. `uv run pytest tests/engine --cov=engine --cov-report=term-missing`
+4. `uv run pytest tests/warships --cov=warships.game --cov-report=term-missing`
+
+## Risks and Mitigations
+
+1. Risk: too many failures during first rollout.  
+   Mitigation: introduce baseline with focused include paths and temporary targeted ignores.
+2. Risk: CI time becomes slow.  
+   Mitigation: cache dependencies, split jobs, run packaging only on main/tags.
+3. Risk: typing noise from untyped third-party APIs.  
+   Mitigation: configure stubs/ignores at boundaries; tighten gradually.
+
+## Ownership and Operating Model
+
+1. Quality gate failures are blocking for merges (except non-blocking packaging phase).
+2. Any rule relaxation requires explicit commit with rationale in PR description.
+3. Keep local and CI commands identical to avoid "works locally but fails in CI".
+
+## Next Implementation Steps
+
+1. Add Ruff + mypy config and dev dependencies in `pyproject.toml`.
+2. Add `scripts/check.ps1`.
+3. Add `.github/workflows/quality.yml` and `.github/workflows/build_windows.yml`.
+4. Enable branch protection using required checks once stable.
+
+## Implementation Status (Current)
+
+Implemented now:
+1. Dev dependencies added in `pyproject.toml`: `ruff`, `mypy`.
+2. Initial Ruff gate enabled with low-noise baseline (`F` family first).
+3. Initial mypy gate enabled with scoped paths:
+   - `engine/api`
+   - `engine/ui_runtime`
+   - `warships/game/core`
+   - `warships/game/presets`
+4. Local check entrypoint added:
+   - `scripts/check.ps1`
+5. GitHub Actions workflows added:
+   - `.github/workflows/quality.yml`
+   - `.github/workflows/build_windows.yml`
+
+Deferred intentionally:
+1. Formatter enforcement (`ruff format --check`) is postponed to a dedicated formatting pass PR.
+2. Broader mypy scope and stricter Ruff rule sets will be raised incrementally.

@@ -24,6 +24,8 @@ class PresetRepository:
     def load_payload(self, name: str) -> dict[str, object]:
         """Load preset payload by name."""
         path = self._path_for_ui_name(name)
+        if path is None:
+            raise FileNotFoundError(f"Preset '{name}' not found.")
         with path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
 

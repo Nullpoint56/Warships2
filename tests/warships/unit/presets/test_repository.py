@@ -1,5 +1,3 @@
-import json
-
 import pytest
 
 from warships.game.presets.repository import PresetRepository

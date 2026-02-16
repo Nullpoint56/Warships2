@@ -1,0 +1,41 @@
+name: Build Windows EXE
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+jobs:
+  build_windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Build executable
+        shell: pwsh
+        run: .\scripts\build_exe.ps1
+
+      - name: Archive build output
+        shell: pwsh
+        run: Compress-Archive -Path .\dist\Warships\* -DestinationPath .\dist\Warships-windows.zip -Force
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Warships-windows
+          path: dist/Warships-windows.zip
