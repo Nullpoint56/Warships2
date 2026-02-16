@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from engine.api.app_port import EngineAppPort
 from engine.api.render import RenderAPI
-from engine.ui_runtime.keymap import map_key_name
-from engine.ui_runtime.board_layout import BoardLayout
 from engine.ui_runtime.interactions import can_scroll_with_wheel, resolve_pointer_button, route_non_modal_key_event
+from engine.ui_runtime.keymap import map_key_name
+from engine.ui_runtime.grid_layout import GridLayout
 from engine.ui_runtime.modal_runtime import ModalInputState, route_modal_key_event, route_modal_pointer_event
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 
@@ -14,7 +14,7 @@ from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 class EngineUIFramework:
     """Coordinates input routing between engine runtime and app port."""
 
-    def __init__(self, app: EngineAppPort, renderer: RenderAPI, layout: BoardLayout) -> None:
+    def __init__(self, app: EngineAppPort, renderer: RenderAPI, layout: GridLayout) -> None:
         self._app = app
         self._renderer = renderer
         self._layout = layout
@@ -48,10 +48,10 @@ class EngineUIFramework:
             button_id = resolve_pointer_button(interactions, x, y)
             if button_id is not None:
                 return self._app.on_button(button_id)
-            if interactions.allows_ai_board_click:
-                ai_cell = self._layout.screen_to_cell(True, x, y)
-                if ai_cell is not None:
-                    return self._app.on_board_click(True, ai_cell.row, ai_cell.col)
+            if interactions.grid_click_target is not None:
+                grid_cell = self._layout.screen_to_cell(interactions.grid_click_target, x, y)
+                if grid_cell is not None:
+                    return self._app.on_grid_click(interactions.grid_click_target, grid_cell.row, grid_cell.col)
         return self._app.on_pointer_down(x=x, y=y, button=event.button)
 
     def handle_key_event(self, event: KeyEvent) -> bool:

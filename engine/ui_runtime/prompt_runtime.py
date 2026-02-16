@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass
 
 
@@ -85,7 +86,7 @@ def handle_button(
     state: PromptState,
     button_id: str,
     *,
-    confirm_button_ids: set[str],
+    extra_confirm_button_ids: Collection[str] = (),
 ) -> PromptInteractionOutcome:
     """Handle prompt button actions for cancel/confirm semantics."""
     if state.prompt is None:
@@ -96,7 +97,7 @@ def handle_button(
             state=close_prompt(),
             refresh_buttons=True,
         )
-    if button_id in confirm_button_ids:
+    if button_id == state.prompt.confirm_button_id or button_id in extra_confirm_button_ids:
         return PromptInteractionOutcome(handled=True, state=state, request_confirm=True)
     return PromptInteractionOutcome(handled=False, state=state)
 

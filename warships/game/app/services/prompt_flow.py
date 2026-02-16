@@ -65,11 +65,7 @@ class PromptFlowService:
 
     @staticmethod
     def handle_button(state: PromptState, button_id: str) -> PromptInteractionOutcome:
-        return handle_prompt_button(
-            state,
-            button_id,
-            confirm_button_ids={"prompt_confirm_save", "prompt_confirm_rename", "prompt_confirm_overwrite"},
-        )
+        return handle_prompt_button(state, button_id)
 
     @staticmethod
     def handle_key(state: PromptState, key: str) -> PromptInteractionOutcome:

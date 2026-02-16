@@ -20,11 +20,8 @@ class _EngineInteractionPlan:
 
     buttons: tuple[ButtonView, ...]
     shortcut_buttons: dict[str, str]
-    allows_ai_board_click: bool
-    wheel_scroll_in_new_game_list: bool
-    wheel_scroll_in_preset_manage_panel: bool
-    new_game_list_rect: RectView | None
-    preset_manage_rect: RectView | None
+    grid_click_target: str | None
+    wheel_scroll_regions: tuple[RectView, ...]
 
 
 class WarshipsAppAdapter(EngineAppPort):
@@ -42,22 +39,23 @@ class WarshipsAppAdapter(EngineAppPort):
     def interaction_plan(self) -> InteractionPlanView:
         ui = self._controller.ui_state()
         state = ui.state
-        wheel_new_game = state is AppState.NEW_GAME_SETUP
-        wheel_preset_manage = state is AppState.PRESET_MANAGE
+        wheel_scroll_regions: list[RectView] = []
+        if state is AppState.NEW_GAME_SETUP:
+            wheel_scroll_regions.append(NEW_GAME_SETUP.preset_list_rect())
+        if state is AppState.PRESET_MANAGE:
+            wheel_scroll_regions.append(PRESET_PANEL.panel_rect())
         return _EngineInteractionPlan(
             buttons=tuple(ui.buttons),
             shortcut_buttons=shortcut_buttons_for_state(state),
-            allows_ai_board_click=state is AppState.BATTLE,
-            wheel_scroll_in_new_game_list=wheel_new_game,
-            wheel_scroll_in_preset_manage_panel=wheel_preset_manage,
-            new_game_list_rect=NEW_GAME_SETUP.preset_list_rect() if wheel_new_game else None,
-            preset_manage_rect=PRESET_PANEL.panel_rect() if wheel_preset_manage else None,
+            grid_click_target="secondary" if state is AppState.BATTLE else None,
+            wheel_scroll_regions=tuple(wheel_scroll_regions),
         )
 
     def on_button(self, button_id: str) -> bool:
         return self._controller.handle_button(ButtonPressed(button_id))
 
-    def on_board_click(self, is_ai_board: bool, row: int, col: int) -> bool:
+    def on_grid_click(self, grid_target: str, row: int, col: int) -> bool:
+        is_ai_board = grid_target.strip().lower() in {"secondary", "opponent", "enemy", "ai"}
         return self._controller.handle_board_click(BoardCellPressed(is_ai_board, Coord(row=row, col=col)))
 
     def on_pointer_move(self, x: float, y: float) -> bool:

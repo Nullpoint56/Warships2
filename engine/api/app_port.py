@@ -27,11 +27,8 @@ class InteractionPlanView(Protocol):
 
     buttons: tuple[ButtonView, ...]
     shortcut_buttons: dict[str, str]
-    allows_ai_board_click: bool
-    wheel_scroll_in_new_game_list: bool
-    wheel_scroll_in_preset_manage_panel: bool
-    new_game_list_rect: RectView | None
-    preset_manage_rect: RectView | None
+    grid_click_target: str | None
+    wheel_scroll_regions: tuple[RectView, ...]
 
 
 class ModalWidgetView(Protocol):
@@ -61,8 +58,8 @@ class EngineAppPort(Protocol):
     def on_button(self, button_id: str) -> bool:
         """Handle UI button action."""
 
-    def on_board_click(self, is_ai_board: bool, row: int, col: int) -> bool:
-        """Handle board click action."""
+    def on_grid_click(self, grid_target: str, row: int, col: int) -> bool:
+        """Handle grid cell click action."""
 
     def on_pointer_move(self, x: float, y: float) -> bool:
         """Handle pointer move."""

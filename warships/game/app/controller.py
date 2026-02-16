@@ -6,7 +6,7 @@ import logging
 import random
 
 from warships.game.app.services.battle import resolve_player_turn, start_game
-from warships.game.app.ports.runtime_primitives import BoardLayout
+from warships.game.app.ports.runtime_primitives import GridLayout
 from warships.game.app.ports.runtime_services import ActionDispatcher, apply_wheel_scroll
 from warships.game.app.services.input_policy import (
     can_handle_key_for_placement,
@@ -56,7 +56,7 @@ _SHIP_ORDER = [
 ]
 
 logger = logging.getLogger(__name__)
-_BOARD_LAYOUT = BoardLayout()
+_GRID_LAYOUT = GridLayout()
 _NEW_GAME_VISIBLE_PRESET_ROWS = NEW_GAME_SETUP.visible_row_capacity()
 _PRESET_MANAGE_VISIBLE_ROWS = PRESET_PANEL.visible_row_capacity()
 
@@ -239,7 +239,7 @@ class GameController:
             return False
         self._state_data.hover_x = event.x
         self._state_data.hover_y = event.y
-        self._state_data.hover_cell = PlacementEditorService.to_board_cell(_BOARD_LAYOUT, event.x, event.y)
+        self._state_data.hover_cell = PlacementEditorService.to_primary_grid_cell(_GRID_LAYOUT, event.x, event.y)
         return self._state_data.held_ship_type is not None
 
     def handle_pointer_release(self, event: PointerReleased) -> bool:
@@ -249,7 +249,7 @@ class GameController:
         outcome = PlacementFlowService.on_pointer_release(
             placements_by_type=self._state_data.placements_by_type,
             held_state=self._held_state(),
-            layout=_BOARD_LAYOUT,
+            layout=_GRID_LAYOUT,
             x=event.x,
             y=event.y,
         )
@@ -356,7 +356,7 @@ class GameController:
             outcome = PlacementFlowService.on_right_pointer_down(
                 placements_by_type=self._state_data.placements_by_type,
                 held_state=self._held_state(),
-                layout=_BOARD_LAYOUT,
+                layout=_GRID_LAYOUT,
                 x=x,
                 y=y,
             )
@@ -372,7 +372,7 @@ class GameController:
             ship_order=_SHIP_ORDER,
             placements_by_type=self._state_data.placements_by_type,
             held_state=self._held_state(),
-            layout=_BOARD_LAYOUT,
+            layout=_GRID_LAYOUT,
             x=x,
             y=y,
         )

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from engine.input.input_controller import InputController
 from engine.rendering.scene import SceneRenderer
+from engine.rendering.scene_runtime import apply_startup_window_mode
 from engine.runtime.host import EngineHost
 
 
@@ -21,10 +22,10 @@ class PygfxFrontendWindow:
         self._host = host
 
     def show_fullscreen(self) -> None:
-        return
+        apply_startup_window_mode(self._renderer.canvas, "fullscreen")
 
     def show_maximized(self) -> None:
-        return
+        apply_startup_window_mode(self._renderer.canvas, "maximized")
 
     def show_windowed(self, width: int, height: int) -> None:
         set_size = getattr(self._renderer.canvas, "set_logical_size", None)

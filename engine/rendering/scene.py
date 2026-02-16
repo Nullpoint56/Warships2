@@ -9,10 +9,8 @@ from typing import Any
 from typing import cast
 from engine.rendering.scene_retained import hide_inactive_nodes, upsert_grid, upsert_rect, upsert_text
 from engine.rendering.scene_runtime import (
-    apply_startup_window_mode,
     get_canvas_logical_size,
     resolve_preserve_aspect,
-    resolve_window_mode,
     run_backend_loop,
     stop_backend_loop,
 )
@@ -104,9 +102,6 @@ class SceneRenderer:
 
         self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
         self.preserve_aspect = resolve_preserve_aspect()
-        window_mode = resolve_window_mode()
-        if window_mode in {"fullscreen", "borderless", "maximized"}:
-            apply_startup_window_mode(self.canvas, window_mode)
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)

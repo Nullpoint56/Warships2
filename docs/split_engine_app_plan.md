@@ -72,6 +72,9 @@ Rejected for this split phase (would add game or 2D coupling):
 - Slice C: Done
 - Slice D: Done
 - Slice E: Done
+- Slice F: Done
+- Slice G: Done
+- Slice H: Done
 
 ### Slice A: Move generic dispatch helper to engine
 
@@ -150,9 +153,36 @@ Planned concrete tasks:
 
 ### Deferred (Not in this split-only branch)
 
-- Wheel target abstraction based on game-defined UI regions.
 - Menu/state framework primitives and generalized engine gameplay/AI components.
 - These are tracked under `docs/engine_generalization_plan.md`.
+
+### Slice F: Engine Contract Semantic Neutralization
+
+- Goal: remove Warships-specific naming from engine app-port interaction contracts.
+- Changes:
+1. Replace screen-specific wheel fields (`new_game` / `preset_manage`) with generic `wheel_scroll_regions`.
+2. Replace AI-specific board click flag with generic `board_click_target`.
+3. Rewire engine runtime routing and game adapter to the neutral contract.
+- Status: Done
+
+### Slice G: Window Mode Ownership Unification
+
+- Goal: enforce a single ownership path for startup window mode.
+- Changes:
+1. Make `EngineHostConfig.window_mode` the source used by runtime bootstrap.
+2. Remove startup window mode side-effects from `SceneRenderer` construction.
+3. Implement frontend `show_fullscreen`/`show_maximized` using runtime backend helpers.
+4. Rewire Warships startup composition to pass explicit host config.
+- Status: Done
+
+### Slice H: Engine Grid Terminology Neutralization
+
+- Goal: remove board-specific naming from engine runtime primitives/APIs.
+- Changes:
+1. Replace engine `BoardLayout` with `GridLayout` and generic target-based cell/rect APIs.
+2. Replace engine app-port `on_board_click` / `board_click_target` with `on_grid_click` / `grid_click_target`.
+3. Keep board semantics only in Warships adapter mapping (`grid_target -> is_ai_board`).
+- Status: Done
 
 ## Explicit Keep-in-Game List
 
@@ -173,3 +203,6 @@ These are intentionally not engine migration targets:
 4. `warships/game/app/controller.py` is primarily orchestration, not utility sink.
 5. Runtime behavior remains unchanged from current user-visible flow.
   - Validation source: manual smoke testing after each modification pass (performed by project owner).
+6. Engine app-port naming is neutral (no Warships screen/AI naming in interaction contracts).
+7. Startup window mode has single ownership via host config and runtime bootstrap.
+8. Engine grid primitives use generic grid terminology (no board domain naming in `engine/*`).

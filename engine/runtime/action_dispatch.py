@@ -24,6 +24,7 @@ class ActionDispatcher:
             return handler()
         for prefix, prefixed_handler in self.prefixed_handlers:
             if action_id.startswith(prefix):
-                suffix = action_id.split(":", 1)[1]
+                # Prefix handlers receive the dynamic suffix after their registered prefix.
+                suffix = action_id[len(prefix) :]
                 return prefixed_handler(suffix)
         return None

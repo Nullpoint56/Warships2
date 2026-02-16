@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.core.board import BoardState
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType, cells_for_placement
 from warships.game.core.rules import GameSession
-from engine.ui_runtime.board_layout import BoardLayout
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
 
@@ -52,7 +52,7 @@ def draw_placement_panel(renderer, placements: list[ShipPlacement], ship_order: 
 
 def draw_player_board(
     renderer,
-    layout: BoardLayout,
+    layout: GridLayout,
     placements: list[ShipPlacement],
     session: GameSession | None,
     held_ship_type: ShipType | None,
@@ -83,16 +83,17 @@ def draw_player_board(
         )
 
 
-def draw_ai_board(renderer, layout: BoardLayout, session: GameSession | None) -> None:
+def draw_ai_board(renderer, layout: GridLayout, session: GameSession | None) -> None:
     draw_board_frame(renderer, layout, is_ai=True)
     if session is None:
         return
     draw_shots(renderer, layout, session.ai_board, is_ai=True)
 
 
-def draw_board_frame(renderer, layout: BoardLayout, is_ai: bool) -> None:
+def draw_board_frame(renderer, layout: GridLayout, is_ai: bool) -> None:
     board_key = "ai" if is_ai else "player"
-    rect = layout.board_rect(is_ai=is_ai)
+    target = "secondary" if is_ai else "primary"
+    rect = layout.rect_for_target(target)
     renderer.add_rect(f"board:bg:{board_key}", rect.x, rect.y, rect.w, rect.h, "#1e3a8a", z=0.1)
     renderer.add_grid(
         key=f"board:grid:{board_key}",
@@ -106,10 +107,10 @@ def draw_board_frame(renderer, layout: BoardLayout, is_ai: bool) -> None:
     )
 
 
-def draw_ships_from_placements(renderer, layout: BoardLayout, placements: list[ShipPlacement]) -> None:
+def draw_ships_from_placements(renderer, layout: GridLayout, placements: list[ShipPlacement]) -> None:
     for placement in placements:
         for coord in cells_for_placement(placement):
-            cell_rect = layout.cell_rect(is_ai=False, row=coord.row, col=coord.col)
+            cell_rect = layout.cell_rect_for_target("primary", row=coord.row, col=coord.col)
             renderer.add_rect(
                 f"ship:placement:{placement.ship_type.value}:{coord.row}:{coord.col}",
                 cell_rect.x + 2.0,
@@ -121,13 +122,14 @@ def draw_ships_from_placements(renderer, layout: BoardLayout, placements: list[S
             )
 
 
-def draw_ships_from_board(renderer, layout: BoardLayout, board: BoardState, is_ai: bool) -> None:
+def draw_ships_from_board(renderer, layout: GridLayout, board: BoardState, is_ai: bool) -> None:
     board_key = "ai" if is_ai else "player"
+    target = "secondary" if is_ai else "primary"
     for row in range(board.size):
         for col in range(board.size):
             if int(board.ships[row, col]) == 0:
                 continue
-            cell_rect = layout.cell_rect(is_ai=is_ai, row=row, col=col)
+            cell_rect = layout.cell_rect_for_target(target, row=row, col=col)
             renderer.add_rect(
                 f"ship:{board_key}:{row}:{col}",
                 cell_rect.x + 2.0,
@@ -139,14 +141,15 @@ def draw_ships_from_board(renderer, layout: BoardLayout, board: BoardState, is_a
             )
 
 
-def draw_shots(renderer, layout: BoardLayout, board: BoardState, is_ai: bool) -> None:
+def draw_shots(renderer, layout: GridLayout, board: BoardState, is_ai: bool) -> None:
     board_key = "ai" if is_ai else "player"
+    target = "secondary" if is_ai else "primary"
     for row in range(board.size):
         for col in range(board.size):
             value = int(board.shots[row, col])
             if value == 0:
                 continue
-            cell_rect = layout.cell_rect(is_ai=is_ai, row=row, col=col)
+            cell_rect = layout.cell_rect_for_target(target, row=row, col=col)
             color = "#e11d48" if value == 2 else "#f1f5f9"
             renderer.add_rect(
                 f"shot:{board_key}:{row}:{col}",
@@ -161,7 +164,7 @@ def draw_shots(renderer, layout: BoardLayout, board: BoardState, is_ai: bool) ->
 
 def draw_held_ship_preview(
     renderer,
-    layout: BoardLayout,
+    layout: GridLayout,
     ship_type: ShipType,
     orientation: Orientation,
     grab_index: int,
@@ -177,7 +180,7 @@ def draw_held_ship_preview(
             col = bow_col + (i if orientation is Orientation.HORIZONTAL else 0)
             if row < 0 or row >= 10 or col < 0 or col >= 10:
                 continue
-            cell_rect = layout.cell_rect(is_ai=False, row=row, col=col)
+            cell_rect = layout.cell_rect_for_target("primary", row=row, col=col)
             renderer.add_rect(
                 f"held:preview:{ship_type.value}:{i}",
                 cell_rect.x + 2.0,
@@ -202,5 +205,3 @@ def draw_held_ship_preview(
             "#f59e0b",
             z=1.2,
         )
-
-

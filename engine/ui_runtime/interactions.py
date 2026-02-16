@@ -25,11 +25,8 @@ def resolve_pointer_button(plan: InteractionPlanView, x: float, y: float) -> str
 
 
 def can_scroll_with_wheel(plan: InteractionPlanView, x: float, y: float) -> bool:
-    if plan.wheel_scroll_in_new_game_list and plan.new_game_list_rect is not None:
-        if plan.new_game_list_rect.contains(x, y):
-            return True
-    if plan.wheel_scroll_in_preset_manage_panel and plan.preset_manage_rect is not None:
-        if plan.preset_manage_rect.contains(x, y):
+    for region in plan.wheel_scroll_regions:
+        if region.contains(x, y):
             return True
     return False
 

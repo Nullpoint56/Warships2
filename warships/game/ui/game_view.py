@@ -7,7 +7,7 @@ import logging
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from engine.api.render import RenderAPI as Render2D
-from engine.ui_runtime.board_layout import BoardLayout
+from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.ui.framework.widgets import build_modal_text_input_widget, render_modal_text_input_widget
 from engine.ui_runtime.widgets import Button
 from warships.game.ui.overlays import button_label
@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 class GameView:
     """Draws game state using retained keyed scene nodes."""
 
-    def __init__(self, renderer: Render2D, layout: BoardLayout) -> None:
+    def __init__(self, renderer: Render2D, layout: GridLayout) -> None:
         self._renderer = renderer
         self._layout = layout
 

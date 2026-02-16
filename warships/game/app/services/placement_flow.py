@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from warships.game.app.ports.runtime_primitives import BoardLayout
+from warships.game.app.ports.runtime_primitives import GridLayout
 from warships.game.app.flows.placement_math import bow_from_grab_index, grab_index_from_cell
 from warships.game.app.services.placement_editor import PlacementEditorService
 from warships.game.core.models import Orientation, ShipPlacement, ShipType, cells_for_placement
@@ -47,13 +47,13 @@ class PlacementFlowService:
         *,
         placements_by_type: dict[ShipType, ShipPlacement | None],
         held_state: HeldShipState,
-        layout: BoardLayout,
+        layout: GridLayout,
         x: float,
         y: float,
     ) -> PlacementActionResult:
         if held_state.ship_type is None or held_state.orientation is None:
             return PlacementActionResult(handled=False, held_state=held_state)
-        target = PlacementEditorService.to_board_cell(layout, x, y)
+        target = PlacementEditorService.to_primary_grid_cell(layout, x, y)
         if target is None:
             return PlacementActionResult(
                 handled=True,
@@ -110,7 +110,7 @@ class PlacementFlowService:
         *,
         placements_by_type: dict[ShipType, ShipPlacement | None],
         held_state: HeldShipState,
-        layout: BoardLayout,
+        layout: GridLayout,
         x: float,
         y: float,
     ) -> PlacementActionResult:
@@ -121,7 +121,7 @@ class PlacementFlowService:
                 status="Returned held ship.",
                 refresh_buttons=True,
             )
-        board_cell = PlacementEditorService.to_board_cell(layout, x, y)
+        board_cell = PlacementEditorService.to_primary_grid_cell(layout, x, y)
         if board_cell is None:
             return PlacementActionResult(handled=False, held_state=held_state)
         for ship_type, placement in placements_by_type.items():
@@ -141,11 +141,11 @@ class PlacementFlowService:
         ship_order: tuple[ShipType, ...] | list[ShipType],
         placements_by_type: dict[ShipType, ShipPlacement | None],
         held_state: HeldShipState,
-        layout: BoardLayout,
+        layout: GridLayout,
         x: float,
         y: float,
     ) -> PlacementActionResult:
-        board_cell = PlacementEditorService.to_board_cell(layout, x, y)
+        board_cell = PlacementEditorService.to_primary_grid_cell(layout, x, y)
         if board_cell is not None:
             for ship_type, placement in placements_by_type.items():
                 if placement is not None and board_cell in cells_for_placement(placement):

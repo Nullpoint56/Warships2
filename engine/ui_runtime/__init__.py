@@ -1,7 +1,7 @@
 """Engine-owned UI runtime helpers."""
 
-from engine.ui_runtime.board_layout import BoardLayout
 from engine.ui_runtime.geometry import CellCoord, Rect
+from engine.ui_runtime.grid_layout import GridLayout
 from engine.ui_runtime.interactions import (
     NonModalKeyRoute,
     can_scroll_with_wheel,
@@ -37,9 +37,9 @@ __all__ = [
     "ModalKeyRoute",
     "ModalPointerRoute",
     "NonModalKeyRoute",
-    "BoardLayout",
     "Button",
     "CellCoord",
+    "GridLayout",
     "PromptInteractionOutcome",
     "PromptState",
     "PromptView",

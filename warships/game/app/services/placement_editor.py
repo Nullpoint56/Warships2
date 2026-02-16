@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from warships.game.core.board import BoardState
-from warships.game.app.ports.runtime_primitives import BoardLayout
+from warships.game.app.ports.runtime_primitives import GridLayout
 from warships.game.core.models import Coord, ShipPlacement, ShipType
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
 
@@ -45,8 +45,8 @@ class PlacementEditorService:
         return True
 
     @staticmethod
-    def to_board_cell(layout: BoardLayout, x: float, y: float) -> Coord | None:
-        cell = layout.screen_to_cell(is_ai=False, px=x, py=y)
+    def to_primary_grid_cell(layout: GridLayout, x: float, y: float) -> Coord | None:
+        cell = layout.screen_to_cell("primary", px=x, py=y)
         if cell is None:
             return None
         return Coord(row=cell.row, col=cell.col)
