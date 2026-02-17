@@ -51,7 +51,7 @@ class JsonFormatter(logging.Formatter):
 
 def setup_logging() -> None:
     """Configure root logging once from environment."""
-    level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+    level_name = os.getenv("WARSHIPS_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")).upper()
     level = getattr(logging, level_name, logging.INFO)
     fmt = os.getenv("LOG_FORMAT", "json").lower()
 

@@ -1,0 +1,72 @@
+"""Engine-wide debug configuration sourced from environment."""
+
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+
+
+def _flag(name: str, default: bool = False) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+@dataclass(frozen=True, slots=True)
+class DebugConfig:
+    """Immutable runtime debug configuration."""
+
+    metrics_enabled: bool
+    overlay_enabled: bool
+    ui_trace_enabled: bool
+    resize_trace_enabled: bool
+    ui_trace_sampling_n: int
+    log_level: str
+
+
+def resolve_log_level_name(default: str = "INFO") -> str:
+    """Resolve runtime log level with engine-prefixed override."""
+    value = os.getenv("ENGINE_LOG_LEVEL")
+    if value is None:
+        value = os.getenv("LOG_LEVEL", default)
+    return value.strip().upper()
+
+
+def load_debug_config() -> DebugConfig:
+    """Load immutable debug configuration from env vars."""
+    return DebugConfig(
+        metrics_enabled=_flag("ENGINE_DEBUG_METRICS", False),
+        overlay_enabled=_flag("ENGINE_DEBUG_OVERLAY", False),
+        ui_trace_enabled=_flag("ENGINE_DEBUG_UI_TRACE", False),
+        resize_trace_enabled=_flag("ENGINE_DEBUG_RESIZE_TRACE", False),
+        ui_trace_sampling_n=max(1, _int("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", 10)),
+        log_level=resolve_log_level_name(),
+    )
+
+
+def enabled_metrics() -> bool:
+    return load_debug_config().metrics_enabled
+
+
+def enabled_overlay() -> bool:
+    return load_debug_config().overlay_enabled
+
+
+def enabled_ui_trace() -> bool:
+    return load_debug_config().ui_trace_enabled
+
+
+def enabled_resize_trace() -> bool:
+    return load_debug_config().resize_trace_enabled
+

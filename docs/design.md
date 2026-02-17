@@ -113,13 +113,22 @@ Model:
 
 ## Configuration
 
-Relevant env flags:
-- `ENGINE_WINDOW_MODE`
-- `ENGINE_UI_ASPECT_MODE`
-- `WARSHIPS_DEBUG_INPUT`
-- `WARSHIPS_DEBUG_UI`
-- `LOG_LEVEL`
-- `LOG_FORMAT`
+Preferred env files:
+1. `.env.engine`
+2. `.env.engine.local` (gitignored)
+3. `.env.app`
+4. `.env.app.local` (gitignored)
+
+Ownership:
+- Engine settings (`ENGINE_*`):
+  - `ENGINE_WINDOW_MODE`
+  - `ENGINE_UI_ASPECT_MODE`
+  - `ENGINE_LOG_LEVEL`
+- App settings (`WARSHIPS_*` + app log format):
+  - `WARSHIPS_DEBUG_INPUT`
+  - `WARSHIPS_DEBUG_UI`
+  - `WARSHIPS_LOG_LEVEL`
+  - `LOG_FORMAT`
 
 ## Boundary Rules
 

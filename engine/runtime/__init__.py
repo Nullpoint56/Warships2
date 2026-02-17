@@ -10,11 +10,19 @@ from engine.api.screens import ScreenLayer
 from engine.runtime.bootstrap import run_pygfx_hosted_runtime
 from engine.runtime.commands import CommandMap
 from engine.runtime.context import RuntimeContextImpl
+from engine.runtime.debug_config import DebugConfig, load_debug_config
 from engine.runtime.events import EventBus
 from engine.runtime.flow import FlowMachine
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.interaction_modes import InteractionModeMachine
+from engine.runtime.metrics import (
+    FrameMetrics,
+    MetricsCollector,
+    MetricsSnapshot,
+    NoopMetricsCollector,
+    create_metrics_collector,
+)
 from engine.runtime.module_graph import RuntimeModuleGraph
 from engine.runtime.scheduler import Scheduler
 from engine.runtime.screen_stack import ScreenStack
@@ -27,14 +35,19 @@ __all__ = [
     "EngineHostConfig",
     "EngineUIFramework",
     "EventBus",
+    "DebugConfig",
     "FixedStepAccumulator",
+    "FrameMetrics",
     "FlowContext",
     "FlowMachine",
     "FlowTransition",
     "FrameClock",
     "InteractionMode",
     "InteractionModeMachine",
+    "MetricsCollector",
+    "MetricsSnapshot",
     "ModuleNode",
+    "NoopMetricsCollector",
     "RuntimeContext",
     "RuntimeContextImpl",
     "RuntimeModule",
@@ -44,5 +57,7 @@ __all__ = [
     "ScreenStack",
     "Subscription",
     "TimeContext",
+    "create_metrics_collector",
+    "load_debug_config",
     "run_pygfx_hosted_runtime",
 ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Sequence
 
 
 def load_env_file(path: str = ".env", *, override_existing: bool = True) -> None:
@@ -33,6 +34,26 @@ def load_env_file(path: str = ".env", *, override_existing: bool = True) -> None
 
         if override_existing or key not in os.environ:
             os.environ[key] = value
+
+
+def load_default_env_files(*, override_existing: bool = True, paths: Sequence[str] | None = None) -> None:
+    """Load split env files with optional local overrides.
+
+    Precedence is left-to-right because later loads may overwrite previous values.
+    Default order:
+    1) .env.engine
+    2) .env.engine.local
+    3) .env.app
+    4) .env.app.local
+    """
+    to_load = tuple(paths) if paths is not None else (
+        ".env.engine",
+        ".env.engine.local",
+        ".env.app",
+        ".env.app.local",
+    )
+    for path in to_load:
+        load_env_file(path, override_existing=override_existing)
 
 
 def _resolve_env_path(path: str) -> Path:
