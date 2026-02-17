@@ -113,7 +113,9 @@ class GameController:
             ),
         )
         self._interaction_modes = create_interaction_mode_machine()
-        self._state_data.screen_stack.set_root(self._screen_id_for_state(self._state_data.app_state))
+        self._state_data.screen_stack.set_root(
+            self._screen_id_for_state(self._state_data.app_state)
+        )
         self._sync_prompt_overlay()
         self._sync_interaction_mode()
         self._refresh_preset_rows()
@@ -513,7 +515,9 @@ class GameController:
             refresh_buttons=self._refresh_buttons,
             announce_state=self._announce_state,
         )
-        self._state_data.screen_stack.set_root(self._screen_id_for_state(self._state_data.app_state))
+        self._state_data.screen_stack.set_root(
+            self._screen_id_for_state(self._state_data.app_state)
+        )
         self._sync_prompt_overlay()
         self._sync_interaction_mode()
 

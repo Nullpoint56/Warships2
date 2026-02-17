@@ -24,4 +24,3 @@ def test_open_dialog_builds_prompt_state() -> None:
     assert state.prompt.cancel_button_id == "cancel"
     assert state.mode == "save"
     assert state.target == "x"
-

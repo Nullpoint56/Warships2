@@ -83,9 +83,7 @@ def new_game_setup_buttons(
         )
     random_rect = NEW_GAME_SETUP.random_button_rect()
     specs.append(
-        ButtonSpec(
-            "new_game_randomize", random_rect.x, random_rect.y, random_rect.w, random_rect.h
-        )
+        ButtonSpec("new_game_randomize", random_rect.x, random_rect.y, random_rect.w, random_rect.h)
     )
     return project_buttons(tuple(specs))
 

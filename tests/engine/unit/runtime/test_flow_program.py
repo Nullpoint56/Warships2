@@ -13,4 +13,3 @@ def test_flow_program_resolves_matching_transition() -> None:
     assert program.resolve("A", "go") == "B"
     assert program.resolve("B", "go") == "C"
     assert program.resolve("C", "go") is None
-

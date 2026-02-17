@@ -37,4 +37,3 @@ def project_buttons(specs: Sequence[ButtonSpec]) -> list[Button]:
         for spec in specs
         if spec.when
     ]
-

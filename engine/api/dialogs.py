@@ -34,4 +34,3 @@ def open_dialog(spec: DialogOpenSpec) -> PromptState:
         mode=spec.mode,
         target=spec.target,
     )
-

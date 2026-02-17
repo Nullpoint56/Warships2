@@ -11,4 +11,3 @@ def test_project_buttons_filters_by_condition() -> None:
         )
     )
     assert [button.id for button in buttons] == ["a"]
-
