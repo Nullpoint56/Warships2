@@ -396,3 +396,23 @@ Scope:
 
 N3 Status:
 - PASS. API façade re-exports removed; runtime rewired to API-owned contracts.
+
+## Post-Completion General Mechanism Slice (N4)
+
+Goal: add reusable higher-level mechanisms that reduce app-side orchestration while staying domain-neutral.
+
+Scope:
+1. Dialog workflow mechanism:
+- Add generic dialog-open helpers (`engine.api.dialogs`) with caller-provided mode-to-confirm mapping.
+- Adopt in Warships prompt flow (remove game-side mode->confirm branching glue).
+
+2. Persistent flow program mechanism:
+- Add reusable configured transition program (`create_flow_program`) in flow API/runtime.
+- Adopt in Warships session flow to avoid rebuilding transition tables per resolve call.
+
+3. Declarative action-to-widget projection:
+- Add generic button projection API (`engine.api.ui_projection`).
+- Adopt in Warships button composition helpers for row/prompt/new-game button specs.
+
+N4 Status:
+- PASS. Implemented in engine and adopted in Warships app services.

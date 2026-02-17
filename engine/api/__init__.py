@@ -20,8 +20,16 @@ from engine.api.app_port import EngineAppPort
 from engine.api.assets import AssetHandle, AssetRegistry, create_asset_registry
 from engine.api.commands import Command, CommandMap, create_command_map
 from engine.api.context import RuntimeContext, create_runtime_context
+from engine.api.dialogs import DialogOpenSpec, open_dialog, resolve_confirm_button_id
 from engine.api.events import EventBus, Subscription, create_event_bus
-from engine.api.flow import FlowContext, FlowMachine, FlowTransition, create_flow_machine
+from engine.api.flow import (
+    FlowContext,
+    FlowMachine,
+    FlowProgram,
+    FlowTransition,
+    create_flow_machine,
+    create_flow_program,
+)
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.gameplay import (
     GameplaySystem,
@@ -73,6 +81,7 @@ from engine.api.ui_primitives import (
     sync_prompt,
     visible_slice,
 )
+from engine.api.ui_projection import ButtonSpec, project_buttons
 
 __all__ = [
     "ActionDispatcher",
@@ -84,10 +93,12 @@ __all__ = [
     "CommandMap",
     "DecisionContext",
     "DirectActionHandler",
+    "DialogOpenSpec",
     "EngineAppPort",
     "EventBus",
     "FlowContext",
     "FlowMachine",
+    "FlowProgram",
     "FlowTransition",
     "GameModule",
     "GameplaySystem",
@@ -103,6 +114,7 @@ __all__ = [
     "KeyEvent",
     "WheelEvent",
     "Button",
+    "ButtonSpec",
     "CellCoord",
     "ModalInputState",
     "ModalKeyRoute",
@@ -133,6 +145,7 @@ __all__ = [
     "create_event_bus",
     "create_functional_agent",
     "create_flow_machine",
+    "create_flow_program",
     "create_interaction_mode_machine",
     "create_ui_framework",
     "normalize_scores",
@@ -143,6 +156,8 @@ __all__ = [
     "create_state_store",
     "create_update_loop",
     "PrefixedActionHandler",
+    "open_dialog",
+    "project_buttons",
     "apply_wheel_scroll",
     "can_scroll_list_down",
     "can_scroll_with_wheel",
@@ -157,6 +172,7 @@ __all__ = [
     "route_modal_key_event",
     "route_modal_pointer_event",
     "route_non_modal_key_event",
+    "resolve_confirm_button_id",
     "sync_prompt",
     "visible_slice",
 ]

@@ -47,8 +47,26 @@ class FlowMachine[TState](Protocol):
         """Execute first matching transition."""
 
 
+class FlowProgram[TState](Protocol):
+    """Reusable transition program for stateless state-resolution queries."""
+
+    def resolve(
+        self, current_state: TState, trigger: str, *, payload: object | None = None
+    ) -> TState | None:
+        """Resolve next state for a trigger from a given state."""
+
+
 def create_flow_machine[TState](initial_state: TState) -> FlowMachine[TState]:
     """Create default engine flow-machine implementation."""
     from engine.runtime.flow import RuntimeFlowMachine
 
     return RuntimeFlowMachine(initial_state)
+
+
+def create_flow_program[TState](
+    transitions: tuple[FlowTransition[TState], ...],
+) -> FlowProgram[TState]:
+    """Create reusable transition program implementation."""
+    from engine.runtime.flow import RuntimeFlowProgram
+
+    return RuntimeFlowProgram(transitions)

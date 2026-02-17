@@ -46,3 +46,33 @@ class RuntimeFlowMachine[TState]:
 
 
 FlowMachine = RuntimeFlowMachine
+
+
+class RuntimeFlowProgram[TState]:
+    """Reusable transition table for resolving next state from trigger."""
+
+    def __init__(self, transitions: tuple[FlowTransition[TState], ...]) -> None:
+        self._transitions = transitions
+
+    def resolve(
+        self, current_state: TState, trigger: str, *, payload: object | None = None
+    ) -> TState | None:
+        for transition in self._transitions:
+            if transition.trigger != trigger:
+                continue
+            if transition.source is not None and transition.source != current_state:
+                continue
+            context = FlowContext(
+                trigger=trigger,
+                source=current_state,
+                target=transition.target,
+                payload=payload,
+            )
+            if transition.guard is not None and not transition.guard(context):
+                continue
+            if transition.before is not None:
+                transition.before(context)
+            if transition.after is not None:
+                transition.after(context)
+            return transition.target
+        return None
