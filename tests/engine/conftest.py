@@ -28,7 +28,7 @@ class FakeButton:
 class FakeInteractionPlan:
     buttons: tuple[FakeButton, ...] = ()
     shortcut_buttons: dict[str, str] = field(default_factory=dict)
-    grid_click_target: str | None = None
+    cell_click_surface: str | None = None
     wheel_scroll_regions: tuple[Box, ...] = ()
 
 
@@ -60,7 +60,7 @@ class FakeApp:
         self.on_button_result = True
         self.on_wheel_result = True
         self.on_pointer_down_result = True
-        self.on_grid_click_result = True
+        self.on_cell_click_result = True
 
     def set_modal(self, modal: FakeModalWidget | None) -> None:
         self._modal = modal
@@ -81,9 +81,9 @@ class FakeApp:
         self.calls.append(("on_button", (button_id,)))
         return self.on_button_result
 
-    def on_grid_click(self, grid_target: str, row: int, col: int) -> bool:
-        self.calls.append(("on_grid_click", (grid_target, row, col)))
-        return self.on_grid_click_result
+    def on_cell_click(self, surface_target: str, row: int, col: int) -> bool:
+        self.calls.append(("on_cell_click", (surface_target, row, col)))
+        return self.on_cell_click_result
 
     def on_pointer_move(self, x: float, y: float) -> bool:
         self.calls.append(("on_pointer_move", (x, y)))

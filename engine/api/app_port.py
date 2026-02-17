@@ -27,7 +27,7 @@ class InteractionPlanView(Protocol):
 
     buttons: tuple[ButtonView, ...]
     shortcut_buttons: dict[str, str]
-    grid_click_target: str | None
+    cell_click_surface: str | None
     wheel_scroll_regions: tuple[RectView, ...]
 
 
@@ -58,8 +58,8 @@ class EngineAppPort(Protocol):
     def on_button(self, button_id: str) -> bool:
         """Handle UI button action."""
 
-    def on_grid_click(self, grid_target: str, row: int, col: int) -> bool:
-        """Handle grid cell click action."""
+    def on_cell_click(self, surface_target: str, row: int, col: int) -> bool:
+        """Handle cell click action for a named surface target."""
 
     def on_pointer_move(self, x: float, y: float) -> bool:
         """Handle pointer move."""

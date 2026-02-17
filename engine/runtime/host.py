@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.runtime.scheduler import Scheduler
+from engine.runtime.time import FrameClock
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +29,8 @@ class EngineHost(HostControl):
         self._frame_index = 0
         self._closed = False
         self._started = False
+        self._clock = FrameClock()
+        self._scheduler = Scheduler()
 
     @property
     def config(self) -> EngineHostConfig:
@@ -53,10 +58,32 @@ class EngineHost(HostControl):
             self.start()
         if self._closed:
             return
-        self._module.on_frame(HostFrameContext(frame_index=self._frame_index))
+        time_context = self._clock.next(self._frame_index)
+        self._scheduler.advance(time_context.delta_seconds)
+        if self._closed:
+            return
+        self._module.on_frame(
+            HostFrameContext(
+                frame_index=self._frame_index,
+                delta_seconds=time_context.delta_seconds,
+                elapsed_seconds=time_context.elapsed_seconds,
+            )
+        )
         self._frame_index += 1
         if self._module.should_close():
             self.close()
+
+    def call_later(self, delay_seconds: float, callback: Callable[[], None]) -> int:
+        """Schedule a one-shot callback in host runtime time."""
+        return self._scheduler.call_later(delay_seconds, callback)
+
+    def call_every(self, interval_seconds: float, callback: Callable[[], None]) -> int:
+        """Schedule a recurring callback in host runtime time."""
+        return self._scheduler.call_every(interval_seconds, callback)
+
+    def cancel_task(self, task_id: int) -> None:
+        """Cancel a previously scheduled task."""
+        self._scheduler.cancel(task_id)
 
     def close(self) -> None:
         if self._closed:

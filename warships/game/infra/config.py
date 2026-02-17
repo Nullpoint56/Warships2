@@ -6,10 +6,10 @@ import os
 from pathlib import Path
 
 
-def load_env_file(path: str = ".env") -> None:
+def load_env_file(path: str = ".env", *, override_existing: bool = True) -> None:
     """Load KEY=VALUE pairs from an env file into process environment.
 
-    Existing environment variables are not overwritten.
+    By default, values from the env file overwrite existing environment variables.
     """
     env_path = _resolve_env_path(path)
     if not env_path.exists():
@@ -31,7 +31,8 @@ def load_env_file(path: str = ".env") -> None:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
             value = value[1:-1]
 
-        os.environ.setdefault(key, value)
+        if override_existing or key not in os.environ:
+            os.environ[key] = value
 
 
 def _resolve_env_path(path: str) -> Path:

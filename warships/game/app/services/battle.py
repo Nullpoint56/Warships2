@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
+from engine.api.ai import DecisionContext, best_action
 from warships.game.ai.hunt_target import HuntTargetAI
 from warships.game.ai.pattern_hard import PatternHardAI
 from warships.game.ai.strategy import AIStrategy
@@ -99,7 +100,17 @@ def _run_ai_turn(session: GameSession, ai_strategy: AIStrategy) -> None:
     if session.turn is not Turn.AI or session.winner is not None:
         return
     for _ in range(200):
-        shot = ai_strategy.choose_shot()
+        decision = ai_strategy.decide(
+            DecisionContext(
+                now_seconds=0.0,
+                delta_seconds=0.0,
+                blackboard=ai_strategy.blackboard,
+                observations={"turn": session.turn.name},
+            )
+        )
+        if decision != AIStrategy.ACTION_FIRE:
+            return
+        shot = AIStrategy.take_decided_shot(ai_strategy.blackboard)
         result = ai_fire(session, shot)
         if result in {ShotResult.INVALID, ShotResult.REPEAT}:
             continue
@@ -109,15 +120,25 @@ def _run_ai_turn(session: GameSession, ai_strategy: AIStrategy) -> None:
 
 def build_ai_strategy(difficulty: str, rng: random.Random) -> AIStrategy:
     """Construct AI strategy from selected difficulty."""
-    if difficulty == "Easy":
+    selected = _resolve_difficulty(difficulty)
+    if selected == "Easy":
         return _RandomShotAI(rng)
-    if difficulty == "Hard":
+    if selected == "Hard":
         return PatternHardAI(rng)
     return HuntTargetAI(rng)
 
 
+def _resolve_difficulty(difficulty: str) -> str:
+    scores = {"Easy": 0.0, "Normal": 1.0, "Hard": 0.0}
+    if difficulty in scores:
+        for key in scores:
+            scores[key] = 1.0 if key == difficulty else 0.0
+    return best_action(scores) or "Normal"
+
+
 class _RandomShotAI(AIStrategy):
     def __init__(self, rng: random.Random) -> None:
+        super().__init__()
         self._rng = rng
         self._remaining: set[tuple[int, int]] = {(r, c) for r in range(10) for c in range(10)}
 

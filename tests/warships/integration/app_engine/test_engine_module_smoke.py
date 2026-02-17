@@ -40,9 +40,26 @@ class _Controller:
 class _Host:
     def __init__(self) -> None:
         self.closed = False
+        self.next_task_id = 1
 
     def close(self) -> None:
         self.closed = True
+
+    def call_later(self, delay_seconds: float, callback) -> int:
+        _ = delay_seconds
+        task_id = self.next_task_id
+        self.next_task_id += 1
+        callback()
+        return task_id
+
+    def call_every(self, interval_seconds: float, callback) -> int:
+        _ = (interval_seconds, callback)
+        task_id = self.next_task_id
+        self.next_task_id += 1
+        return task_id
+
+    def cancel_task(self, task_id: int) -> None:
+        _ = task_id
 
 
 def test_engine_module_smoke_lifecycle() -> None:
@@ -54,6 +71,6 @@ def test_engine_module_smoke_lifecycle() -> None:
     assert module.on_pointer_event(object())
     assert module.on_key_event(object())
     assert module.on_wheel_event(object())
-    module.on_frame(HostFrameContext(frame_index=0))
+    module.on_frame(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))
     assert not module.should_close()
     module.on_shutdown()

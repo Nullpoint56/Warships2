@@ -50,6 +50,7 @@ class _Canvas:
 
 class _FakeGlfw:
     FALSE = 0
+    TRUE = 1
     RESIZABLE = 1
 
     def __init__(self) -> None:
@@ -93,12 +94,12 @@ def _install_fake_rendercanvas_glfw(monkeypatch: pytest.MonkeyPatch, glfw_obj: _
 
 
 def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WARSHIPS_UI_ASPECT_MODE", "contain")
+    monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "contain")
     assert resolve_preserve_aspect()
-    monkeypatch.setenv("WARSHIPS_UI_ASPECT_MODE", "stretch")
+    monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "stretch")
     assert not resolve_preserve_aspect()
 
-    monkeypatch.setenv("WARSHIPS_WINDOW_MODE", "FULLSCREEN")
+    monkeypatch.setenv("ENGINE_WINDOW_MODE", "FULLSCREEN")
     assert resolve_window_mode() == "fullscreen"
 
 
@@ -153,3 +154,12 @@ def test_apply_startup_window_mode_fallback_maximize_when_no_monitor(
     _install_fake_rendercanvas_glfw(monkeypatch, glfw)
     apply_startup_window_mode(SimpleNamespace(_window=object()), "borderless")
     assert "maximize_window" in glfw.calls
+
+
+def test_apply_startup_window_mode_windowed_avoids_monitor_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    apply_startup_window_mode(SimpleNamespace(_window=object()), "windowed")
+    assert "set_window_monitor" not in glfw.calls

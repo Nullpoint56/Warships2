@@ -5,8 +5,7 @@ from __future__ import annotations
 import logging
 
 from engine.api.render import RenderAPI as Render2D
-from engine.ui_runtime.grid_layout import GridLayout
-from engine.ui_runtime.widgets import Button
+from engine.api.ui_primitives import Button, GridLayout
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.framework.widgets import (

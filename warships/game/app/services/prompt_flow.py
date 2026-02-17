@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from engine.api.dialogs import DialogOpenSpec, open_dialog, resolve_confirm_button_id
 from warships.game.app.ports.runtime_primitives import (
     PromptInteractionOutcome,
     PromptState,
@@ -16,9 +17,6 @@ from warships.game.app.ports.runtime_services import (
     handle_prompt_button,
     handle_prompt_char,
     handle_prompt_key,
-)
-from warships.game.app.ports.runtime_services import (
-    open_prompt as open_prompt_runtime,
 )
 from warships.game.app.ports.runtime_services import (
     sync_prompt as sync_prompt_runtime,
@@ -48,23 +46,28 @@ class PromptConfirmOutcome:
 class PromptFlowService:
     """Pure prompt confirmation operations for controller orchestration."""
 
+    _CONFIRM_BUTTON_BY_MODE = {
+        "save": "prompt_confirm_save",
+        "rename": "prompt_confirm_rename",
+        "overwrite": "prompt_confirm_overwrite",
+    }
+
     @staticmethod
     def open_prompt(
         title: str, initial_value: str, mode: str, target: str | None = None
     ) -> PromptState:
-        if mode == "save":
-            confirm = "prompt_confirm_save"
-        elif mode == "rename":
-            confirm = "prompt_confirm_rename"
-        else:
-            confirm = "prompt_confirm_overwrite"
-        return open_prompt_runtime(
-            title=title,
-            initial_value=initial_value,
-            confirm_button_id=confirm,
-            cancel_button_id="prompt_cancel",
-            mode=mode,
-            target=target,
+        confirm = resolve_confirm_button_id(
+            mode, PromptFlowService._CONFIRM_BUTTON_BY_MODE, "prompt_confirm_overwrite"
+        )
+        return open_dialog(
+            DialogOpenSpec(
+                title=title,
+                initial_value=initial_value,
+                mode=mode,
+                confirm_button_id=confirm,
+                cancel_button_id="prompt_cancel",
+                target=target,
+            )
         )
 
     @staticmethod

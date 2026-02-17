@@ -48,3 +48,27 @@ def test_controller_create_preset_save_requires_full_placement(controller_factor
     assert controller.ui_state().state is AppState.PLACEMENT_EDIT
     controller.handle_button(ButtonPressed("save_preset"))
     assert "Place all ships before saving." == controller.ui_state().status
+
+
+def test_controller_screen_stack_tracks_root_transitions(controller_factory) -> None:
+    controller = controller_factory()
+    assert controller._state_data.screen_stack.root() is not None
+    assert controller._state_data.screen_stack.root().screen_id == "main_menu"
+    controller.handle_button(ButtonPressed("new_game"))
+    assert controller._state_data.screen_stack.root() is not None
+    assert controller._state_data.screen_stack.root().screen_id == "new_game_setup"
+
+
+def test_controller_modal_mode_blocks_wheel_and_sets_prompt_overlay(
+    controller_factory, preset_service, valid_fleet
+) -> None:
+    preset_service.save_preset("alpha", valid_fleet)
+    controller = controller_factory()
+    assert controller.handle_button(ButtonPressed("manage_presets"))
+    assert controller.handle_button(ButtonPressed("preset_rename:alpha"))
+    top = controller._state_data.screen_stack.top()
+    assert top is not None
+    assert top.kind == "overlay"
+    assert top.screen_id == "prompt"
+    panel = PRESET_PANEL.panel_rect()
+    assert not controller.handle_wheel(panel.x + 5.0, panel.y + 5.0, 1.0)

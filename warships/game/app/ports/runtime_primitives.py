@@ -1,8 +1,12 @@
 """App-local runtime primitive ports that wrap engine mechanisms."""
 
-from engine.ui_runtime.grid_layout import GridLayout
-from engine.ui_runtime.prompt_runtime import PromptInteractionOutcome, PromptState, PromptView
-from engine.ui_runtime.widgets import Button
+from engine.api.ui_primitives import (
+    Button,
+    GridLayout,
+    PromptInteractionOutcome,
+    PromptState,
+    PromptView,
+)
 
 __all__ = [
     "Button",

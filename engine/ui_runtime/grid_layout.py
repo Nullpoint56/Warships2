@@ -19,9 +19,9 @@ class GridLayout:
 
     def _origin_x_for_target(self, grid_target: str) -> float:
         normalized = grid_target.strip().lower()
-        if normalized in {"secondary", "opponent", "enemy", "ai"}:
+        if normalized == "secondary":
             return self.secondary_origin_x
-        if normalized in {"primary", "player", "self"}:
+        if normalized == "primary":
             return self.primary_origin_x
         raise ValueError(f"unknown grid target: {grid_target!r}")
 

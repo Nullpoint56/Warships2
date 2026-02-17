@@ -173,9 +173,9 @@ High-value event-flow tests with fixtures and stubs:
 
 #### `engine_adapter.py`
 1. `interaction_plan` mapping:
-   - `grid_click_target`
+   - `cell_click_surface`
    - `wheel_scroll_regions`
-2. `on_grid_click` maps engine target to `BoardCellPressed.is_ai_board`.
+2. `on_cell_click` maps engine target to `BoardCellPressed.is_ai_board`.
 3. Button/key/pointer/wheel forwarders route to controller correctly.
 
 #### `engine_game_module.py`

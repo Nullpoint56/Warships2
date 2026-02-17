@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.ui_runtime.geometry import Rect
+from engine.api.ui_primitives import Rect
 
 DESIGN_WIDTH = 1200.0
 DESIGN_HEIGHT = 720.0

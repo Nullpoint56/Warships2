@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from engine.ui_runtime.widgets import Button
+from engine.api.ui_primitives import Button
 from warships.game.app.state_machine import AppState
 from warships.game.ui.layout_metrics import top_bar_rect
 

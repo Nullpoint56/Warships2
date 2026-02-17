@@ -2,15 +2,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
 from dataclasses import dataclass
 
-DirectActionHandler = Callable[[], bool]
-PrefixedActionHandler = Callable[[str], bool]
+from engine.api.action_dispatch import DirectActionHandler, PrefixedActionHandler
 
 
 @dataclass(frozen=True, slots=True)
-class ActionDispatcher:
+class RuntimeActionDispatcher:
     """Resolve and dispatch action ids by direct match or prefix handlers."""
 
     direct_handlers: dict[str, DirectActionHandler]
@@ -27,3 +25,6 @@ class ActionDispatcher:
                 suffix = action_id[len(prefix) :]
                 return prefixed_handler(suffix)
         return None
+
+
+ActionDispatcher = RuntimeActionDispatcher

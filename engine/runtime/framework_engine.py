@@ -2,20 +2,19 @@
 
 from __future__ import annotations
 
-from engine.api.app_port import EngineAppPort
+from engine.api.app_port import EngineAppPort, InteractionPlanView
+from engine.api.commands import create_command_map
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.render import RenderAPI
-from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
-from engine.ui_runtime.grid_layout import GridLayout
-from engine.ui_runtime.interactions import (
-    can_scroll_with_wheel,
-    resolve_pointer_button,
-    route_non_modal_key_event,
-)
-from engine.ui_runtime.keymap import map_key_name
-from engine.ui_runtime.modal_runtime import (
+from engine.api.ui_primitives import (
+    GridLayout,
     ModalInputState,
+    can_scroll_with_wheel,
+    map_key_name,
+    resolve_pointer_button,
     route_modal_key_event,
     route_modal_pointer_event,
+    route_non_modal_key_event,
 )
 
 
@@ -56,11 +55,11 @@ class EngineUIFramework:
             button_id = resolve_pointer_button(interactions, x, y)
             if button_id is not None:
                 return self._app.on_button(button_id)
-            if interactions.grid_click_target is not None:
-                grid_cell = self._layout.screen_to_cell(interactions.grid_click_target, x, y)
+            if interactions.cell_click_surface is not None:
+                grid_cell = self._layout.screen_to_cell(interactions.cell_click_surface, x, y)
                 if grid_cell is not None:
-                    return self._app.on_grid_click(
-                        interactions.grid_click_target, grid_cell.row, grid_cell.col
+                    return self._app.on_cell_click(
+                        interactions.cell_click_surface, grid_cell.row, grid_cell.col
                     )
         return self._app.on_pointer_down(x=x, y=y, button=event.button)
 
@@ -86,9 +85,13 @@ class EngineUIFramework:
             return False
         if self._app.on_key(non_modal_route.controller_key):
             return True
-        if non_modal_route.shortcut_button_id is None:
+        shortcut_button_id = self._resolve_shortcut_button_command(
+            key=non_modal_route.controller_key,
+            interactions=interactions,
+        )
+        if shortcut_button_id is None:
             return False
-        return self._app.on_button(non_modal_route.shortcut_button_id)
+        return self._app.on_button(shortcut_button_id)
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Route wheel event to app actions."""
@@ -97,3 +100,17 @@ class EngineUIFramework:
         if not can_scroll_with_wheel(interactions, x, y):
             return False
         return self._app.on_wheel(x=x, y=y, dy=event.dy)
+
+    @staticmethod
+    def _resolve_shortcut_button_command(
+        *,
+        key: str,
+        interactions: InteractionPlanView,
+    ) -> str | None:
+        commands = create_command_map()
+        for shortcut_key, button_id in interactions.shortcut_buttons.items():
+            commands.bind_key_down(shortcut_key, f"button:{button_id}")
+        resolved = commands.resolve_key_event("key_down", key)
+        if resolved is None or not resolved.name.startswith("button:"):
+            return None
+        return resolved.name.removeprefix("button:")

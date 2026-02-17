@@ -18,7 +18,7 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 - Engine-hosted lifecycle and frame loop
 - Engine render API + PyGFX backend
 - Engine input collection and UI routing
-- Neutral app-port interaction semantics (`grid_click_target`, `wheel_scroll_regions`)
+- Neutral app-port interaction semantics (`cell_click_surface`, `wheel_scroll_regions`)
 - Neutral grid primitive (`GridLayout`)
 
 ## Priority Tracks
@@ -59,12 +59,45 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 3. `engine/ai/utility.py`
 - Generic scoring/composition helpers
 
+### Track D: Core Engine Services (Missing Today)
+
+1. `engine/runtime/time.py`
+- Frame time and delta provider (`TimeContext`)
+- Fixed-step accumulator helper for deterministic updates
+
+2. `engine/runtime/scheduler.py`
+- Engine-owned deferred/interval task scheduler
+- Replaces ad-hoc frame-index timing in game orchestration
+
+3. `engine/assets/registry.py`
+- Typed asset handle + registry/load lifecycle hooks
+- Keeps renderer/game modules from directly coupling to file loading policy
+
+4. `engine/runtime/commands.py`
+- Input-to-command mapping primitives (`Command`, `CommandBinding`, `CommandMap`)
+- Decouples game actions from raw key names and wheel/button plumbing
+
+5. `engine/runtime/events.py`
+- Lightweight event bus contract for module/system boundaries
+- Pub/sub primitives only (no game-domain event types)
+
+### Track E: Module/Subsystem Composition
+
+1. `engine/runtime/module_graph.py`
+- Ordered module startup/shutdown/update dependency graph
+- Avoids custom lifecycle wiring per game module
+
+2. `engine/runtime/context.py`
+- Shared engine context object (render/input/time/scheduler/services)
+- Stable injection point for modules/systems without reaching into runtime internals
+
 ## Keep in Game
 
 - Warships domain states and transitions
 - Fleet/preset/business rules
 - Difficulty and AI strategy policy
 - Concrete UI layout/look-and-feel
+- Game-domain content loading and persistence schema
 
 ## Execution Strategy
 
@@ -73,9 +106,313 @@ Evolve `engine/` into a reusable foundation for multiple games without coupling 
 3. Remove redundant game-local generic helpers after parity.
 4. Validate each slice by manual smoke testing.
 
+## Track Execution Contract (Strict)
+
+We only move to the next track when both are true for the current track:
+
+1. Engine completion gate:
+- All items listed in the track are implemented in `engine/`.
+- Unit tests for new engine primitives exist and pass.
+
+2. Warships adoption gate:
+- Every new engine primitive is evaluated as `applicable` or `not_applicable` for Warships.
+- If `applicable`, Warships must use it on a real path (not dead code).
+- If `not_applicable`, we must document the reason and the trigger for when it becomes applicable.
+
+Track completion definition (hard requirement):
+1. Engine-side implementation is complete.
+2. New functionality is available through the `engine.api` layer (no direct game dependency on
+   `engine.runtime.*` internals for adopted primitives).
+3. Warships is updated to use applicable new functionality through `engine.api`.
+
+API quality rule (mandatory):
+1. `engine.api` is not allowed to be only a re-export/proxy layer for new features.
+2. For each adopted feature, `engine.api` must define real API surface:
+- protocol contracts and/or API dataclasses/enums
+- public functions/factories with engine-facing semantics
+3. `engine.runtime.*` must implement those API contracts; game code consumes contracts, not runtime internals.
+4. Re-export-only stopgaps are allowed only as transitional compatibility shims and must be tracked
+   with explicit replacement tasks before track closure.
+
+Current API status:
+1. Track A/D adopted primitives now have dedicated API modules:
+- `engine.api.commands`
+- `engine.api.assets`
+- `engine.api.flow`
+- `engine.api.screens`
+- `engine.api.interaction_modes`
+- `engine.api.events`
+2. Warships consumes Track A/D applicable primitives through these dedicated API modules.
+
+Recommended slice order:
+1. Track D (`time`, `scheduler`, `commands`) as lowest-risk foundational APIs.
+2. Track A (`screen_stack`, `flow`, `interaction_modes`) and migrate game menu/state orchestration.
+3. Track E (`module_graph`, `context`) to simplify runtime composition.
+4. Track B (`system`, `update_loop`, `state_store`) for gameplay loop standardization.
+5. Track C (`ai/*`) once gameplay system boundaries are stable.
+
 ## Acceptance Criteria
 
 1. No `engine -> warships` imports.
 2. New engine APIs stay domain-neutral.
 3. A second game could adopt primitives without API redesign.
 4. Runtime remains stable while migrating consumers incrementally.
+5. Raw input handling can route through engine command mapping without app-specific key plumbing.
+6. Frame timing and deferred work are engine-owned primitives (no game-side ad-hoc schedulers).
+7. Module lifecycle composition is declarative (graph/context) rather than per-game wiring.
+
+## Implementation Status
+
+- Done:
+  - Track C1 `engine/api/ai.py` + `engine/ai/agent.py`
+    (`Agent`, `DecisionContext`, `create_functional_agent`, `FunctionalAgent`)
+  - Track C2 `engine/api/ai.py` + `engine/ai/blackboard.py`
+    (`Blackboard`, `create_blackboard`, `RuntimeBlackboard`)
+  - Track C3 `engine/api/ai.py` + `engine/ai/utility.py`
+    (`normalize_scores`, `best_action`, `combine_weighted_scores`)
+  - Track B1 `engine/api/gameplay.py` + `engine/gameplay/system.py`
+    (`GameplaySystem`, `SystemSpec`)
+  - Track B2 `engine/api/gameplay.py` + `engine/gameplay/update_loop.py`
+    (`UpdateLoop`, `create_update_loop`, `RuntimeUpdateLoop`)
+  - Track B3 `engine/api/gameplay.py` + `engine/gameplay/state_store.py`
+    (`StateStore`, `StateSnapshot`, `create_state_store`, `RuntimeStateStore`)
+  - Track E1 `engine/api/context.py` + `engine/runtime/context.py`
+    (`RuntimeContext`, `create_runtime_context`, `RuntimeContextImpl`)
+  - Track E2 `engine/api/module_graph.py` + `engine/runtime/module_graph.py`
+    (`RuntimeModule`, `ModuleNode`, `ModuleGraph`, `create_module_graph`, `RuntimeModuleGraph`)
+  - Track A1 `engine/runtime/screen_stack.py` (`ScreenStack`, `ScreenLayer`)
+  - Track A2 `engine/runtime/flow.py` (`FlowMachine`, `FlowTransition`, `FlowContext`)
+  - Track A3 `engine/runtime/interaction_modes.py` (`InteractionModeMachine`, `InteractionMode`)
+  - Track D1 `engine/runtime/time.py` (`TimeContext`, `FrameClock`, `FixedStepAccumulator`)
+  - Track D2 `engine/runtime/scheduler.py` (`Scheduler` with one-shot + recurring tasks)
+  - Track D3 `engine/assets/registry.py` (`AssetRegistry`, `AssetHandle`)
+  - Track D4 `engine/runtime/commands.py` (`CommandMap`, `Command`)
+  - Track D5 `engine/runtime/events.py` (`EventBus`, `Subscription`)
+  - Host integration:
+    - `HostFrameContext` now carries `delta_seconds` and `elapsed_seconds`
+    - `EngineHost` advances scheduler each frame and exposes `call_later/call_every/cancel_task`
+  - Runtime adoption:
+    - Engine shortcut key routing now resolves shortcut actions through `CommandMap`
+      in `engine/runtime/framework_engine.py`
+  - Engine unit tests added:
+    - `tests/engine/unit/ai/test_agent.py`
+    - `tests/engine/unit/ai/test_blackboard.py`
+    - `tests/engine/unit/ai/test_utility.py`
+    - `tests/engine/unit/gameplay/test_state_store.py`
+    - `tests/engine/unit/gameplay/test_update_loop.py`
+    - `tests/engine/unit/runtime/test_context.py`
+    - `tests/engine/unit/runtime/test_module_graph.py`
+    - `tests/engine/unit/runtime/test_screen_stack.py`
+    - `tests/engine/unit/runtime/test_flow.py`
+    - `tests/engine/unit/runtime/test_interaction_modes.py`
+    - `tests/engine/unit/assets/test_registry.py`
+    - `tests/engine/unit/runtime/test_commands.py`
+    - `tests/engine/unit/runtime/test_events.py`
+    - `tests/engine/unit/runtime/test_time.py`
+    - `tests/engine/unit/runtime/test_scheduler.py`
+- Verified:
+  - `uv run mypy`
+  - `uv run ruff check .`
+  - `uv run pytest tests/engine --cov=engine --cov-fail-under=75`
+
+Track D integration notes:
+- `commands` is now on an active game input path (shortcut routing).
+- `time`/`scheduler` are integrated at host runtime level and available to game modules.
+- `events` is integrated on Warships runtime close lifecycle path.
+- `assets` is API-defined and remains not-applicable for current Warships runtime content path.
+
+Track D adoption matrix (for next-gate decision):
+1. `time` (`FrameClock`, `TimeContext`): applicable
+- Used by host frame loop and passed to Warships module via `HostFrameContext`.
+
+2. `scheduler` (`Scheduler`): applicable
+- Integrated into `EngineHost` and available through host control API.
+- Used by Warships runtime close lifecycle path via `HostControl.call_later(...)`
+  in `warships/game/app/engine_game_module.py`.
+
+3. `commands` (`CommandMap`): applicable
+- Used in runtime key shortcut routing on active Warships input path.
+- API-defined in `engine.api.commands` and consumed through API constructor.
+
+4. `events` (`EventBus`): applicable
+- Used in Warships runtime close lifecycle signaling (`_CloseRequested`)
+  in `warships/game/app/engine_game_module.py`.
+
+5. `assets` (`AssetRegistry`): not_applicable_currently
+- Warships currently has no runtime-loaded engine-managed assets (textures/audio/fonts).
+- Trigger to become applicable: first runtime asset loading path introduced into engine/game runtime.
+- API-defined in `engine.api.assets`.
+
+Track D gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS (`time`, `scheduler`, `commands`, `events` adopted; `assets` documented
+  as not currently applicable with explicit trigger)
+- Track D is complete; eligible to proceed to Track A.
+
+Track A adoption matrix:
+1. `screen_stack` (`ScreenStack`, `ScreenLayer`): applicable
+- Used by `GameController` to track root screen transitions and prompt overlay presence
+  in `warships/game/app/controller.py`.
+
+2. `flow` (`FlowMachine`, `FlowTransition`, `FlowContext`): applicable
+- Used by `SessionFlowService.resolve(...)` to compute navigation transitions from triggers
+  in `warships/game/app/services/session_flow.py`.
+
+3. `interaction_modes` (`InteractionModeMachine`, `InteractionMode`): applicable
+- Used by `GameController` input handlers to gate pointer/keyboard/wheel behavior by mode
+  (`default`, `modal`, `captured`) in `warships/game/app/controller.py`.
+
+Track A gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track A is complete; eligible to proceed to Track E.
+
+Track E gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+
+Track E adoption matrix:
+1. `context` (`RuntimeContext`, `create_runtime_context`): applicable
+- Adopted in Warships runtime composition (`WarshipsGameModule`) to hold per-frame services and state.
+
+2. `module_graph` (`RuntimeModule`, `ModuleNode`, `ModuleGraph`, `create_module_graph`): applicable
+- Adopted in Warships runtime composition (`WarshipsGameModule`) to orchestrate
+  framework sync -> view render -> close lifecycle as ordered runtime modules.
+
+Track E gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track E is complete; eligible to proceed to Track B.
+
+Track B gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+
+Track B adoption matrix:
+1. `system` (`GameplaySystem`, `SystemSpec`): applicable
+- Adopted in Warships runtime composition via gameplay systems:
+  `_FrameworkSyncSystem`, `_ViewRenderSystem`, `_CloseLifecycleSystem`.
+
+2. `update_loop` (`UpdateLoop`, `create_update_loop`): applicable
+- Adopted in `WarshipsGameModule` to execute ordered per-frame gameplay/system ticks.
+
+3. `state_store` (`StateStore`, `create_state_store`): applicable
+- Adopted in `WarshipsGameModule` to store per-frame transient state
+  (`debug_labels`, `ui_state`) as `_FrameState`.
+
+Track B gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track B is complete; eligible to proceed to Track C.
+
+Track C adoption matrix:
+1. `agent` (`Agent`, `DecisionContext`, `create_functional_agent`): applicable
+- Warships AI strategies now implement the engine `Agent` contract via
+  `AIStrategy.decide(...)` and AI turns execute through `DecisionContext`
+  in `warships/game/app/services/battle.py`.
+
+2. `blackboard` (`Blackboard`, `create_blackboard`): applicable
+- Warships strategies now own an engine blackboard and pass decided shots through it
+  (`AIStrategy.blackboard`, `AIStrategy.take_decided_shot(...)`) on the live battle path.
+
+3. `utility` (`best_action`, `normalize_scores`, `combine_weighted_scores`): applicable
+- Warships difficulty normalization now resolves through `best_action(...)`
+  (`warships/game/app/services/battle.py`), replacing ad-hoc selection branching.
+
+Track C gate decision:
+- Engine completion gate: PASS
+- Warships adoption gate: PASS
+- Track C is complete.
+
+## Post-Completion Neutralization Slice (N1)
+
+Goal: remove remaining Warships/game-flavored naming from engine runtime and API surfaces
+without changing runtime behavior.
+
+Scope:
+1. Env/config neutralization:
+- Prefer `ENGINE_WINDOW_MODE` and `ENGINE_UI_ASPECT_MODE` in engine runtime.
+- Keep fallback to existing `WARSHIPS_*` env vars for compatibility.
+
+2. Rendering naming neutralization:
+- Replace internal rendercanvas monkey-patch marker `_warships_size_clamped`
+  with `_engine_size_clamped`.
+- Replace `SceneRenderer` default window title with engine-neutral default.
+
+3. Interaction API neutralization:
+- Rename app-port interaction semantics:
+  - `grid_click_target` -> `cell_click_surface`
+  - `on_grid_click(...)` -> `on_cell_click(...)`
+- Keep same runtime behavior (cell hit-testing on named surface targets).
+
+4. Grid target alias neutralization:
+- Restrict engine `GridLayout` targets to neutral `primary` and `secondary`.
+- Remove game-flavored aliases (`enemy`, `opponent`, `player`, `ai`, `self`).
+
+N1 Status:
+- PASS. Implemented in engine + Warships integration and tests updated.
+
+## Post-Completion API-Only Consumption Slice (N2)
+
+Goal: ensure `warships/*` consumes engine only through `engine.api.*` modules.
+
+Scope:
+1. Add missing API contracts/modules:
+- `engine.api.input_events` for pointer/key/wheel event contracts used by game modules.
+- `engine.api.ui_primitives` for shared UI primitives/helpers currently needed by Warships
+  (layout primitives, prompt/list/scroll helpers, modal/key routing helpers).
+
+2. Update API surfaces to depend on API contracts:
+- `engine.api.game_module` and `engine.api.ui_framework` use `engine.api.input_events`.
+- hosted runtime and UI framework API signatures use `engine.api.ui_primitives` types.
+
+3. Migrate Warships imports:
+- Replace all `engine.ui_runtime.*` and `engine.input.*` imports in `warships/*`
+  with `engine.api.*` equivalents.
+
+4. Verification gate:
+- `git grep` over `warships/` shows no imports from:
+  - `engine.runtime.*`
+  - `engine.ui_runtime.*`
+  - `engine.input.*`
+  - `engine.rendering.*`
+- quality/test checks pass.
+
+N2 Status:
+- PASS. Warships imports moved to `engine.api.*`; verification and checks passed.
+
+## Post-Completion API Hardening Slice (N3)
+
+Goal: remove façade-only API re-exports and make API modules own their runtime contracts.
+
+Scope:
+1. Replace `engine.api.input_events` re-export façade with API-owned dataclasses
+   (`PointerEvent`, `KeyEvent`, `WheelEvent`).
+2. Make `engine.input.input_controller` produce API-owned input event dataclasses.
+3. Replace `engine.api.ui_primitives` re-export façade with API-owned primitive
+   types and helper functions (geometry/grid/widgets/list/prompt/modal/key routing/scroll).
+4. Rewire runtime modules (`framework_engine`, `host`, `bootstrap`) to use API-owned
+   contracts/primitives.
+
+N3 Status:
+- PASS. API façade re-exports removed; runtime rewired to API-owned contracts.
+
+## Post-Completion General Mechanism Slice (N4)
+
+Goal: add reusable higher-level mechanisms that reduce app-side orchestration while staying domain-neutral.
+
+Scope:
+1. Dialog workflow mechanism:
+- Add generic dialog-open helpers (`engine.api.dialogs`) with caller-provided mode-to-confirm mapping.
+- Adopt in Warships prompt flow (remove game-side mode->confirm branching glue).
+
+2. Persistent flow program mechanism:
+- Add reusable configured transition program (`create_flow_program`) in flow API/runtime.
+- Adopt in Warships session flow to avoid rebuilding transition tables per resolve call.
+
+3. Declarative action-to-widget projection:
+- Add generic button projection API (`engine.api.ui_projection`).
+- Adopt in Warships button composition helpers for row/prompt/new-game button specs.
+
+N4 Status:
+- PASS. Implemented in engine and adopted in Warships app services.

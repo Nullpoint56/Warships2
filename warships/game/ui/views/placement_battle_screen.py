@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
-from engine.ui_runtime.grid_layout import GridLayout
+from engine.api.ui_primitives import GridLayout
 from warships.game.core.board import BoardState
 from warships.game.core.models import (
     Coord,
