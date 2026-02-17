@@ -8,17 +8,13 @@ from typing import Any
 
 def resolve_preserve_aspect() -> bool:
     """Read aspect mode from env and normalize into preserve_aspect flag."""
-    aspect_mode = os.getenv(
-        "ENGINE_UI_ASPECT_MODE", os.getenv("WARSHIPS_UI_ASPECT_MODE", "contain")
-    ).strip().lower()
+    aspect_mode = os.getenv("ENGINE_UI_ASPECT_MODE", "contain").strip().lower()
     return aspect_mode in {"contain", "preserve", "fixed"}
 
 
 def resolve_window_mode() -> str:
     """Read startup window mode from environment."""
-    return os.getenv(
-        "ENGINE_WINDOW_MODE", os.getenv("WARSHIPS_WINDOW_MODE", "windowed")
-    ).strip().lower()
+    return os.getenv("ENGINE_WINDOW_MODE", "windowed").strip().lower()
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
@@ -31,16 +27,19 @@ def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
     if window is None:
         return
     glfw = rc_glfw.glfw
-    try:
-        glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
-    except Exception:
-        pass
-    if window_mode == "maximized":
+    mode = window_mode.strip().lower()
+
+    if mode == "maximized":
+        try:
+            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
+        except Exception:
+            pass
         try:
             glfw.maximize_window(window)
         except Exception:
             pass
         return
+
     monitor = glfw.get_primary_monitor()
     if not monitor:
         try:
@@ -48,7 +47,11 @@ def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
         except Exception:
             pass
         return
-    if window_mode == "fullscreen":
+    if mode == "fullscreen":
+        try:
+            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
+        except Exception:
+            pass
         video_mode = glfw.get_video_mode(monitor)
         if video_mode is not None:
             try:
@@ -64,14 +67,29 @@ def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
                 return
             except Exception:
                 pass
-    try:
-        x, y, w, h = glfw.get_monitor_workarea(monitor)
-        glfw.set_window_monitor(window, None, int(x), int(y), int(w), int(h), 0)
-    except Exception:
+        return
+
+    if mode == "borderless":
         try:
-            glfw.maximize_window(window)
+            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
         except Exception:
             pass
+        try:
+            x, y, w, h = glfw.get_monitor_workarea(monitor)
+            glfw.set_window_monitor(window, None, int(x), int(y), int(w), int(h), 0)
+            return
+        except Exception:
+            try:
+                glfw.maximize_window(window)
+            except Exception:
+                pass
+        return
+
+    # Default windowed path is handled by canvas size APIs; do not force monitor operations.
+    try:
+        glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
+    except Exception:
+        pass
 
 
 def get_canvas_logical_size(canvas: Any) -> tuple[float, float] | None:

@@ -27,8 +27,6 @@ PyGFX-based Warships game running on an engine-hosted runtime.
 
 - `ENGINE_WINDOW_MODE`: `windowed` | `maximized` | `fullscreen` | `borderless`
 - `ENGINE_UI_ASPECT_MODE`: `contain` (default preserve) or other mode supported by runtime
-- `WARSHIPS_WINDOW_MODE`: legacy fallback for game/runtime compatibility
-- `WARSHIPS_UI_ASPECT_MODE`: legacy fallback for game/runtime compatibility
 - `WARSHIPS_DEBUG_INPUT`: `1` enables input debug logs
 - `WARSHIPS_DEBUG_UI`: `1` enables UI debug logs
 - `LOG_LEVEL`, `LOG_FORMAT`: logging setup

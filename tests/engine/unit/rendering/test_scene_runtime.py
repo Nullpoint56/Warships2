@@ -50,6 +50,7 @@ class _Canvas:
 
 class _FakeGlfw:
     FALSE = 0
+    TRUE = 1
     RESIZABLE = 1
 
     def __init__(self) -> None:
@@ -153,3 +154,12 @@ def test_apply_startup_window_mode_fallback_maximize_when_no_monitor(
     _install_fake_rendercanvas_glfw(monkeypatch, glfw)
     apply_startup_window_mode(SimpleNamespace(_window=object()), "borderless")
     assert "maximize_window" in glfw.calls
+
+
+def test_apply_startup_window_mode_windowed_avoids_monitor_operations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    apply_startup_window_mode(SimpleNamespace(_window=object()), "windowed")
+    assert "set_window_monitor" not in glfw.calls
