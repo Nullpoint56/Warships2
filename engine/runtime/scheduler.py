@@ -31,6 +31,11 @@ class Scheduler:
     def now_seconds(self) -> float:
         return self._now_seconds
 
+    @property
+    def queued_task_count(self) -> int:
+        """Return count of active queued tasks."""
+        return sum(1 for task in self._tasks.values() if not task.cancelled)
+
     def call_later(self, delay_seconds: float, callback: TaskCallback) -> int:
         """Schedule a one-shot callback after delay."""
         if delay_seconds < 0.0:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from engine.runtime.metrics import MetricsSnapshot
 from engine.runtime.host import EngineHost
 
 
@@ -104,3 +105,17 @@ def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:
     host.frame()
     assert host.is_closed()
     assert module.frame_calls == 0
+
+
+def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    module = FakeModule()
+    host = EngineHost(module=module)
+
+    host.frame()
+    snapshot = host.metrics_snapshot
+
+    assert isinstance(snapshot, MetricsSnapshot)
+    assert snapshot.last_frame is not None
+    assert snapshot.last_frame.frame_index == 0
+    assert snapshot.last_frame.scheduler_queue_size >= 0

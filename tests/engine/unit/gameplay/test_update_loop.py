@@ -24,6 +24,14 @@ class _System:
         self._events.append(f"shutdown:{self._id}")
 
 
+class _MetricsCollector:
+    def __init__(self) -> None:
+        self.system_timings: dict[str, float] = {}
+
+    def record_system_time(self, system_name: str, elapsed_ms: float) -> None:
+        self.system_timings[system_name] = elapsed_ms
+
+
 def test_update_loop_runs_ordered_start_update_shutdown() -> None:
     events: list[str] = []
     loop = create_update_loop()
@@ -74,3 +82,21 @@ def test_update_loop_validates_inputs_and_duplicates() -> None:
         loop.step(create_runtime_context(), -0.1)
     with pytest.raises(ValueError):
         create_update_loop(fixed_step_seconds=0.0)
+
+
+def test_update_loop_records_system_timings_when_metrics_collector_exists() -> None:
+    events: list[str] = []
+    metrics = _MetricsCollector()
+    loop = create_update_loop()
+    loop.add_system(SystemSpec("a", _System("a", events), order=0))
+    loop.add_system(SystemSpec("b", _System("b", events), order=1))
+    context = create_runtime_context()
+    context.provide("metrics_collector", metrics)
+    loop.start(context)
+
+    loop.step(context, 0.1)
+
+    assert "a" in metrics.system_timings
+    assert "b" in metrics.system_timings
+    assert metrics.system_timings["a"] >= 0.0
+    assert metrics.system_timings["b"] >= 0.0

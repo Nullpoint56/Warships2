@@ -44,3 +44,19 @@ def test_scheduler_validates_time_arguments() -> None:
         scheduler.call_every(0.0, lambda: None)
     with pytest.raises(ValueError):
         scheduler.advance(-0.1)
+
+
+def test_scheduler_queued_task_count_tracks_active_tasks() -> None:
+    scheduler = Scheduler()
+    one_shot = scheduler.call_later(1.0, lambda: None)
+    repeating = scheduler.call_every(1.0, lambda: None)
+    assert scheduler.queued_task_count == 2
+
+    scheduler.cancel(one_shot)
+    assert scheduler.queued_task_count == 1
+
+    scheduler.advance(1.0)
+    assert scheduler.queued_task_count == 1
+
+    scheduler.cancel(repeating)
+    assert scheduler.queued_task_count == 0

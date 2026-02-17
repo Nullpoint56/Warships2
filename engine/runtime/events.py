@@ -17,6 +17,11 @@ class RuntimeEventBus:
     def __init__(self) -> None:
         self._next_id = 1
         self._subscriptions: dict[int, tuple[type[object], EventHandler]] = {}
+        self._metrics_collector: object | None = None
+
+    def set_metrics_collector(self, metrics_collector: object | None) -> None:
+        """Attach optional metrics collector used for publish counts."""
+        self._metrics_collector = metrics_collector
 
     def subscribe(
         self,
@@ -35,6 +40,9 @@ class RuntimeEventBus:
 
     def publish(self, event: object) -> int:
         """Publish one event and return number of invoked handlers."""
+        metrics = self._metrics_collector
+        if metrics is not None and hasattr(metrics, "increment_event_publish_count"):
+            metrics.increment_event_publish_count(1)
         invoked = 0
         for subscribed_type, handler in tuple(self._subscriptions.values()):
             if isinstance(event, subscribed_type):

@@ -148,6 +148,11 @@ class WarshipsGameModule(GameModule):
     def on_start(self, host: HostControl) -> None:
         self._host = host
         self._context.provide("host", host)
+        metrics_collector = getattr(host, "metrics_collector", None)
+        if metrics_collector is not None:
+            self._context.provide("metrics_collector", metrics_collector)
+            if hasattr(self._events, "set_metrics_collector"):
+                self._events.set_metrics_collector(metrics_collector)
         self._close_subscription = self._events.subscribe(_CloseRequested, self._on_close_requested)
         self._graph.start_all(self._context)
 

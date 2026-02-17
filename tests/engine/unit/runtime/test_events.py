@@ -15,6 +15,14 @@ class DerivedEvent(BaseEvent):
     code: int
 
 
+class _MetricsCollector:
+    def __init__(self) -> None:
+        self.published = 0
+
+    def increment_event_publish_count(self, count: int = 1) -> None:
+        self.published += count
+
+
 def test_event_bus_publish_invokes_subscribers() -> None:
     bus = EventBus()
     seen: list[str] = []
@@ -47,3 +55,15 @@ def test_event_bus_unsubscribe_stops_dispatch() -> None:
 
     assert invoked == 0
     assert seen == []
+
+
+def test_event_bus_increments_publish_metric_when_collector_attached() -> None:
+    bus = EventBus()
+    metrics = _MetricsCollector()
+    bus.set_metrics_collector(metrics)
+    bus.subscribe(BaseEvent, lambda event: None)
+
+    bus.publish(BaseEvent(name="hello"))
+    bus.publish(BaseEvent(name="again"))
+
+    assert metrics.published == 2
