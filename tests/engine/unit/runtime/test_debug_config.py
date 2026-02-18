@@ -21,6 +21,12 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_PRIMITIVES", "1")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_KEY_FILTER", "board:,ship:,button:")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME", "true")
+    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_FORCE_INVALIDATE", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SIZE_SOURCE_MODE", "event_only")
+    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SIZE_QUANTIZATION", "round")
+    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_CAMERA_SET_VIEW_SIZE", "true")
+    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SYNC_FROM_PHYSICAL_SIZE", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_RENDERER_FORCE_PIXEL_RATIO", "1.0")
     monkeypatch.setenv("ENGINE_LOG_LEVEL", "debug")
 
     cfg = load_debug_config()
@@ -34,6 +40,12 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     assert cfg.ui_trace_primitives_enabled is True
     assert cfg.ui_trace_key_filter == ("board:", "ship:", "button:")
     assert cfg.ui_trace_log_every_frame is True
+    assert cfg.resize_force_invalidate is True
+    assert cfg.resize_size_source_mode == "event_only"
+    assert cfg.resize_size_quantization == "round"
+    assert cfg.resize_camera_set_view_size is True
+    assert cfg.resize_sync_from_physical_size is True
+    assert cfg.renderer_force_pixel_ratio == 1.0
     assert cfg.log_level == "DEBUG"
 
 

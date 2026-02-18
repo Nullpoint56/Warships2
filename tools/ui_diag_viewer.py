@@ -24,7 +24,7 @@ from tkinter import (
 )
 from tkinter.scrolledtext import ScrolledText
 
-_RE_UI_DIAG_FRAME = re.compile(r"ui_diag frame=(\d+) anomalies=(\d+)")
+_RE_UI_DIAG_FRAME = re.compile(r"ui_diag frame=(\d+)(?: anomalies=(\d+))?")
 _RE_UI_DIAG_DUMP = re.compile(r"ui_diag_anomaly_dumped .* anomalies=(\[.*\])")
 
 
@@ -50,6 +50,8 @@ class UiFrame:
     frame_seq: int
     resize_seq: int | None
     viewport_revision: int | None
+    event_to_frame_ms: float | None
+    apply_to_frame_ms: float | None
     reasons: list[str]
     anomalies: list[str]
     raw: dict[str, object]
@@ -143,11 +145,23 @@ def _load_ui_frames(path: Path) -> tuple[list[UiFrame], dict[int, UiFrame], int]
                 viewport_revision = vv
         reasons = obj.get("reasons")
         anomalies = obj.get("anomalies")
+        event_to_frame_ms = None
+        apply_to_frame_ms = None
+        timing = obj.get("timing")
+        if isinstance(timing, dict):
+            ev = timing.get("event_to_frame_ms")
+            ap = timing.get("apply_to_frame_ms")
+            if isinstance(ev, (int, float)):
+                event_to_frame_ms = float(ev)
+            if isinstance(ap, (int, float)):
+                apply_to_frame_ms = float(ap)
         frame = UiFrame(
             ts=_parse_ts(obj.get("ts_utc")),
             frame_seq=frame_seq,
             resize_seq=resize_seq,
             viewport_revision=viewport_revision,
+            event_to_frame_ms=event_to_frame_ms,
+            apply_to_frame_ms=apply_to_frame_ms,
             reasons=[str(item) for item in reasons] if isinstance(reasons, list) else [],
             anomalies=[str(item) for item in anomalies] if isinstance(anomalies, list) else [],
             raw=obj,
@@ -321,13 +335,14 @@ class UiDiagViewer:
         ttk.Label(frame_panel, text="Frames").pack(anchor="w")
         self.frame_tree = ttk.Treeview(
             frame_panel,
-            columns=("frame", "rev", "resize", "sx", "sy", "txtr", "reasons"),
+            columns=("frame", "rev", "resize", "lat", "sx", "sy", "txtr", "reasons"),
             show="headings",
             height=8,
         )
         self.frame_tree.heading("frame", text="Frame")
         self.frame_tree.heading("rev", text="Viewport Rev")
         self.frame_tree.heading("resize", text="Resize Seq")
+        self.frame_tree.heading("lat", text="Evt->Frm ms")
         self.frame_tree.heading("sx", text="Spread X")
         self.frame_tree.heading("sy", text="Spread Y")
         self.frame_tree.heading("txtr", text="Spread Text")
@@ -335,6 +350,7 @@ class UiDiagViewer:
         self.frame_tree.column("frame", width=90, anchor="center")
         self.frame_tree.column("rev", width=120, anchor="center")
         self.frame_tree.column("resize", width=100, anchor="center")
+        self.frame_tree.column("lat", width=100, anchor="center")
         self.frame_tree.column("sx", width=90, anchor="center")
         self.frame_tree.column("sy", width=90, anchor="center")
         self.frame_tree.column("txtr", width=100, anchor="center")
@@ -436,6 +452,17 @@ class UiDiagViewer:
             for rec in self.run_records
             if rec.logger.startswith("engine.input") and "input_event " in rec.msg
         )
+        event_to_frame_samples = [
+            f.event_to_frame_ms for f in self.ui_frames if isinstance(f.event_to_frame_ms, float)
+        ]
+        apply_to_frame_samples = [
+            f.apply_to_frame_ms for f in self.ui_frames if isinstance(f.apply_to_frame_ms, float)
+        ]
+        runtime = self.ui_frames[0].raw.get("runtime") if self.ui_frames else None
+        resize_experiment = runtime.get("resize_experiment") if isinstance(runtime, dict) else None
+        backend_experiment = (
+            runtime.get("backend_experiment") if isinstance(runtime, dict) else None
+        )
 
         lines = [
             "== Summary ==",
@@ -453,6 +480,31 @@ class UiDiagViewer:
             f"Run resize_event count: {resize_event_count}",
             f"Run ui_projection count: {projection_event_count}",
             f"Run input_event count: {input_event_count}",
+            (
+                "Event->Frame latency ms: min={:.2f} avg={:.2f} max={:.2f}".format(
+                    min(event_to_frame_samples),
+                    sum(event_to_frame_samples) / len(event_to_frame_samples),
+                    max(event_to_frame_samples),
+                )
+                if event_to_frame_samples
+                else "Event->Frame latency ms: n/a"
+            ),
+            (
+                "Apply->Frame latency ms: min={:.2f} avg={:.2f} max={:.2f}".format(
+                    min(apply_to_frame_samples),
+                    sum(apply_to_frame_samples) / len(apply_to_frame_samples),
+                    max(apply_to_frame_samples),
+                )
+                if apply_to_frame_samples
+                else "Apply->Frame latency ms: n/a"
+            ),
+            f"Resize experiment: {resize_experiment}"
+            if isinstance(resize_experiment, dict)
+            else "Resize experiment: n/a",
+            f"Backend experiment: {backend_experiment}"
+            if isinstance(backend_experiment, dict)
+            else "Backend experiment: n/a",
+            f"Runtime: {runtime}" if isinstance(runtime, dict) else "Runtime: n/a",
             "",
             "Select a warning row or frame row to inspect details.",
         ]
@@ -492,6 +544,7 @@ class UiDiagViewer:
                     frame.frame_seq,
                     "" if frame.viewport_revision is None else frame.viewport_revision,
                     "" if frame.resize_seq is None else frame.resize_seq,
+                    ("" if frame.event_to_frame_ms is None else f"{frame.event_to_frame_ms:.2f}"),
                     f"{self.frame_spreads.get(frame.frame_seq, (0.0, 0.0, 0.0))[0]:.4f}",
                     f"{self.frame_spreads.get(frame.frame_seq, (0.0, 0.0, 0.0))[1]:.4f}",
                     f"{self.frame_spreads.get(frame.frame_seq, (0.0, 0.0, 0.0))[2]:.4f}",
@@ -732,16 +785,24 @@ class UiDiagViewer:
     def _format_ui_frame(frame: UiFrame) -> list[str]:
         viewport_obj = frame.raw.get("viewport")
         resize_obj = frame.raw.get("resize")
+        timing_obj = frame.raw.get("timing")
+        runtime_obj = frame.raw.get("runtime")
         viewport_text = str(viewport_obj) if isinstance(viewport_obj, dict) else "-"
         resize_text = str(resize_obj) if isinstance(resize_obj, dict) else "-"
+        timing_text = str(timing_obj) if isinstance(timing_obj, dict) else "-"
+        runtime_text = str(runtime_obj) if isinstance(runtime_obj, dict) else "-"
         ts_text = frame.ts.isoformat(timespec="milliseconds") if frame.ts is not None else "-"
         return [
             f"ts_utc={ts_text}",
             f"frame_seq={frame.frame_seq}",
             f"reasons={frame.reasons}",
             f"anomalies={frame.anomalies}",
+            f"event_to_frame_ms={frame.event_to_frame_ms}",
+            f"apply_to_frame_ms={frame.apply_to_frame_ms}",
             f"viewport={viewport_text}",
             f"resize={resize_text}",
+            f"timing={timing_text}",
+            f"runtime={runtime_text}",
         ]
 
     def _compute_frame_change_sets(self) -> None:

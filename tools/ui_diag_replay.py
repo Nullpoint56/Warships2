@@ -32,6 +32,16 @@ def _load_frames(path: Path) -> list[dict[str, Any]]:
     return frames
 
 
+def _timing_value(frame: dict[str, Any], key: str) -> float | None:
+    timing = frame.get("timing")
+    if not isinstance(timing, dict):
+        return None
+    value = timing.get(key)
+    if not isinstance(value, (int, float)):
+        return None
+    return float(value)
+
+
 class ReplayApp:
     def __init__(self, root: tk.Tk, log_path: Path | None) -> None:
         self.root = root
@@ -186,9 +196,22 @@ class ReplayApp:
         seq = frame.get("frame_seq")
         reasons = frame.get("reasons")
         resize = frame.get("resize")
+        event_to_frame_ms = _timing_value(frame, "event_to_frame_ms")
+        apply_to_frame_ms = _timing_value(frame, "apply_to_frame_ms")
+        runtime = frame.get("runtime") if isinstance(frame.get("runtime"), dict) else {}
+        versions = runtime.get("versions") if isinstance(runtime, dict) else {}
+        resize_experiment = runtime.get("resize_experiment") if isinstance(runtime, dict) else {}
+        backend_experiment = runtime.get("backend_experiment") if isinstance(runtime, dict) else {}
+        event_to_frame_text = "n/a" if event_to_frame_ms is None else f"{event_to_frame_ms:.2f}ms"
+        apply_to_frame_text = "n/a" if apply_to_frame_ms is None else f"{apply_to_frame_ms:.2f}ms"
         status_text = (
             f"frame={seq} index={self.index + 1}/{len(self.frames)} "
-            f"drawn={drawn} reasons={reasons} resize={resize}"
+            f"drawn={drawn} reasons={reasons} "
+            f"evt->frm={event_to_frame_text} "
+            f"apply->frm={apply_to_frame_text} "
+            f"versions={versions} "
+            f"resize_exp={resize_experiment} backend_exp={backend_experiment} "
+            f"resize={resize}"
         )
         self.status_var.set(status_text)
 

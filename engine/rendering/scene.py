@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from importlib.metadata import PackageNotFoundError, version
+from time import perf_counter
 from typing import Any, cast
 
 from engine.rendering.scene_retained import (
@@ -120,6 +122,13 @@ class SceneRenderer:
     _frame_viewport: tuple[float, float, float, float] | None = field(init=False, default=None)
     _frame_viewport_revision: int | None = field(init=False, default=None)
     _frame_window_size: tuple[float, float] | None = field(init=False, default=None)
+    _runtime_info: dict[str, object] = field(init=False, default_factory=dict)
+    _resize_force_invalidate: bool = field(init=False, default=False)
+    _resize_size_source_mode: str = field(init=False, default="both")
+    _resize_size_quantization: str = field(init=False, default="trunc")
+    _resize_camera_set_view_size: bool = field(init=False, default=False)
+    _resize_sync_from_physical_size: bool = field(init=False, default=False)
+    _renderer_force_pixel_ratio: float = field(init=False, default=0.0)
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -142,13 +151,29 @@ class SceneRenderer:
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
-        self._update_camera_projection()
         self._configure_diagnostics()
+        self._update_camera_projection()
         self._bind_resize_events()
         self._sync_size_from_canvas()
 
     def _configure_diagnostics(self) -> None:
         cfg = load_debug_config()
+        self._resize_force_invalidate = cfg.resize_force_invalidate
+        mode = cfg.resize_size_source_mode
+        if mode not in {"both", "event_only", "poll_only"}:
+            mode = "both"
+        self._resize_size_source_mode = mode
+        quant = cfg.resize_size_quantization
+        if quant not in {"trunc", "round"}:
+            quant = "trunc"
+        self._resize_size_quantization = quant
+        self._resize_camera_set_view_size = cfg.resize_camera_set_view_size
+        self._resize_sync_from_physical_size = cfg.resize_sync_from_physical_size
+        self._renderer_force_pixel_ratio = (
+            float(cfg.renderer_force_pixel_ratio) if cfg.renderer_force_pixel_ratio > 0.0 else 0.0
+        )
+        self._apply_renderer_pixel_ratio_experiment()
+        self._runtime_info = self._resolve_runtime_info()
         if not cfg.ui_trace_enabled and not cfg.resize_trace_enabled:
             self._ui_diagnostics = None
             return
@@ -164,6 +189,7 @@ class SceneRenderer:
                 log_every_frame=cfg.ui_trace_log_every_frame,
             )
         )
+        self._ui_diagnostics.set_runtime_info(self._runtime_info)
 
     def _bind_resize_events(self) -> None:
         add_handler = getattr(self.canvas, "add_event_handler", None)
@@ -175,6 +201,7 @@ class SceneRenderer:
             logger.debug("resize_event_binding_failed", exc_info=True)
 
     def _on_resize(self, event: object) -> None:
+        event_ts = perf_counter()
         diagnostics = self._ui_diagnostics
         if diagnostics is not None:
             diagnostics.note_frame_reason("resize")
@@ -185,7 +212,9 @@ class SceneRenderer:
         if width is None or height is None:
             self._sync_size_from_canvas()
             return
-        self._apply_canvas_size(width, height)
+        if self._resize_size_source_mode != "poll_only":
+            self._apply_canvas_size(width, height)
+        size_applied_ts = perf_counter()
         if diagnostics is not None:
             size_payload = event.get("size")
             logical_size: tuple[float, float] | None = None
@@ -212,6 +241,8 @@ class SceneRenderer:
                 physical_size=physical_size,
                 applied_size=(self.width, self.height),
                 viewport=self._viewport_transform(),
+                event_ts=event_ts,
+                size_applied_ts=size_applied_ts,
             )
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -229,12 +260,14 @@ class SceneRenderer:
                 self._viewport_transform()[2],
                 self._viewport_transform()[3],
             )
+        if self._resize_force_invalidate:
+            self.invalidate()
 
     def _apply_canvas_size(self, width: float, height: float) -> bool:
         if width <= 1.0 or height <= 1.0:
             return False
-        new_width = int(width)
-        new_height = int(height)
+        new_width = self._quantize_size(width)
+        new_height = self._quantize_size(height)
         if new_width == self.width and new_height == self.height:
             return False
         self.width = new_width
@@ -244,6 +277,11 @@ class SceneRenderer:
         return True
 
     def _update_camera_projection(self) -> None:
+        if self._resize_camera_set_view_size and hasattr(self.camera, "set_view_size"):
+            try:
+                self.camera.set_view_size(float(self.width), float(self.height))
+            except Exception:
+                logger.debug("camera_set_view_size_failed", exc_info=True)
         if hasattr(self.camera, "width"):
             self.camera.width = self.width
         if hasattr(self.camera, "height"):
@@ -252,11 +290,24 @@ class SceneRenderer:
         self.camera.local.scale_y = -1.0
 
     def _sync_size_from_canvas(self) -> bool:
+        if self._resize_sync_from_physical_size:
+            physical = self._get_canvas_physical_size()
+            if physical is not None:
+                ratio = self._effective_size_pixel_ratio()
+                if ratio > 0.0:
+                    width = physical[0] / ratio
+                    height = physical[1] / ratio
+                    return self._apply_canvas_size(width, height)
         size = get_canvas_logical_size(self.canvas)
         if size is None:
             return False
         width, height = size
         return self._apply_canvas_size(width, height)
+
+    def _quantize_size(self, value: float) -> int:
+        if self._resize_size_quantization == "round":
+            return int(round(value))
+        return int(value)
 
     @staticmethod
     def _coerce_size2(value: object) -> tuple[float, float] | None:
@@ -266,6 +317,109 @@ class SceneRenderer:
         if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
             return None
         return float(a), float(b)
+
+    def _get_canvas_physical_size(self) -> tuple[float, float] | None:
+        get_physical_size = getattr(self.canvas, "get_physical_size", None)
+        if not callable(get_physical_size):
+            return None
+        try:
+            return self._coerce_size2(get_physical_size())
+        except Exception:
+            return None
+
+    def _get_canvas_pixel_ratio(self) -> float | None:
+        get_pixel_ratio = getattr(self.canvas, "get_pixel_ratio", None)
+        if not callable(get_pixel_ratio):
+            return None
+        try:
+            ratio = get_pixel_ratio()
+        except Exception:
+            return None
+        if not isinstance(ratio, (int, float)):
+            return None
+        ratio_f = float(ratio)
+        return ratio_f if ratio_f > 0.0 else None
+
+    def _effective_size_pixel_ratio(self) -> float:
+        if self._renderer_force_pixel_ratio > 0.0:
+            return self._renderer_force_pixel_ratio
+        canvas_ratio = self._get_canvas_pixel_ratio()
+        if canvas_ratio is not None:
+            return canvas_ratio
+        renderer_ratio = getattr(self.renderer, "pixel_ratio", None)
+        if isinstance(renderer_ratio, (int, float)) and float(renderer_ratio) > 0.0:
+            return float(renderer_ratio)
+        return 1.0
+
+    def _apply_renderer_pixel_ratio_experiment(self) -> None:
+        if self._renderer_force_pixel_ratio <= 0.0:
+            return
+        forced = float(self._renderer_force_pixel_ratio)
+        for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+            if hasattr(self.renderer, attr):
+                try:
+                    setattr(self.renderer, attr, forced)
+                except Exception:
+                    pass
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+                if hasattr(target, attr):
+                    try:
+                        setattr(target, attr, forced)
+                    except Exception:
+                        pass
+
+    @staticmethod
+    def _to_scalar(value: object) -> object:
+        if isinstance(value, (str, bool, int, float)):
+            return value
+        return str(value)
+
+    def _collect_backend_probe(self) -> dict[str, object]:
+        probe: dict[str, object] = {}
+        for attr in ("backend", "backend_type", "present_mode", "surface_format"):
+            value = getattr(self.renderer, attr, None)
+            if value is not None:
+                probe[f"renderer.{attr}"] = self._to_scalar(value)
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("backend", "backend_type", "present_mode", "surface_format"):
+                value = getattr(target, attr, None)
+                if value is not None:
+                    probe[f"renderer.target.{attr}"] = self._to_scalar(value)
+        device = getattr(self.renderer, "device", None)
+        if device is None:
+            device = getattr(self.renderer, "_device", None)
+        if device is not None:
+            probe["device.type"] = f"{device.__class__.__module__}.{device.__class__.__name__}"
+            adapter = getattr(device, "adapter", None)
+            if adapter is not None:
+                info = getattr(adapter, "info", None)
+                if info is not None:
+                    if isinstance(info, dict):
+                        probe["adapter.info"] = {
+                            str(k): self._to_scalar(v)
+                            for k, v in info.items()
+                            if isinstance(k, str)
+                        }
+                    else:
+                        adapter_info: dict[str, object] = {}
+                        for attr in (
+                            "backend_type",
+                            "device",
+                            "description",
+                            "vendor",
+                            "architecture",
+                            "driver",
+                            "adapter_type",
+                        ):
+                            value = getattr(info, attr, None)
+                            if value is not None:
+                                adapter_info[attr] = self._to_scalar(value)
+                        if adapter_info:
+                            probe["adapter.info"] = adapter_info
+        return probe
 
     def _collect_backend_state(self) -> dict[str, object]:
         state: dict[str, object] = {
@@ -277,23 +431,13 @@ class SceneRenderer:
         if logical_size is not None:
             state["canvas_logical_size"] = [logical_size[0], logical_size[1]]
 
-        get_physical_size = getattr(self.canvas, "get_physical_size", None)
-        if callable(get_physical_size):
-            try:
-                physical = self._coerce_size2(get_physical_size())
-                if physical is not None:
-                    state["canvas_physical_size"] = [physical[0], physical[1]]
-            except Exception:
-                pass
+        physical = self._get_canvas_physical_size()
+        if physical is not None:
+            state["canvas_physical_size"] = [physical[0], physical[1]]
 
-        get_pixel_ratio = getattr(self.canvas, "get_pixel_ratio", None)
-        if callable(get_pixel_ratio):
-            try:
-                ratio = get_pixel_ratio()
-                if isinstance(ratio, (int, float)):
-                    state["canvas_pixel_ratio"] = float(ratio)
-            except Exception:
-                pass
+        canvas_ratio = self._get_canvas_pixel_ratio()
+        if canvas_ratio is not None:
+            state["canvas_pixel_ratio"] = canvas_ratio
 
         if hasattr(self.camera, "width") and hasattr(self.camera, "height"):
             try:
@@ -342,8 +486,40 @@ class SceneRenderer:
                     renderer_scalars[f"renderer.target.{attr}"] = float(value)
         if renderer_scalars:
             state["renderer_scalars"] = renderer_scalars
+        backend_probe = self._collect_backend_probe()
+        if backend_probe:
+            state["backend_probe"] = backend_probe
 
         return state
+
+    @staticmethod
+    def _package_version(name: str) -> str:
+        try:
+            return version(name)
+        except PackageNotFoundError:
+            return "unknown"
+
+    def _resolve_runtime_info(self) -> dict[str, object]:
+        return {
+            "canvas_type": f"{self.canvas.__class__.__module__}.{self.canvas.__class__.__name__}",
+            "renderer_type": f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}",
+            "camera_type": f"{self.camera.__class__.__module__}.{self.camera.__class__.__name__}",
+            "versions": {
+                "pygfx": self._package_version("pygfx"),
+                "wgpu": self._package_version("wgpu"),
+                "rendercanvas": self._package_version("rendercanvas"),
+            },
+            "resize_experiment": {
+                "force_invalidate": self._resize_force_invalidate,
+                "size_source_mode": self._resize_size_source_mode,
+                "size_quantization": self._resize_size_quantization,
+                "camera_set_view_size": self._resize_camera_set_view_size,
+                "sync_from_physical_size": self._resize_sync_from_physical_size,
+            },
+            "backend_experiment": {
+                "renderer_force_pixel_ratio": self._renderer_force_pixel_ratio,
+            },
+        }
 
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
@@ -816,10 +992,12 @@ class SceneRenderer:
             if self._draw_failed or self._is_closed:
                 return
             try:
-                self._sync_size_from_canvas()
+                self._apply_renderer_pixel_ratio_experiment()
+                if self._resize_size_source_mode != "event_only":
+                    self._sync_size_from_canvas()
                 diagnostics = self._ui_diagnostics
                 if diagnostics is not None:
-                    diagnostics.begin_frame()
+                    diagnostics.begin_frame(frame_render_ts=perf_counter())
                     sx, sy, ox, oy = self._viewport_transform()
                     diagnostics.note_viewport(
                         width=self.width,
