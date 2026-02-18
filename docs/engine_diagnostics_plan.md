@@ -14,6 +14,7 @@ Build a minimal, engine-owned observability layer that:
 - Phase 2: Completed
 - Phase 3: Completed
 - Phase 4: Completed
+- Phase 5: Completed
 
 This plan is implementation-focused and avoids blind iteration.
 
