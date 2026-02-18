@@ -28,14 +28,6 @@ from engine.runtime.scheduler import Scheduler
 from engine.runtime.screen_stack import ScreenStack
 from engine.runtime.time import FixedStepAccumulator, FrameClock, TimeContext
 
-
-def run_pygfx_hosted_runtime(*args, **kwargs):
-    """Lazy bootstrap entrypoint to avoid package import cycles."""
-    from engine.runtime.bootstrap import run_pygfx_hosted_runtime as _run_pygfx_hosted_runtime
-
-    return _run_pygfx_hosted_runtime(*args, **kwargs)
-
-
 __all__ = [
     "Command",
     "CommandMap",
@@ -67,6 +59,5 @@ __all__ = [
     "TimeContext",
     "create_metrics_collector",
     "load_debug_config",
-    "run_pygfx_hosted_runtime",
     "setup_engine_logging",
 ]
