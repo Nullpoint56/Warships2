@@ -1,0 +1,10 @@
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: composite-check
+        name: composite check script
+        entry: uv run python scripts/check.py
+        language: system
+        pass_filenames: false

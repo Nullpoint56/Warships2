@@ -268,8 +268,9 @@ class UIDiagnostics:
             return
         frame["anomalies"] = []
         revision = 0
-        if isinstance(frame.get("viewport"), dict):
-            revision = int(frame["viewport"].get("revision", 0))
+        viewport = frame.get("viewport")
+        if isinstance(viewport, dict):
+            revision = self._to_int(viewport.get("revision"), default=0)
         self._latest_summary = {
             "revision": revision,
             "resize_seq": self._resize_seq,
@@ -278,7 +279,7 @@ class UIDiagnostics:
         }
         frame["render_packet"] = self._build_render_packet(frame)
         self._frames.append(frame)
-        frame_seq = int(frame.get("frame_seq", 0))
+        frame_seq = self._to_int(frame.get("frame_seq"), default=0)
         if self._cfg.ui_trace_enabled and (
             self._cfg.log_every_frame or frame_seq % max(1, self._cfg.sampling_n) == 0
         ):
@@ -352,7 +353,13 @@ class UIDiagnostics:
                 y = transformed.get("y")
                 w = transformed.get("w")
                 h = transformed.get("h")
-                if not all(isinstance(v, (int, float)) for v in (x, y, w, h)):
+                if not isinstance(x, (int, float)):
+                    continue
+                if not isinstance(y, (int, float)):
+                    continue
+                if not isinstance(w, (int, float)):
+                    continue
+                if not isinstance(h, (int, float)):
                     continue
                 xf = float(x)
                 yf = float(y)
@@ -387,3 +394,18 @@ class UIDiagnostics:
                 "h": max(0.0, max_y - min_y),
             }
         return packet
+
+    @staticmethod
+    def _to_int(value: object, *, default: int) -> int:
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        if isinstance(value, str):
+            try:
+                return int(value)
+            except ValueError:
+                return default
+        return default

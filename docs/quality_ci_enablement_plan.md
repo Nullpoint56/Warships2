@@ -42,7 +42,7 @@ Practical name for this project: **Quality Gates + CI Rollout**.
    - Ruff baseline rule set.
    - Type checker include/exclude and initial scope profile.
 3. Add a local quality script:
-   - `scripts/check.ps1`
+   - `scripts/check.py`
    - Runs lint -> type check -> tests with coverage.
 
 Exit criteria:
@@ -115,7 +115,7 @@ Exit criteria:
 ## Next Implementation Steps
 
 1. Add Ruff + mypy config and dev dependencies in `pyproject.toml`.
-2. Add `scripts/check.ps1`.
+2. Add `scripts/check.py`.
 3. Add `.github/workflows/quality.yml` and `.github/workflows/build_windows.yml`.
 4. Enable branch protection using required checks once stable.
 
@@ -130,7 +130,7 @@ Implemented now:
    - `warships/game/core`
    - `warships/game/presets`
 4. Local check entrypoint added:
-   - `scripts/check.ps1`
+   - `scripts/check.py`
 5. GitHub Actions workflows added:
    - `.github/workflows/quality.yml`
    - `.github/workflows/build_windows.yml`
@@ -151,7 +151,7 @@ Objective:
 1. Run repository-wide `ruff format` in a dedicated formatting-only PR.
 2. Keep that PR free of behavior changes.
 3. After merge, enable formatter checks:
-   - local: add `uv run ruff format --check .` back to `scripts/check.ps1`
+   - local: add `uv run ruff format --check .` back to `scripts/check.py`
    - CI: add formatter check step back to `.github/workflows/quality.yml`
 
 Exit criteria:
@@ -162,7 +162,7 @@ Status:
 1. Implemented.
 2. Repo-wide `ruff format` applied.
 3. `ruff format --check` re-enabled in:
-   - `scripts/check.ps1`
+   - `scripts/check.py`
    - `.github/workflows/quality.yml`
 
 ### H2: Ruff Rule Expansion (Incremental)
@@ -233,7 +233,7 @@ Status:
 
 1. Update this document after each hardening milestone.
 2. Add a short `README` section for standard quality commands:
-   - `scripts/check.ps1`
+   - `scripts/check.py`
    - build script usage
 3. Keep local and CI commands aligned.
 
@@ -243,7 +243,7 @@ Exit criteria:
 Status:
 1. Implemented.
 2. `README.md` now documents:
-   - `.\scripts\check.ps1`
+   - `uv run python scripts/check.py`
    - equivalent `uv` quality commands
    - Windows build entrypoint and docs link
 
@@ -253,3 +253,4 @@ Status:
 2. Mypy scope expanded beyond baseline modules with stable signal.
 3. Existing test/coverage gates continue passing.
 4. Branch protection rules map cleanly to maintained CI jobs.
+

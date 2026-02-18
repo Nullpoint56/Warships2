@@ -14,7 +14,7 @@ PyGFX-based Warships game running on an engine-hosted runtime.
 
 ## Quality Checks
 
-1. Run full local gate: `.\scripts\check.ps1`
+1. Run full local gate: `uv run python scripts/check.py`
 2. Equivalent manual commands:
    - `uv run ruff check .`
    - `uv run ruff format --check .`

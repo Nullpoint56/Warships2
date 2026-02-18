@@ -85,20 +85,20 @@ class RuntimeUpdateLoop:
                 if spec.system_id not in self._started_ids:
                     continue
                 started_at = perf_counter()
-                caught_exc: Exception | None = None
+                fixed_step_exc: Exception | None = None
                 try:
                     spec.system.update(context, step_seconds)
                 except Exception as exc:
-                    caught_exc = exc
+                    fixed_step_exc = exc
                     self._increment_system_exception_count(metrics)
                 finally:
                     elapsed_ms = (perf_counter() - started_at) * 1000.0
                     system_timings_ms[spec.system_id] = (
                         system_timings_ms.get(spec.system_id, 0.0) + elapsed_ms
                     )
-                if caught_exc is not None:
+                if fixed_step_exc is not None:
                     self._publish_system_timings(metrics, system_timings_ms)
-                    raise caught_exc
+                    raise fixed_step_exc
         self._publish_system_timings(metrics, system_timings_ms)
         self._log_system_timings(tick_count=tick_count, timings_ms=system_timings_ms)
         return tick_count

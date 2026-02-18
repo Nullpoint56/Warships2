@@ -316,17 +316,17 @@ class SceneRenderer:
                     renderer_sizes[f"target.{attr}"] = [size2[0], size2[1]]
         if renderer_sizes:
             state["renderer_sizes"] = renderer_sizes
-            logical = renderer_sizes.get("logical_size")
-            physical = renderer_sizes.get("physical_size")
+            renderer_logical = renderer_sizes.get("logical_size")
+            renderer_physical = renderer_sizes.get("physical_size")
             if (
-                logical is not None
-                and physical is not None
-                and logical[0] > 0.0
-                and logical[1] > 0.0
+                renderer_logical is not None
+                and renderer_physical is not None
+                and renderer_logical[0] > 0.0
+                and renderer_logical[1] > 0.0
             ):
                 state["renderer_physical_ratio"] = [
-                    physical[0] / logical[0],
-                    physical[1] / logical[1],
+                    renderer_physical[0] / renderer_logical[0],
+                    renderer_physical[1] / renderer_logical[1],
                 ]
 
         renderer_scalars: dict[str, float] = {}
