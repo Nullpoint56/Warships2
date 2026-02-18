@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 def _flag(name: str, default: bool = False) -> bool:
@@ -42,10 +42,10 @@ class DebugConfig:
     ui_trace_sampling_n: int
     ui_trace_auto_dump: bool
     ui_trace_dump_dir: str
-    ui_trace_primitives_enabled: bool
-    ui_trace_key_filter: tuple[str, ...]
-    ui_trace_log_every_frame: bool
     log_level: str
+    ui_trace_primitives_enabled: bool = True
+    ui_trace_key_filter: tuple[str, ...] = field(default_factory=tuple)
+    ui_trace_log_every_frame: bool = False
 
 
 def resolve_log_level_name(default: str = "INFO") -> str:
