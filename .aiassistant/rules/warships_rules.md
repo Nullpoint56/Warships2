@@ -4,33 +4,21 @@ apply: always
 
 # AI Assistant Rules
 
-## 1. PowerShell File System Enumeration
+## PowerShell Constraint
 
-For recursive filesystem operations:
+Only use .NET (System.IO) APIs for filesystem access.
 
-- DO NOT use: `Get-ChildItem -Recurse`
-- DO NOT pipe to `Select-Object FullName` for large trees
-- DO NOT perform late filtering in `Where-Object`
+The following are PROHIBITED:
+- Get-ChildItem
+- gci
+- dir (alias)
+- Select-Object
+- Where-Object for filesystem filtering
 
-Use .NET streaming APIs instead:
+Recursive traversal MUST use:
+[System.IO.Directory]::EnumerateFiles
+[System.IO.Directory]::EnumerateDirectories
+[System.IO.Directory]::EnumerateFileSystemEntries
 
-Files:
-[System.IO.Directory]::EnumerateFiles(path, pattern, SearchOption)
+This rule has no exceptions.
 
-Directories:
-[System.IO.Directory]::EnumerateDirectories(path, pattern, SearchOption)
-
-Files + Directories:
-[System.IO.Directory]::EnumerateFileSystemEntries(path, pattern, SearchOption)
-
-Always pass:
-[System.IO.SearchOption]::AllDirectories
-
-Filter using the `pattern` parameter when possible (e.g., "*.md").
-
-Rationale:
-PowerShell materializes FileInfo objects and is significantly slower for large trees.
-.NET Enumerate* APIs are streaming and allocation-light.
-
-Exception:
-Use Get-ChildItem only if non-filesystem providers (registry, cert store) or rich metadata is explicitly required.

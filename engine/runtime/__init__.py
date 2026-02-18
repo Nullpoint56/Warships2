@@ -7,7 +7,6 @@ from engine.api.flow import FlowContext, FlowTransition
 from engine.api.interaction_modes import InteractionMode
 from engine.api.module_graph import ModuleNode, RuntimeModule
 from engine.api.screens import ScreenLayer
-from engine.runtime.bootstrap import run_pygfx_hosted_runtime
 from engine.runtime.commands import CommandMap
 from engine.runtime.context import RuntimeContextImpl
 from engine.runtime.debug_config import DebugConfig, load_debug_config
@@ -28,6 +27,14 @@ from engine.runtime.module_graph import RuntimeModuleGraph
 from engine.runtime.scheduler import Scheduler
 from engine.runtime.screen_stack import ScreenStack
 from engine.runtime.time import FixedStepAccumulator, FrameClock, TimeContext
+
+
+def run_pygfx_hosted_runtime(*args, **kwargs):
+    """Lazy bootstrap entrypoint to avoid package import cycles."""
+    from engine.runtime.bootstrap import run_pygfx_hosted_runtime as _run_pygfx_hosted_runtime
+
+    return _run_pygfx_hosted_runtime(*args, **kwargs)
+
 
 __all__ = [
     "Command",
