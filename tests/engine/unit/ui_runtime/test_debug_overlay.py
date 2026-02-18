@@ -95,7 +95,7 @@ def test_debug_overlay_adds_ui_diagnostics_row_when_provided() -> None:
     overlay.draw(
         renderer,
         snapshot,
-        ui_diagnostics={"revision": 7, "resize_seq": 42, "jitter_count": 3},
+        ui_diagnostics={"revision": 7, "resize_seq": 42, "anomaly_count": 3},
     )
 
-    assert renderer.text_calls[-1][1] == "UI rev=7 resize=42 jitter=3"
+    assert renderer.text_calls[-1][1] == "UI rev=7 resize=42 anomalies=3"

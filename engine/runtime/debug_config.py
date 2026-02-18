@@ -23,6 +23,14 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _csv(name: str) -> tuple[str, ...]:
+    raw = os.getenv(name)
+    if raw is None:
+        return ()
+    values = [part.strip() for part in raw.split(",")]
+    return tuple(value for value in values if value)
+
+
 @dataclass(frozen=True, slots=True)
 class DebugConfig:
     """Immutable runtime debug configuration."""
@@ -34,6 +42,9 @@ class DebugConfig:
     ui_trace_sampling_n: int
     ui_trace_auto_dump: bool
     ui_trace_dump_dir: str
+    ui_trace_primitives_enabled: bool
+    ui_trace_key_filter: tuple[str, ...]
+    ui_trace_log_every_frame: bool
     log_level: str
 
 
@@ -55,6 +66,9 @@ def load_debug_config() -> DebugConfig:
         ui_trace_sampling_n=max(1, _int("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", 10)),
         ui_trace_auto_dump=_flag("ENGINE_DEBUG_UI_TRACE_AUTO_DUMP", False),
         ui_trace_dump_dir=os.getenv("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", "logs").strip() or "logs",
+        ui_trace_primitives_enabled=_flag("ENGINE_DEBUG_UI_TRACE_PRIMITIVES", True),
+        ui_trace_key_filter=_csv("ENGINE_DEBUG_UI_TRACE_KEY_FILTER"),
+        ui_trace_log_every_frame=_flag("ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME", False),
         log_level=resolve_log_level_name(),
     )
 

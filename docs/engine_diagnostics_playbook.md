@@ -7,7 +7,7 @@ This playbook is the operational companion to `docs/engine_diagnostics_plan.md`.
 - Runtime metrics (`ENGINE_DEBUG_METRICS`)
 - Debug overlay (`ENGINE_DEBUG_OVERLAY`)
 - UI diagnostics trace (`ENGINE_DEBUG_UI_TRACE`, `ENGINE_DEBUG_RESIZE_TRACE`)
-- UI anomaly dump files (`ui_diag_run_*.jsonl`)
+- UI diagnostics raw dump files (`ui_diag_run_*.jsonl`)
 
 ## Enable Diagnostics
 
@@ -22,6 +22,10 @@ Set:
 Optional tuning:
 
 - `ENGINE_DEBUG_UI_TRACE_SAMPLING_N=1`
+- `ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME=1`
+- `ENGINE_DEBUG_UI_TRACE_PRIMITIVES=1`
+- `ENGINE_DEBUG_UI_TRACE_KEY_FILTER=`
+  - Comma-separated key prefixes to reduce trace volume.
 
 ## Reproduce Known UI Instability
 
@@ -37,19 +41,11 @@ Optional tuning:
 2. Save UI diagnostics JSONL dump.
 3. Record short note with repro order (`X->Y->mouse` or `Y->X->mouse`).
 
-## Expected Signatures
+## Runtime Policy
 
-- `button_jitter:<id>`
-  - Button transformed geometry changed without matching viewport revision change.
-- `button_ratio_spread:<value>`
-  - Sibling button height/text ratio diverged beyond threshold.
-
-Interpretation:
-
-- Source specs stable + jitter anomaly:
-  - investigate input/invalidate/draw ordering and per-frame viewport revision.
-- Ratio spread anomaly:
-  - investigate sibling layout consistency and transform path.
+- Engine runtime emits raw diagnostics only.
+- Engine does not classify UI anomalies at runtime.
+- Post-processing tools/tests may compute app-specific heuristics from the raw dump.
 
 ## Baseline Fixture
 

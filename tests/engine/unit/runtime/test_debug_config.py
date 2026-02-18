@@ -18,6 +18,9 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", "25")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_AUTO_DUMP", "0")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", "diag_logs")
+    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_PRIMITIVES", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_KEY_FILTER", "board:,ship:,button:")
+    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME", "true")
     monkeypatch.setenv("ENGINE_LOG_LEVEL", "debug")
 
     cfg = load_debug_config()
@@ -28,6 +31,9 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     assert cfg.ui_trace_sampling_n == 25
     assert cfg.ui_trace_auto_dump is False
     assert cfg.ui_trace_dump_dir == "diag_logs"
+    assert cfg.ui_trace_primitives_enabled is True
+    assert cfg.ui_trace_key_filter == ("board:", "ship:", "button:")
+    assert cfg.ui_trace_log_every_frame is True
     assert cfg.log_level == "DEBUG"
 
 

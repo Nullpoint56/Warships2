@@ -6,7 +6,7 @@ from pathlib import Path
 from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 
 
-def test_ui_diagnostics_detects_button_ratio_spread() -> None:
+def test_ui_diagnostics_records_button_geometry_without_soft_anomalies() -> None:
     diag = UIDiagnostics(
         UIDiagnosticsConfig(
             ui_trace_enabled=True,
@@ -45,14 +45,14 @@ def test_ui_diagnostics_detects_button_ratio_spread() -> None:
     last = diag.recent_frames()[-1]
     anomalies = last.get("anomalies")
     assert isinstance(anomalies, list)
-    assert any(str(item).startswith("button_ratio_spread:") for item in anomalies)
+    assert anomalies == []
     buttons = last.get("buttons")
     assert isinstance(buttons, dict)
     assert "source_rect" in buttons["a"]
     assert "rect" in buttons["a"]
 
 
-def test_ui_diagnostics_detects_button_jitter_same_viewport_revision() -> None:
+def test_ui_diagnostics_does_not_emit_button_jitter_anomaly() -> None:
     diag = UIDiagnostics(
         UIDiagnosticsConfig(
             ui_trace_enabled=True,
@@ -96,7 +96,7 @@ def test_ui_diagnostics_detects_button_jitter_same_viewport_revision() -> None:
     last = diag.recent_frames()[-1]
     anomalies = last.get("anomalies")
     assert isinstance(anomalies, list)
-    assert "button_jitter:new_game" in anomalies
+    assert anomalies == []
 
 
 def test_ui_diagnostics_dump_writes_jsonl(tmp_path: Path) -> None:
@@ -151,3 +151,110 @@ def test_ui_diagnostics_tracks_reason_timestamps() -> None:
     assert isinstance(reason_events, list)
     assert reason_events
     assert reason_events[0]["reason"] == "input:pointer:move"
+
+
+def test_ui_diagnostics_records_filtered_primitives() -> None:
+    diag = UIDiagnostics(
+        UIDiagnosticsConfig(
+            ui_trace_enabled=True,
+            resize_trace_enabled=False,
+            auto_dump_on_anomaly=False,
+            primitive_trace_enabled=True,
+            trace_key_prefixes=("ship:", "board:"),
+        )
+    )
+    diag.begin_frame()
+    diag.note_viewport(width=1200, height=720, viewport_revision=4, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
+    diag.note_primitive(
+        primitive_type="rect",
+        key="button:bg:new_game",
+        source=(80.0, 28.0, 160.0, 50.0),
+        transformed=(80.0, 28.0, 160.0, 50.0),
+        z=1.0,
+        viewport_revision=4,
+    )
+    diag.note_primitive(
+        primitive_type="rect",
+        key="ship:player:1:2",
+        source=(100.0, 100.0, 42.0, 42.0),
+        transformed=(110.0, 110.0, 42.0, 42.0),
+        z=0.3,
+        viewport_revision=4,
+    )
+    diag.note_primitive(
+        primitive_type="rect",
+        key="board:bg:player",
+        source=(80.0, 150.0, 420.0, 420.0),
+        transformed=(88.0, 165.0, 504.0, 462.0),
+        z=0.1,
+        viewport_revision=4,
+    )
+    diag.end_frame()
+    frame = diag.recent_frames()[-1]
+    primitives = frame.get("primitives")
+    assert isinstance(primitives, list)
+    keys = [item.get("key") for item in primitives if isinstance(item, dict)]
+    assert "button:bg:new_game" not in keys
+    assert "ship:player:1:2" in keys
+    assert "board:bg:player" in keys
+    anomalies = frame.get("anomalies")
+    assert isinstance(anomalies, list)
+    assert anomalies == []
+
+
+def test_ui_diagnostics_does_not_emit_runtime_anomalies() -> None:
+    diag = UIDiagnostics(
+        UIDiagnosticsConfig(
+            ui_trace_enabled=True,
+            resize_trace_enabled=False,
+            auto_dump_on_anomaly=False,
+            primitive_trace_enabled=True,
+        )
+    )
+    diag.begin_frame()
+    diag.note_viewport(width=1200, height=720, viewport_revision=4, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
+    diag.note_primitive(
+        primitive_type="rect",
+        key="ui:one",
+        source=(10.0, 10.0, 100.0, 100.0),
+        transformed=(10.0, 10.0, 100.0, 100.0),
+        z=0.1,
+        viewport_revision=4,
+    )
+    diag.note_primitive(
+        primitive_type="rect",
+        key="ui:two",
+        source=(10.0, 10.0, 100.0, 100.0),
+        transformed=(10.0, 10.0, 100.0, 100.0),
+        z=0.1,
+        viewport_revision=5,
+    )
+    diag.end_frame()
+    frame = diag.recent_frames()[-1]
+    anomalies = frame.get("anomalies")
+    assert isinstance(anomalies, list)
+    assert anomalies == []
+
+
+def test_ui_diagnostics_scope_decorator_captures_timing() -> None:
+    diag = UIDiagnostics(
+        UIDiagnosticsConfig(
+            ui_trace_enabled=True,
+            resize_trace_enabled=False,
+            auto_dump_on_anomaly=False,
+        )
+    )
+    diag.begin_frame()
+    diag.note_viewport(width=1200, height=720, viewport_revision=1, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
+
+    @diag.scope_decorator("draw:board")
+    def _draw_board() -> None:
+        return None
+
+    _draw_board()
+    diag.end_frame()
+    frame = diag.recent_frames()[-1]
+    scopes = frame.get("scopes")
+    assert isinstance(scopes, list)
+    assert scopes
+    assert scopes[0]["name"] == "draw:board"

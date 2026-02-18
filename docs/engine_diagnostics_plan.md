@@ -158,7 +158,7 @@ This plan is implementation-focused and avoids blind iteration.
 - Optional UI diagnostics row (if UI trace enabled):
   - viewport revision
   - resize seq
-  - button jitter count
+  - raw trace status/count
 
 ### Integration point
 - Runtime frame orchestration after normal game render call.
@@ -224,11 +224,10 @@ This section is mandatory to solve the current instability class.
   - pointer move/release timestamps
   - frame reason (`resize`, `input`, `scheduler`, `manual invalidate`)
 
-### Jitter detectors
-- `button_jitter_detector(id)`:
-  - detects unexpected delta jump between consecutive frames without corresponding resize delta.
-- `layout_consistency_detector`:
-  - validates proportional scaling among sibling buttons.
+### Engine-side diagnostics policy
+- Engine runtime emits raw diagnostics only.
+- Soft heuristics and anomaly classification are post-processing concerns and must live
+  in app/test analysis tools.
 
 ### Output strategy
 - By default: ring buffer in memory (last 300 frames).
@@ -256,7 +255,7 @@ This section is mandatory to solve the current instability class.
 - `tests/engine/unit/ui_runtime/test_debug_overlay.py`
   - formatting, empty snapshot behavior, toggle behavior.
 - `tests/engine/unit/rendering/test_ui_diagnostics.py`
-  - jitter detection and anomaly dump trigger.
+  - invariant detection and anomaly dump trigger.
 
 ### Integration tests
 - `tests/engine/integration/test_diagnostics_disabled_parity.py`
@@ -291,7 +290,7 @@ This section is mandatory to solve the current instability class.
 
 ### Phase 4: UI Diagnostics Stack
 - Add `ui_diagnostics.py` and hooks in rendering/input/update boundaries.
-- Add jitter detectors and anomaly JSONL dump path.
+- Add invariant detector(s) and anomaly JSONL dump path.
 - Add focused UI diagnostics tests.
 
 ### Phase 5: Debug Playbook

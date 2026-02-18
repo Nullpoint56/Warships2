@@ -182,11 +182,11 @@ def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monk
     renderer = _FakeRenderer()
 
     def _summary() -> dict[str, int]:
-        return {"revision": 9, "resize_seq": 42, "jitter_count": 2}
+        return {"revision": 9, "resize_seq": 42, "anomaly_count": 2}
 
     renderer.ui_diagnostics_summary = _summary  # type: ignore[attr-defined]
     host = EngineHost(module=module, render_api=renderer)
     host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
     host.frame()
 
-    assert any(text.startswith("UI rev=9 resize=42 jitter=2") for text in renderer.text_values)
+    assert any(text.startswith("UI rev=9 resize=42 anomalies=2") for text in renderer.text_values)

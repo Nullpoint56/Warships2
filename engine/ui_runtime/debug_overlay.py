@@ -62,10 +62,12 @@ class DebugOverlay:
             ]
             if ui_diagnostics is not None:
                 lines.append(
-                    "UI rev={revision} resize={resize_seq} jitter={jitter_count}".format(
+                    "UI rev={revision} resize={resize_seq} anomalies={anomaly_count}".format(
                         revision=int(ui_diagnostics.get("revision", 0)),
                         resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
-                        jitter_count=int(ui_diagnostics.get("jitter_count", 0)),
+                        anomaly_count=int(
+                            ui_diagnostics.get("anomaly_count", ui_diagnostics.get("jitter_count", 0))
+                        ),
                     )
                 )
             return lines
@@ -85,10 +87,12 @@ class DebugOverlay:
                 lines.append(f"{idx + 1}) -")
         if ui_diagnostics is not None:
             lines.append(
-                "UI rev={revision} resize={resize_seq} jitter={jitter_count}".format(
+                "UI rev={revision} resize={resize_seq} anomalies={anomaly_count}".format(
                     revision=int(ui_diagnostics.get("revision", 0)),
                     resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
-                    jitter_count=int(ui_diagnostics.get("jitter_count", 0)),
+                    anomaly_count=int(
+                        ui_diagnostics.get("anomaly_count", ui_diagnostics.get("jitter_count", 0))
+                    ),
                 )
             )
         return lines

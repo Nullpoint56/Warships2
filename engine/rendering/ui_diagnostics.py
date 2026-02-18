@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections import deque
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
 from time import perf_counter
 
@@ -15,7 +19,7 @@ _LOG = logging.getLogger("engine.rendering")
 
 @dataclass(frozen=True, slots=True)
 class UIDiagnosticsConfig:
-    """Configuration for UI diagnostics collection and dumps."""
+    """Configuration for UI diagnostics collection and raw dumps."""
 
     ui_trace_enabled: bool
     resize_trace_enabled: bool
@@ -24,10 +28,13 @@ class UIDiagnosticsConfig:
     auto_dump_on_anomaly: bool = True
     dump_dir: str = "logs"
     dump_frame_count: int = 120
+    primitive_trace_enabled: bool = True
+    trace_key_prefixes: tuple[str, ...] = ()
+    log_every_frame: bool = False
 
 
 class UIDiagnostics:
-    """Collect frame-level UI diagnostics and dump recent history on anomalies."""
+    """Collect frame-level UI diagnostics and optionally stream raw frame dumps."""
 
     def __init__(self, config: UIDiagnosticsConfig) -> None:
         self._cfg = config
@@ -38,10 +45,15 @@ class UIDiagnostics:
         self._frame_seq = 0
         self._resize_seq = 0
         self._current: dict[str, object] | None = None
-        self._last_button_rect: dict[str, tuple[int, int, float, float]] = {}
         self._dump_count = 0
         self._session_dump_path: Path | None = None
-        self._latest_summary: dict[str, int] = {"revision": 0, "resize_seq": 0, "jitter_count": 0}
+        self._latest_summary: dict[str, int] = {
+            "revision": 0,
+            "resize_seq": 0,
+            "anomaly_count": 0,
+            "jitter_count": 0,
+        }
+        self._primitive_seq = 0
 
     def note_frame_reason(self, reason: str) -> None:
         if not self._cfg.ui_trace_enabled:
@@ -82,12 +94,17 @@ class UIDiagnostics:
             return
         self._frame_seq += 1
         self._current = {
+            "ts_utc": datetime.now(UTC).isoformat(timespec="milliseconds"),
             "frame_seq": self._frame_seq,
             "reasons": sorted(self._pending_reasons),
             "reason_events": list(self._pending_reason_events),
             "resize": self._latest_resize,
             "viewport": None,
             "buttons": {},
+            "primitives": [],
+            "retained_ops": [],
+            "frame_state": [],
+            "scopes": [],
             "anomalies": [],
         }
         self._pending_reasons.clear()
@@ -149,32 +166,125 @@ class UIDiagnostics:
         if isinstance(entry, dict):
             entry["text_size"] = text_size
 
+    def note_primitive(
+        self,
+        *,
+        primitive_type: str,
+        key: str | None,
+        source: tuple[float, float, float, float],
+        transformed: tuple[float, float, float, float],
+        z: float,
+        viewport_revision: int,
+    ) -> None:
+        if self._current is None or not self._cfg.primitive_trace_enabled:
+            return
+        if key is not None and self._cfg.trace_key_prefixes:
+            if not any(key.startswith(prefix) for prefix in self._cfg.trace_key_prefixes):
+                return
+        primitives = self._current.get("primitives")
+        if not isinstance(primitives, list):
+            return
+        self._primitive_seq += 1
+        sx, sy, sw, sh = source
+        tx, ty, tw, th = transformed
+        primitives.append(
+            {
+                "seq": self._primitive_seq,
+                "type": primitive_type,
+                "key": key,
+                "source": {"x": sx, "y": sy, "w": sw, "h": sh},
+                "transformed": {"x": tx, "y": ty, "w": tw, "h": th},
+                "z": z,
+                "viewport_revision": viewport_revision,
+            }
+        )
+
+    def note_retained_op(
+        self,
+        *,
+        primitive_type: str,
+        key: str | None,
+        action: str,
+        viewport_revision: int,
+        before: tuple[float, float, float, float] | None,
+        after: tuple[float, float, float, float],
+    ) -> None:
+        if self._current is None:
+            return
+        retained_ops = self._current.get("retained_ops")
+        if not isinstance(retained_ops, list):
+            return
+        payload: dict[str, object] = {
+            "type": primitive_type,
+            "key": key,
+            "action": action,
+            "viewport_revision": viewport_revision,
+            "after": {"x": after[0], "y": after[1], "w": after[2], "h": after[3]},
+        }
+        if before is not None:
+            payload["before"] = {"x": before[0], "y": before[1], "w": before[2], "h": before[3]}
+        retained_ops.append(payload)
+
+    def note_frame_state(self, *, stage: str, payload: dict[str, object]) -> None:
+        if self._current is None:
+            return
+        frame_state = self._current.get("frame_state")
+        if not isinstance(frame_state, list):
+            return
+        frame_state.append({"stage": stage, **payload})
+
+    @contextmanager
+    def scoped(self, name: str) -> Iterator[None]:
+        """Collect timing for a named diagnostics scope in the current frame."""
+        start = perf_counter()
+        try:
+            yield
+        finally:
+            current = self._current
+            if current is not None:
+                scopes = current.get("scopes")
+                if isinstance(scopes, list):
+                    scopes.append({"name": name, "duration_ms": (perf_counter() - start) * 1000.0})
+
+    def scope_decorator(
+        self, name: str
+    ) -> Callable[[Callable[..., object]], Callable[..., object]]:
+        """Decorator helper for selectively tracing specific render/draw functions."""
+
+        def _decorator(func: Callable[..., object]) -> Callable[..., object]:
+            @wraps(func)
+            def _wrapped(*args: object, **kwargs: object) -> object:
+                with self.scoped(name):
+                    return func(*args, **kwargs)
+
+            return _wrapped
+
+        return _decorator
+
     def end_frame(self) -> None:
         frame = self._current
         self._current = None
         if frame is None:
             return
-        anomalies = self._detect_anomalies(frame)
-        frame["anomalies"] = anomalies
+        frame["anomalies"] = []
         revision = 0
         if isinstance(frame.get("viewport"), dict):
             revision = int(frame["viewport"].get("revision", 0))
-        jitter_count = sum(
-            1 for item in anomalies if isinstance(item, str) and item.startswith("button_jitter:")
-        )
         self._latest_summary = {
             "revision": revision,
             "resize_seq": self._resize_seq,
-            "jitter_count": jitter_count,
+            "anomaly_count": 0,
+            "jitter_count": 0,
         }
+        frame["render_packet"] = self._build_render_packet(frame)
         self._frames.append(frame)
         frame_seq = int(frame.get("frame_seq", 0))
-        if self._cfg.ui_trace_enabled and frame_seq % max(1, self._cfg.sampling_n) == 0:
-            _LOG.debug("ui_diag frame=%d anomalies=%d", frame_seq, len(anomalies))
-        if anomalies and self._cfg.auto_dump_on_anomaly:
-            path = self.dump_recent_frames()
-            if path is not None:
-                _LOG.warning("ui_diag_anomaly_dumped file=%s anomalies=%s", path, anomalies)
+        if self._cfg.ui_trace_enabled and (
+            self._cfg.log_every_frame or frame_seq % max(1, self._cfg.sampling_n) == 0
+        ):
+            _LOG.debug("ui_diag frame=%d", frame_seq)
+        if self._cfg.auto_dump_on_anomaly:
+            self._append_frame_to_dump(frame)
 
     def dump_recent_frames(self) -> str | None:
         if not self._frames:
@@ -197,54 +307,13 @@ class UIDiagnostics:
         """Return latest compact UI diagnostic summary for overlay display."""
         return dict(self._latest_summary)
 
-    def _detect_anomalies(self, frame: dict[str, object]) -> list[str]:
-        anomalies: list[str] = []
-        viewport = frame.get("viewport")
-        revision = -1
-        if isinstance(viewport, dict):
-            rev_value = viewport.get("revision")
-            if isinstance(rev_value, int):
-                revision = rev_value
-        resize_seq = self._resize_seq
-        resize = frame.get("resize")
-        if isinstance(resize, dict):
-            resize_value = resize.get("resize_seq")
-            if isinstance(resize_value, int):
-                resize_seq = resize_value
-        buttons = frame.get("buttons")
-        if not isinstance(buttons, dict) or not buttons:
-            return anomalies
-
-        ratios: list[float] = []
-        for button_id, payload in buttons.items():
-            if not isinstance(payload, dict):
-                continue
-            rect = payload.get("rect")
-            text_size = payload.get("text_size")
-            if isinstance(rect, dict):
-                width = rect.get("w")
-                height = rect.get("h")
-                if isinstance(width, (float, int)) and isinstance(height, (float, int)):
-                    prev = self._last_button_rect.get(str(button_id))
-                    if prev is not None and prev[0] == revision and prev[1] == resize_seq:
-                        if abs(prev[2] - float(width)) > 0.5 or abs(prev[3] - float(height)) > 0.5:
-                            anomalies.append(f"button_jitter:{button_id}")
-                    self._last_button_rect[str(button_id)] = (
-                        revision,
-                        resize_seq,
-                        float(width),
-                        float(height),
-                    )
-            if isinstance(rect, dict) and isinstance(text_size, (float, int)) and float(text_size) > 0.0:
-                height = rect.get("h")
-                if isinstance(height, (float, int)):
-                    ratios.append(float(height) / float(text_size))
-
-        if len(ratios) >= 2:
-            spread = max(ratios) - min(ratios)
-            if spread > 0.25:
-                anomalies.append(f"button_ratio_spread:{spread:.3f}")
-        return anomalies
+    def _append_frame_to_dump(self, frame: dict[str, object]) -> None:
+        path = self._resolve_session_dump_path()
+        if path is None:
+            return
+        with path.open("a", encoding="utf-8") as out:
+            out.write(json.dumps(frame, separators=(",", ":")))
+            out.write("\n")
 
     def _resolve_session_dump_path(self) -> Path | None:
         if self._session_dump_path is not None:
@@ -255,3 +324,66 @@ class UIDiagnostics:
         self._dump_count += 1
         self._session_dump_path = dump_root / f"ui_diag_run_{stamp}_{self._dump_count:02d}.jsonl"
         return self._session_dump_path
+
+    @staticmethod
+    def _build_render_packet(frame: dict[str, object]) -> dict[str, object]:
+        packet: dict[str, object] = {
+            "frame_seq": frame.get("frame_seq"),
+            "ts_utc": frame.get("ts_utc"),
+            "viewport": frame.get("viewport"),
+            "resize": frame.get("resize"),
+            "reasons": frame.get("reasons"),
+        }
+        primitives = frame.get("primitives")
+        keyed: dict[str, dict[str, object]] = {}
+        min_x = math.inf
+        min_y = math.inf
+        max_x = -math.inf
+        max_y = -math.inf
+        count = 0
+        if isinstance(primitives, list):
+            for item in primitives:
+                if not isinstance(item, dict):
+                    continue
+                transformed = item.get("transformed")
+                if not isinstance(transformed, dict):
+                    continue
+                x = transformed.get("x")
+                y = transformed.get("y")
+                w = transformed.get("w")
+                h = transformed.get("h")
+                if not all(isinstance(v, (int, float)) for v in (x, y, w, h)):
+                    continue
+                xf = float(x)
+                yf = float(y)
+                wf = float(w)
+                hf = float(h)
+                if not all(math.isfinite(v) for v in (xf, yf, wf, hf)):
+                    continue
+                min_x = min(min_x, xf)
+                min_y = min(min_y, yf)
+                max_x = max(max_x, xf + wf)
+                max_y = max(max_y, yf + hf)
+                count += 1
+                key = item.get("key")
+                if isinstance(key, str) and key:
+                    keyed[key] = {
+                        "type": item.get("type"),
+                        "x": xf,
+                        "y": yf,
+                        "w": wf,
+                        "h": hf,
+                        "z": item.get("z"),
+                        "viewport_revision": item.get("viewport_revision"),
+                    }
+
+        packet["primitive_count"] = count
+        packet["keyed_transforms"] = keyed
+        if count > 0 and all(math.isfinite(v) for v in (min_x, min_y, max_x, max_y)):
+            packet["scene_bounds"] = {
+                "x": min_x,
+                "y": min_y,
+                "w": max(0.0, max_x - min_x),
+                "h": max(0.0, max_y - min_y),
+            }
+        return packet
