@@ -24,6 +24,8 @@ from engine.rendering.scene_viewport import (
     to_design_space,
     viewport_transform,
 )
+from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
+from engine.runtime.debug_config import load_debug_config
 
 _gfx_import_error: Exception | None
 try:
@@ -90,6 +92,15 @@ class SceneRenderer:
     _rect_viewport_rev: dict[str, int] = field(default_factory=dict)
     _line_viewport_rev: dict[str, int] = field(default_factory=dict)
     _text_viewport_rev: dict[str, int] = field(default_factory=dict)
+    _rect_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
+    _line_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
+    _text_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
     _static_rect_keys: set[str] = field(default_factory=set)
     _static_line_keys: set[str] = field(default_factory=set)
     _static_text_keys: set[str] = field(default_factory=set)
@@ -104,6 +115,11 @@ class SceneRenderer:
     _is_closed: bool = field(init=False, default=False)
     _draw_callback: Callable[[], None] | None = field(init=False, default=None)
     _viewport_revision: int = field(init=False, default=0)
+    _ui_diagnostics: UIDiagnostics | None = field(init=False, default=None)
+    _frame_active: bool = field(init=False, default=False)
+    _frame_viewport: tuple[float, float, float, float] | None = field(init=False, default=None)
+    _frame_viewport_revision: int | None = field(init=False, default=None)
+    _frame_window_size: tuple[float, float] | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -127,8 +143,27 @@ class SceneRenderer:
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
         self._update_camera_projection()
+        self._configure_diagnostics()
         self._bind_resize_events()
         self._sync_size_from_canvas()
+
+    def _configure_diagnostics(self) -> None:
+        cfg = load_debug_config()
+        if not cfg.ui_trace_enabled and not cfg.resize_trace_enabled:
+            self._ui_diagnostics = None
+            return
+        self._ui_diagnostics = UIDiagnostics(
+            UIDiagnosticsConfig(
+                ui_trace_enabled=cfg.ui_trace_enabled,
+                resize_trace_enabled=cfg.resize_trace_enabled,
+                sampling_n=cfg.ui_trace_sampling_n,
+                auto_dump_on_anomaly=cfg.ui_trace_auto_dump,
+                dump_dir=cfg.ui_trace_dump_dir,
+                primitive_trace_enabled=cfg.ui_trace_primitives_enabled,
+                trace_key_prefixes=cfg.ui_trace_key_filter,
+                log_every_frame=cfg.ui_trace_log_every_frame,
+            )
+        )
 
     def _bind_resize_events(self) -> None:
         add_handler = getattr(self.canvas, "add_event_handler", None)
@@ -140,6 +175,9 @@ class SceneRenderer:
             logger.debug("resize_event_binding_failed", exc_info=True)
 
     def _on_resize(self, event: object) -> None:
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_reason("resize")
         if not isinstance(event, dict):
             self._sync_size_from_canvas()
             return
@@ -148,6 +186,49 @@ class SceneRenderer:
             self._sync_size_from_canvas()
             return
         self._apply_canvas_size(width, height)
+        if diagnostics is not None:
+            size_payload = event.get("size")
+            logical_size: tuple[float, float] | None = None
+            if (
+                isinstance(size_payload, (tuple, list))
+                and len(size_payload) == 2
+                and all(isinstance(v, (int, float)) for v in size_payload)
+            ):
+                logical_size = (float(size_payload[0]), float(size_payload[1]))
+            physical_size: tuple[int, int] | None = None
+            pixel_ratio = event.get("pixel_ratio")
+            if (
+                logical_size is not None
+                and isinstance(pixel_ratio, (int, float))
+                and pixel_ratio > 0
+            ):
+                physical_size = (
+                    int(logical_size[0] * float(pixel_ratio)),
+                    int(logical_size[1] * float(pixel_ratio)),
+                )
+            diagnostics.note_resize_event(
+                event_size=(float(width), float(height)),
+                logical_size=logical_size,
+                physical_size=physical_size,
+                applied_size=(self.width, self.height),
+                viewport=self._viewport_transform(),
+            )
+
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                (
+                    "resize_event event_size=(%.1f,%.1f) applied_size=(%d,%d) "
+                    "viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)"
+                ),
+                float(width),
+                float(height),
+                self.width,
+                self.height,
+                self._viewport_transform()[0],
+                self._viewport_transform()[1],
+                self._viewport_transform()[2],
+                self._viewport_transform()[3],
+            )
 
     def _apply_canvas_size(self, width: float, height: float) -> bool:
         if width <= 1.0 or height <= 1.0:
@@ -177,11 +258,116 @@ class SceneRenderer:
         width, height = size
         return self._apply_canvas_size(width, height)
 
+    @staticmethod
+    def _coerce_size2(value: object) -> tuple[float, float] | None:
+        if not (isinstance(value, (tuple, list)) and len(value) >= 2):
+            return None
+        a, b = value[0], value[1]
+        if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
+            return None
+        return float(a), float(b)
+
+    def _collect_backend_state(self) -> dict[str, object]:
+        state: dict[str, object] = {
+            "window_size": [int(self.width), int(self.height)],
+            "viewport_revision": int(self._viewport_revision),
+        }
+
+        logical_size = get_canvas_logical_size(self.canvas)
+        if logical_size is not None:
+            state["canvas_logical_size"] = [logical_size[0], logical_size[1]]
+
+        get_physical_size = getattr(self.canvas, "get_physical_size", None)
+        if callable(get_physical_size):
+            try:
+                physical = self._coerce_size2(get_physical_size())
+                if physical is not None:
+                    state["canvas_physical_size"] = [physical[0], physical[1]]
+            except Exception:
+                pass
+
+        get_pixel_ratio = getattr(self.canvas, "get_pixel_ratio", None)
+        if callable(get_pixel_ratio):
+            try:
+                ratio = get_pixel_ratio()
+                if isinstance(ratio, (int, float)):
+                    state["canvas_pixel_ratio"] = float(ratio)
+            except Exception:
+                pass
+
+        if hasattr(self.camera, "width") and hasattr(self.camera, "height"):
+            try:
+                state["camera_size"] = [float(self.camera.width), float(self.camera.height)]
+            except Exception:
+                pass
+
+        renderer_sizes: dict[str, list[float]] = {}
+        for attr in ("logical_size", "physical_size", "target_size", "size"):
+            value = getattr(self.renderer, attr, None)
+            size2 = self._coerce_size2(value)
+            if size2 is not None:
+                renderer_sizes[attr] = [size2[0], size2[1]]
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("logical_size", "physical_size", "size"):
+                value = getattr(target, attr, None)
+                size2 = self._coerce_size2(value)
+                if size2 is not None:
+                    renderer_sizes[f"target.{attr}"] = [size2[0], size2[1]]
+        if renderer_sizes:
+            state["renderer_sizes"] = renderer_sizes
+            renderer_logical = renderer_sizes.get("logical_size")
+            renderer_physical = renderer_sizes.get("physical_size")
+            if (
+                renderer_logical is not None
+                and renderer_physical is not None
+                and renderer_logical[0] > 0.0
+                and renderer_logical[1] > 0.0
+            ):
+                state["renderer_physical_ratio"] = [
+                    renderer_physical[0] / renderer_logical[0],
+                    renderer_physical[1] / renderer_logical[1],
+                ]
+
+        renderer_scalars: dict[str, float] = {}
+        for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+            value = getattr(self.renderer, attr, None)
+            if isinstance(value, (int, float)):
+                renderer_scalars[f"renderer.{attr}"] = float(value)
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+                value = getattr(target, attr, None)
+                if isinstance(value, (int, float)):
+                    renderer_scalars[f"renderer.target.{attr}"] = float(value)
+        if renderer_scalars:
+            state["renderer_scalars"] = renderer_scalars
+
+        return state
+
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
+        self._frame_active = True
+        self._frame_viewport = self._viewport_transform()
+        self._frame_viewport_revision = self._viewport_revision
+        self._frame_window_size = (float(self.width), float(self.height))
         self._active_rect_keys.clear()
         self._active_line_keys.clear()
         self._active_text_keys.clear()
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_state(
+                stage="begin",
+                payload={
+                    "rect_nodes": len(self._rect_nodes),
+                    "line_nodes": len(self._line_nodes),
+                    "text_nodes": len(self._text_nodes),
+                    "active_rect_keys": len(self._active_rect_keys),
+                    "active_line_keys": len(self._active_line_keys),
+                    "active_text_keys": len(self._active_text_keys),
+                    "viewport_revision": self._viewport_revision,
+                },
+            )
 
     def _viewport_transform(self) -> tuple[float, float, float, float]:
         return viewport_transform(
@@ -205,9 +391,60 @@ class SceneRenderer:
 
     def end_frame(self) -> None:
         """Hide dynamic retained nodes that were not touched this frame."""
+        hidden_rect = [
+            k
+            for k in self._rect_nodes
+            if k not in self._static_rect_keys and k not in self._active_rect_keys
+        ]
+        hidden_line = [
+            k
+            for k in self._line_nodes
+            if k not in self._static_line_keys and k not in self._active_line_keys
+        ]
+        hidden_text = [
+            k
+            for k in self._text_nodes
+            if k not in self._static_text_keys and k not in self._active_text_keys
+        ]
         hide_inactive_nodes(self._rect_nodes, self._static_rect_keys, self._active_rect_keys)
         hide_inactive_nodes(self._line_nodes, self._static_line_keys, self._active_line_keys)
         hide_inactive_nodes(self._text_nodes, self._static_text_keys, self._active_text_keys)
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_state(
+                stage="end",
+                payload={
+                    "rect_nodes": len(self._rect_nodes),
+                    "line_nodes": len(self._line_nodes),
+                    "text_nodes": len(self._text_nodes),
+                    "hidden_rect_keys": hidden_rect[:50],
+                    "hidden_line_keys": hidden_line[:50],
+                    "hidden_text_keys": hidden_text[:50],
+                    "hidden_rect_count": len(hidden_rect),
+                    "hidden_line_count": len(hidden_line),
+                    "hidden_text_count": len(hidden_text),
+                    "viewport_revision": self._viewport_revision,
+                },
+            )
+        self._frame_active = False
+        self._frame_viewport = None
+        self._frame_viewport_revision = None
+        self._frame_window_size = None
+
+    def _active_viewport_transform(self) -> tuple[float, float, float, float]:
+        if self._frame_active and self._frame_viewport is not None:
+            return self._frame_viewport
+        return self._viewport_transform()
+
+    def _active_viewport_revision(self) -> int:
+        if self._frame_active and self._frame_viewport_revision is not None:
+            return self._frame_viewport_revision
+        return self._viewport_revision
+
+    def _active_window_size(self) -> tuple[float, float]:
+        if self._frame_active and self._frame_window_size is not None:
+            return self._frame_window_size
+        return (float(self.width), float(self.height))
 
     def clear_dynamic(self) -> None:
         """Compatibility wrapper for older call-sites."""
@@ -226,11 +463,16 @@ class SceneRenderer:
         static: bool = False,
     ) -> None:
         """Add a filled rectangle."""
-        sx, sy, ox, oy = self._viewport_transform()
+        sx, sy, ox, oy = self._active_viewport_transform()
         tx = x * sx + ox
         ty = y * sy + oy
         tw = w * sx
         th = h * sy
+        viewport_revision = self._active_viewport_revision()
+        before = self._rect_transformed_props.get(key) if key is not None else None
+        after = (tx, ty, tw, th)
+        if key is not None:
+            self._rect_transformed_props[key] = after
         upsert_rect(
             gfx=gfx,
             scene=self.scene,
@@ -245,7 +487,7 @@ class SceneRenderer:
             ty=ty,
             tw=tw,
             th=th,
-            viewport_revision=self._viewport_revision,
+            viewport_revision=viewport_revision,
             rect_nodes=self._rect_nodes,
             rect_props=self._rect_props,
             rect_viewport_rev=self._rect_viewport_rev,
@@ -254,6 +496,61 @@ class SceneRenderer:
             dynamic_nodes=self._dynamic_nodes,
             static=static,
         )
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            if key is None:
+                action = "dynamic"
+            elif before is None:
+                action = "create"
+            elif before != after:
+                action = "update"
+            else:
+                action = "reuse"
+            diagnostics.note_retained_op(
+                primitive_type="rect",
+                key=key,
+                action=action,
+                viewport_revision=viewport_revision,
+                before=before,
+                after=after,
+            )
+            diagnostics.note_primitive(
+                primitive_type="rect",
+                key=key,
+                source=(x, y, w, h),
+                transformed=(tx, ty, tw, th),
+                z=z,
+                viewport_revision=viewport_revision,
+            )
+        if key is not None and key.startswith("button:bg:"):
+            if diagnostics is not None:
+                diagnostics.note_button_rect(
+                    key.removeprefix("button:bg:"),
+                    x=x,
+                    y=y,
+                    w=w,
+                    h=h,
+                    tx=tx,
+                    ty=ty,
+                    tw=tw,
+                    th=th,
+                )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    (
+                        "ui_button_geometry id=%s source=(%.2f,%.2f,%.2f,%.2f) "
+                        "transformed=(%.2f,%.2f,%.2f,%.2f)"
+                    ),
+                    key.removeprefix("button:bg:"),
+                    x,
+                    y,
+                    w,
+                    h,
+                    tx,
+                    ty,
+                    tw,
+                    th,
+                )
 
     def add_grid(
         self,
@@ -268,11 +565,15 @@ class SceneRenderer:
         static: bool = False,
     ) -> None:
         """Add a batched line-segment grid."""
-        sx, sy, ox, oy = self._viewport_transform()
+        sx, sy, ox, oy = self._active_viewport_transform()
         tx = x * sx + ox
         ty = y * sy + oy
         tw = width * sx
         th = height * sy
+        viewport_revision = self._active_viewport_revision()
+        before = self._line_transformed_props.get(key)
+        after = (tx, ty, tw, th)
+        self._line_transformed_props[key] = after
         upsert_grid(
             gfx=gfx,
             scene=self.scene,
@@ -288,7 +589,7 @@ class SceneRenderer:
             ty=ty,
             tw=tw,
             th=th,
-            viewport_revision=self._viewport_revision,
+            viewport_revision=viewport_revision,
             line_nodes=self._line_nodes,
             line_props=self._line_props,
             line_viewport_rev=self._line_viewport_rev,
@@ -296,6 +597,30 @@ class SceneRenderer:
             active_line_keys=self._active_line_keys,
             static=static,
         )
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            if before is None:
+                action = "create"
+            elif before != after:
+                action = "update"
+            else:
+                action = "reuse"
+            diagnostics.note_retained_op(
+                primitive_type="grid",
+                key=key,
+                action=action,
+                viewport_revision=viewport_revision,
+                before=before,
+                after=after,
+            )
+            diagnostics.note_primitive(
+                primitive_type="grid",
+                key=key,
+                source=(x, y, width, height),
+                transformed=(tx, ty, tw, th),
+                z=z,
+                viewport_revision=viewport_revision,
+            )
 
     def add_text(
         self,
@@ -310,10 +635,15 @@ class SceneRenderer:
         static: bool = False,
     ) -> None:
         """Add screen-space text."""
-        sx, sy, ox, oy = self._viewport_transform()
+        sx, sy, ox, oy = self._active_viewport_transform()
         tx = x * sx + ox
         ty = y * sy + oy
         tsize = font_size * min(sx, sy)
+        viewport_revision = self._active_viewport_revision()
+        before = self._text_transformed_props.get(key) if key is not None else None
+        after = (tx, ty, tsize, tsize)
+        if key is not None:
+            self._text_transformed_props[key] = after
         upsert_text(
             gfx=gfx,
             scene=self.scene,
@@ -328,7 +658,7 @@ class SceneRenderer:
             tx=tx,
             ty=ty,
             tsize=tsize,
-            viewport_revision=self._viewport_revision,
+            viewport_revision=viewport_revision,
             text_nodes=self._text_nodes,
             text_props=self._text_props,
             text_viewport_rev=self._text_viewport_rev,
@@ -337,20 +667,52 @@ class SceneRenderer:
             dynamic_nodes=self._dynamic_nodes,
             static=static,
         )
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            if key is None:
+                action = "dynamic"
+            elif before is None:
+                action = "create"
+            elif before != after:
+                action = "update"
+            else:
+                action = "reuse"
+            diagnostics.note_retained_op(
+                primitive_type="text",
+                key=key,
+                action=action,
+                viewport_revision=viewport_revision,
+                before=before,
+                after=after,
+            )
+            diagnostics.note_primitive(
+                primitive_type="text",
+                key=key,
+                source=(x, y, font_size, font_size),
+                transformed=(tx, ty, tsize, tsize),
+                z=z,
+                viewport_revision=viewport_revision,
+            )
+        if key is not None and key.startswith("button:text:"):
+            if diagnostics is not None:
+                diagnostics.note_button_text(key.removeprefix("button:text:"), text_size=tsize)
 
     def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
         """Fill the entire window in window-space coordinates."""
         color_value = cast(Any, color)
-        tw = float(self.width)
-        th = float(self.height)
+        tw, th = self._active_window_size()
         tx = 0.0
         ty = 0.0
+        viewport_revision = self._active_viewport_revision()
+        before = self._rect_transformed_props.get(key)
+        after = (tx, ty, tw, th)
+        self._rect_transformed_props[key] = after
         if key in self._rect_nodes:
             node = self._rect_nodes[key]
             new_props = (tx, ty, tw, th, color, z)
             needs_update = (
                 self._rect_props.get(key) != new_props
-                or self._rect_viewport_rev.get(key, -1) != self._viewport_revision
+                or self._rect_viewport_rev.get(key, -1) != viewport_revision
             )
             if needs_update:
                 node.local.position = (tx + tw / 2.0, ty + th / 2.0, z)
@@ -358,9 +720,28 @@ class SceneRenderer:
                 if hasattr(node, "material"):
                     node.material.color = color_value
                 self._rect_props[key] = new_props
-                self._rect_viewport_rev[key] = self._viewport_revision
+                self._rect_viewport_rev[key] = viewport_revision
             node.visible = True
             self._active_rect_keys.add(key)
+            diagnostics = self._ui_diagnostics
+            if diagnostics is not None:
+                action = "update" if before is not None and before != after else "reuse"
+                diagnostics.note_retained_op(
+                    primitive_type="window_rect",
+                    key=key,
+                    action=action,
+                    viewport_revision=viewport_revision,
+                    before=before,
+                    after=after,
+                )
+                diagnostics.note_primitive(
+                    primitive_type="window_rect",
+                    key=key,
+                    source=(tx, ty, tw, th),
+                    transformed=(tx, ty, tw, th),
+                    z=z,
+                    viewport_revision=viewport_revision,
+                )
             return
 
         mesh = gfx.Mesh(gfx.plane_geometry(tw, th), gfx.MeshBasicMaterial(color=color))
@@ -368,8 +749,26 @@ class SceneRenderer:
         self.scene.add(mesh)
         self._rect_nodes[key] = mesh
         self._rect_props[key] = (tx, ty, tw, th, color, z)
-        self._rect_viewport_rev[key] = self._viewport_revision
+        self._rect_viewport_rev[key] = viewport_revision
         self._active_rect_keys.add(key)
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_retained_op(
+                primitive_type="window_rect",
+                key=key,
+                action="create",
+                viewport_revision=viewport_revision,
+                before=before,
+                after=after,
+            )
+            diagnostics.note_primitive(
+                primitive_type="window_rect",
+                key=key,
+                source=(tx, ty, tw, th),
+                transformed=(tx, ty, tw, th),
+                z=z,
+                viewport_revision=viewport_revision,
+            )
 
     def set_title(self, title: str) -> None:
         """Set window title when supported by backend."""
@@ -381,8 +780,33 @@ class SceneRenderer:
         """Schedule one redraw."""
         if self._is_closed:
             return
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_reason("invalidate")
         if hasattr(self.canvas, "request_draw"):
             self.canvas.request_draw()
+
+    def note_frame_reason(self, reason: str) -> None:
+        """Record a frame trigger reason for diagnostics."""
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_reason(reason)
+
+    def ui_diagnostics_summary(self) -> dict[str, int] | None:
+        """Return compact UI diagnostics summary for overlay consumption."""
+        diagnostics = self._ui_diagnostics
+        if diagnostics is None:
+            return None
+        return diagnostics.latest_summary()
+
+    def ui_trace_scope(
+        self, name: str
+    ) -> Callable[[Callable[..., object]], Callable[..., object]] | None:
+        """Return a decorator for scoped UI diagnostics tracing when enabled."""
+        diagnostics = self._ui_diagnostics
+        if diagnostics is None:
+            return None
+        return diagnostics.scope_decorator(name)
 
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Start draw loop."""
@@ -393,12 +817,42 @@ class SceneRenderer:
                 return
             try:
                 self._sync_size_from_canvas()
+                diagnostics = self._ui_diagnostics
+                if diagnostics is not None:
+                    diagnostics.begin_frame()
+                    sx, sy, ox, oy = self._viewport_transform()
+                    diagnostics.note_viewport(
+                        width=self.width,
+                        height=self.height,
+                        viewport_revision=self._viewport_revision,
+                        sx=sx,
+                        sy=sy,
+                        ox=ox,
+                        oy=oy,
+                    )
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "ui_projection revision=%d viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)",
+                            self._viewport_revision,
+                            sx,
+                            sy,
+                            ox,
+                            oy,
+                        )
+                    diagnostics.note_frame_state(
+                        stage="draw_pre", payload=self._collect_backend_state()
+                    )
                 if self._draw_callback is None:
                     return
                 self._draw_callback()
                 if self._is_closed:
                     return
                 self.renderer.render(self.scene, self.camera)
+                if diagnostics is not None:
+                    diagnostics.note_frame_state(
+                        stage="draw_post", payload=self._collect_backend_state()
+                    )
+                    diagnostics.end_frame()
             except Exception:  # pylint: disable=broad-exception-caught
                 self._draw_failed = True
                 logger.exception("unhandled_exception_in_draw_loop")

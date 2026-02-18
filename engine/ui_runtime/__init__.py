@@ -1,5 +1,6 @@
 """Engine-owned UI runtime helpers."""
 
+from engine.ui_runtime.debug_overlay import DebugOverlay
 from engine.ui_runtime.geometry import CellCoord, Rect
 from engine.ui_runtime.grid_layout import GridLayout
 from engine.ui_runtime.interactions import (
@@ -45,6 +46,7 @@ __all__ = [
     "NonModalKeyRoute",
     "Button",
     "CellCoord",
+    "DebugOverlay",
     "GridLayout",
     "PromptInteractionOutcome",
     "PromptState",

@@ -12,6 +12,7 @@ class _RendererWithSize:
         self.invalidate_calls = 0
         self.run_callback = None
         self.closed = False
+        self.frame_reasons: list[str] = []
 
         def _set_size(w: int, h: int) -> None:
             self.canvas_size_calls.append((w, h))
@@ -26,6 +27,9 @@ class _RendererWithSize:
 
     def close(self) -> None:
         self.closed = True
+
+    def note_frame_reason(self, reason: str) -> None:
+        self.frame_reasons.append(reason)
 
 
 class _RendererWithoutSize(_RendererWithSize):
@@ -132,3 +136,15 @@ def test_drain_input_events_without_changes_does_not_invalidate() -> None:
     )
     window._drain_input_events()
     assert renderer.invalidate_calls == 0
+
+
+def test_drain_input_events_records_pointer_event_type_reasons() -> None:
+    renderer = _RendererWithSize()
+    pointer_event = SimpleNamespace(event_type="pointer_move")
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer,
+        input_controller=_Input(pointer=[pointer_event]),
+        host=_Host(close_after_frame=False),
+    )
+    window._drain_input_events()
+    assert "input:pointer:pointer_move" in renderer.frame_reasons

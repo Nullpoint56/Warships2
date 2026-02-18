@@ -113,13 +113,38 @@ Model:
 
 ## Configuration
 
-Relevant env flags:
-- `ENGINE_WINDOW_MODE`
-- `ENGINE_UI_ASPECT_MODE`
-- `WARSHIPS_DEBUG_INPUT`
-- `WARSHIPS_DEBUG_UI`
-- `LOG_LEVEL`
-- `LOG_FORMAT`
+Preferred env files:
+1. `.env.engine`
+2. `.env.engine.local` (gitignored)
+3. `.env.app`
+4. `.env.app.local` (gitignored)
+
+Ownership:
+- Engine settings (`ENGINE_*`):
+  - `ENGINE_WINDOW_MODE`
+  - `ENGINE_UI_ASPECT_MODE`
+  - `ENGINE_LOG_LEVEL`
+  - `ENGINE_DEBUG_METRICS`
+  - `ENGINE_DEBUG_OVERLAY`
+  - `ENGINE_DEBUG_UI_TRACE`
+  - `ENGINE_DEBUG_UI_TRACE_AUTO_DUMP`
+  - `ENGINE_DEBUG_UI_TRACE_DUMP_DIR`
+  - `ENGINE_DEBUG_RESIZE_TRACE`
+- App settings (`WARSHIPS_*` + app log format):
+  - `WARSHIPS_DEBUG_INPUT`
+  - `WARSHIPS_DEBUG_UI`
+  - `WARSHIPS_LOG_LEVEL`
+  - `WARSHIPS_APP_DATA_DIR`
+  - `WARSHIPS_LOG_DIR`
+  - `LOG_FORMAT`
+
+Default runtime app-data root is `<game_root>/appdata` (logs/presets/saves).  
+`WARSHIPS_APP_DATA_DIR` overrides that root.
+
+Logging boundary:
+- Engine owns logging pipeline via `engine.api.logging` / `engine.runtime.logging`.
+- App applies policy by configuring engine logging API (levels/formats/sinks), not by
+  mutating runtime internals directly.
 
 ## Boundary Rules
 

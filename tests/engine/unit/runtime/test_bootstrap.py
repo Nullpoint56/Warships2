@@ -45,9 +45,10 @@ class FakeWindow:
 class FakeHost:
     last_instance = None
 
-    def __init__(self, module, config) -> None:
+    def __init__(self, module, config, render_api=None) -> None:
         self.module = module
         self.config = config
+        self.render_api = render_api
         FakeHost.last_instance = self
 
 

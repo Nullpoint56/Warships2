@@ -47,6 +47,7 @@ from engine.api.interaction_modes import (
     InteractionModeMachine,
     create_interaction_mode_machine,
 )
+from engine.api.logging import EngineLoggingConfig, LoggerPort, configure_logging, get_logger
 from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule, create_module_graph
 from engine.api.render import RenderAPI
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
@@ -108,6 +109,8 @@ __all__ = [
     "HostedRuntimeConfig",
     "InteractionMode",
     "InteractionModeMachine",
+    "EngineLoggingConfig",
+    "LoggerPort",
     "ModuleGraph",
     "ModuleNode",
     "PointerEvent",
@@ -147,6 +150,8 @@ __all__ = [
     "create_flow_machine",
     "create_flow_program",
     "create_interaction_mode_machine",
+    "configure_logging",
+    "get_logger",
     "create_ui_framework",
     "normalize_scores",
     "run_pygfx_hosted_runtime",

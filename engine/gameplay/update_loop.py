@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import logging
+from time import perf_counter
+
 from engine.api.context import RuntimeContext
 from engine.api.gameplay import SystemSpec
 from engine.runtime.time import FixedStepAccumulator
+
+_LOG = logging.getLogger("engine.update")
 
 
 class RuntimeUpdateLoop:
@@ -46,11 +51,29 @@ class RuntimeUpdateLoop:
         if delta_seconds < 0.0:
             raise ValueError("delta_seconds must be >= 0")
         ordered = self._ordered_systems()
+        metrics = context.get("metrics_collector")
+        system_timings_ms: dict[str, float] = {}
         if self._accumulator is None:
             for spec in ordered:
                 if spec.system_id not in self._started_ids:
                     continue
-                spec.system.update(context, delta_seconds)
+                started_at = perf_counter()
+                caught_exc: Exception | None = None
+                try:
+                    spec.system.update(context, delta_seconds)
+                except Exception as exc:
+                    caught_exc = exc
+                    self._increment_system_exception_count(metrics)
+                finally:
+                    elapsed_ms = (perf_counter() - started_at) * 1000.0
+                    system_timings_ms[spec.system_id] = (
+                        system_timings_ms.get(spec.system_id, 0.0) + elapsed_ms
+                    )
+                if caught_exc is not None:
+                    self._publish_system_timings(metrics, system_timings_ms)
+                    raise caught_exc
+            self._publish_system_timings(metrics, system_timings_ms)
+            self._log_system_timings(tick_count=1 if ordered else 0, timings_ms=system_timings_ms)
             return 1 if ordered else 0
 
         step_seconds = self._fixed_step_seconds
@@ -61,7 +84,23 @@ class RuntimeUpdateLoop:
             for spec in ordered:
                 if spec.system_id not in self._started_ids:
                     continue
-                spec.system.update(context, step_seconds)
+                started_at = perf_counter()
+                fixed_step_exc: Exception | None = None
+                try:
+                    spec.system.update(context, step_seconds)
+                except Exception as exc:
+                    fixed_step_exc = exc
+                    self._increment_system_exception_count(metrics)
+                finally:
+                    elapsed_ms = (perf_counter() - started_at) * 1000.0
+                    system_timings_ms[spec.system_id] = (
+                        system_timings_ms.get(spec.system_id, 0.0) + elapsed_ms
+                    )
+                if fixed_step_exc is not None:
+                    self._publish_system_timings(metrics, system_timings_ms)
+                    raise fixed_step_exc
+        self._publish_system_timings(metrics, system_timings_ms)
+        self._log_system_timings(tick_count=tick_count, timings_ms=system_timings_ms)
         return tick_count
 
     def shutdown(self, context: RuntimeContext) -> None:
@@ -82,3 +121,26 @@ class RuntimeUpdateLoop:
             )
         )
         return self._cached_order
+
+    @staticmethod
+    def _publish_system_timings(metrics: object | None, timings_ms: dict[str, float]) -> None:
+        if not timings_ms:
+            return
+        if metrics is None or not hasattr(metrics, "record_system_time"):
+            return
+        for system_id, elapsed_ms in timings_ms.items():
+            metrics.record_system_time(system_id, elapsed_ms)
+
+    @staticmethod
+    def _log_system_timings(*, tick_count: int, timings_ms: dict[str, float]) -> None:
+        if not timings_ms or not _LOG.isEnabledFor(logging.DEBUG):
+            return
+        top = sorted(timings_ms.items(), key=lambda item: item[1], reverse=True)[:3]
+        top_text = ", ".join(f"{system_id}={elapsed_ms:.3f}ms" for system_id, elapsed_ms in top)
+        _LOG.debug("system_timing tick_count=%d systems=%s", tick_count, top_text)
+
+    @staticmethod
+    def _increment_system_exception_count(metrics: object | None) -> None:
+        if metrics is None or not hasattr(metrics, "increment_system_exception_count"):
+            return
+        metrics.increment_system_exception_count(1)
