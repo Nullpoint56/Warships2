@@ -75,6 +75,31 @@ class _ScheduledCloseModule:
         return
 
 
+class _FakeRenderer:
+    def __init__(self) -> None:
+        self.rect_calls: list[str] = []
+        self.text_calls: list[str] = []
+
+    def add_rect(self, key, x, y, w, h, color, z=0.0, static=False) -> None:
+        _ = (x, y, w, h, color, z, static)
+        self.rect_calls.append(str(key))
+
+    def add_text(
+        self,
+        key,
+        text,
+        x,
+        y,
+        font_size=18.0,
+        color="#ffffff",
+        anchor="top-left",
+        z=2.0,
+        static=False,
+    ) -> None:
+        _ = (text, x, y, font_size, color, anchor, z, static)
+        self.text_calls.append(str(key))
+
+
 def test_engine_host_lifecycle_and_close() -> None:
     module = FakeModule()
     host = EngineHost(module=module)
@@ -119,3 +144,16 @@ def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
     assert snapshot.last_frame is not None
     assert snapshot.last_frame.frame_index == 0
     assert snapshot.last_frame.scheduler_queue_size >= 0
+
+
+def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    module = FakeModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+
+    assert any(key.endswith(":bg") for key in renderer.rect_calls)
+    assert any(":line:" in key for key in renderer.text_calls)

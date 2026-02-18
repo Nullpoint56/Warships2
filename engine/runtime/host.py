@@ -7,11 +7,13 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
+from engine.api.render import RenderAPI
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
-from engine.runtime.debug_config import enabled_metrics
+from engine.runtime.debug_config import enabled_metrics, enabled_overlay
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
 from engine.runtime.scheduler import Scheduler
 from engine.runtime.time import FrameClock
+from engine.ui_runtime.debug_overlay import DebugOverlay
 
 _LOG = logging.getLogger("engine.runtime")
 
@@ -28,7 +30,12 @@ class EngineHostConfig:
 class EngineHost(HostControl):
     """Lifecycle shell for engine-hosted runtime migration."""
 
-    def __init__(self, module: GameModule, config: EngineHostConfig | None = None) -> None:
+    def __init__(
+        self,
+        module: GameModule,
+        config: EngineHostConfig | None = None,
+        render_api: RenderAPI | None = None,
+    ) -> None:
         self._module = module
         self._config = config or EngineHostConfig()
         self._frame_index = 0
@@ -36,6 +43,8 @@ class EngineHost(HostControl):
         self._started = False
         self._clock = FrameClock()
         self._scheduler = Scheduler()
+        self._render_api = render_api
+        self._debug_overlay = DebugOverlay() if enabled_overlay() else None
         self._metrics_collector = create_metrics_collector(enabled=enabled_metrics())
 
     @property
@@ -87,6 +96,8 @@ class EngineHost(HostControl):
             )
         )
         self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
+        if self._debug_overlay is not None and self._render_api is not None:
+            self._debug_overlay.draw(self._render_api, self._metrics_collector.snapshot())
         if _LOG.isEnabledFor(logging.DEBUG):
             snapshot = self._metrics_collector.snapshot()
             if snapshot.last_frame is not None:

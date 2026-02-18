@@ -48,6 +48,10 @@ Engine-owned:
 - `ENGINE_WINDOW_MODE`: `windowed` | `maximized` | `fullscreen` | `borderless`
 - `ENGINE_UI_ASPECT_MODE`: `contain` (default preserve) or other mode supported by runtime
 - `ENGINE_LOG_LEVEL`: engine diagnostics/runtime log verbosity
+- `ENGINE_DEBUG_METRICS`: `1` enables runtime metrics collection
+- `ENGINE_DEBUG_OVERLAY`: `1` draws in-frame metrics overlay
+- `ENGINE_DEBUG_UI_TRACE`: `1` enables UI trace diagnostics hooks
+- `ENGINE_DEBUG_RESIZE_TRACE`: `1` enables resize diagnostics hooks
 
 App-owned:
 - `WARSHIPS_DEBUG_INPUT`: `1` enables input debug logs

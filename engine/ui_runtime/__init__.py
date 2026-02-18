@@ -8,6 +8,7 @@ from engine.ui_runtime.interactions import (
     resolve_pointer_button,
     route_non_modal_key_event,
 )
+from engine.ui_runtime.debug_overlay import DebugOverlay
 from engine.ui_runtime.keymap import map_key_name
 from engine.ui_runtime.list_viewport import can_scroll_down as can_scroll_list_down
 from engine.ui_runtime.list_viewport import clamp_scroll, visible_slice
@@ -45,6 +46,7 @@ __all__ = [
     "NonModalKeyRoute",
     "Button",
     "CellCoord",
+    "DebugOverlay",
     "GridLayout",
     "PromptInteractionOutcome",
     "PromptState",

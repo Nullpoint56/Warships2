@@ -23,7 +23,7 @@ def run_pygfx_hosted_runtime(
     layout = GridLayout()
     renderer = SceneRenderer()
     module = module_factory(renderer, layout)
-    host = EngineHost(module=module, config=host_config or EngineHostConfig())
+    host = EngineHost(module=module, config=host_config or EngineHostConfig(), render_api=renderer)
     input_controller = InputController(on_click_queued=renderer.invalidate)
     input_controller.bind(renderer.canvas)
     window = create_pygfx_window(renderer=renderer, input_controller=input_controller, host=host)
