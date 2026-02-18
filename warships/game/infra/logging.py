@@ -7,9 +7,10 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from engine.api.logging import EngineLoggingConfig, configure_logging
-from engine.runtime.logging import JsonFormatter
+from engine.api.logging import EngineLoggingConfig, JsonFormatter, configure_logging
 from warships.game.infra.app_data import resolve_logs_dir
+
+__all__ = ["JsonFormatter", "setup_logging"]
 
 
 def setup_logging() -> None:

@@ -2,59 +2,16 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import queue
-from datetime import UTC, datetime
 from logging.handlers import QueueHandler, QueueListener
 from pathlib import Path
 
-from engine.api.logging import EngineLoggingConfig
+from engine.api.logging import EngineLoggingConfig, JsonFormatter
 from engine.runtime.debug_config import resolve_log_level_name
 
 _QUEUE_LISTENER: QueueListener | None = None
 RESERVED_LOGGER_NAMES: tuple[str, ...] = ("engine.network", "engine.audio")
-
-
-class JsonFormatter(logging.Formatter):
-    """JSON formatter with extra-field preservation."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, object] = {
-            "ts": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "msg": record.getMessage(),
-        }
-        standard = {
-            "name",
-            "msg",
-            "args",
-            "levelname",
-            "levelno",
-            "pathname",
-            "filename",
-            "module",
-            "exc_info",
-            "exc_text",
-            "stack_info",
-            "lineno",
-            "funcName",
-            "created",
-            "msecs",
-            "relativeCreated",
-            "thread",
-            "threadName",
-            "processName",
-            "process",
-            "message",
-        }
-        extras = {k: v for k, v in record.__dict__.items() if k not in standard}
-        if extras:
-            payload["fields"] = extras
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=True)
 
 
 def configure_engine_logging(config: EngineLoggingConfig) -> None:

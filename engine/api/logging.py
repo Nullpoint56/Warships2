@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import json
+import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol
 
 
@@ -28,6 +31,47 @@ class LoggerPort(Protocol):
     def error(self, message: str, *args: object, **kwargs: object) -> None: ...
 
     def exception(self, message: str, *args: object, **kwargs: object) -> None: ...
+
+
+class JsonFormatter(logging.Formatter):
+    """JSON formatter with extra-field preservation."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, object] = {
+            "ts": datetime.now(UTC).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "msg": record.getMessage(),
+        }
+        standard = {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "message",
+        }
+        extras = {k: v for k, v in record.__dict__.items() if k not in standard}
+        if extras:
+            payload["fields"] = extras
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, ensure_ascii=True)
 
 
 def configure_logging(config: EngineLoggingConfig) -> None:
