@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from engine.api.input_events import KeyEvent
-from engine.runtime.metrics import MetricsSnapshot
 from engine.runtime.host import EngineHost
+from engine.runtime.metrics import MetricsSnapshot
 
 
 class FakeModule:

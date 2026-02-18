@@ -7,10 +7,22 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, X, Y, BooleanVar, StringVar, Tk
-from tkinter import filedialog, messagebox, ttk
+from tkinter import (
+    BOTH,
+    END,
+    LEFT,
+    RIGHT,
+    VERTICAL,
+    BooleanVar,
+    StringVar,
+    Tk,
+    X,
+    Y,
+    filedialog,
+    messagebox,
+    ttk,
+)
 from tkinter.scrolledtext import ScrolledText
-
 
 _RE_UI_DIAG_FRAME = re.compile(r"ui_diag frame=(\d+) anomalies=(\d+)")
 _RE_UI_DIAG_DUMP = re.compile(r"ui_diag_anomaly_dumped .* anomalies=(\[.*\])")
@@ -91,7 +103,7 @@ def _load_run_records(path: Path) -> tuple[list[RunRecord], list[WarningRecord]]
                 parsed = ast.literal_eval(anomalies_raw)
                 if isinstance(parsed, list):
                     anomalies = [str(item) for item in parsed]
-            except (SyntaxError, ValueError):
+            except SyntaxError, ValueError:
                 anomalies = [anomalies_raw]
             warnings.append(
                 WarningRecord(
@@ -191,7 +203,9 @@ class UiDiagViewer:
         self.ui_log_var = ttk.Entry(controls, width=60)
         self.ui_log_var.pack(side=LEFT, padx=4)
         ttk.Button(controls, text="Browse", command=self._browse_ui).pack(side=LEFT, padx=2)
-        ttk.Button(controls, text="Load", command=self._load_and_render).pack(side=LEFT, padx=(10, 0))
+        ttk.Button(controls, text="Load", command=self._load_and_render).pack(
+            side=LEFT, padx=(10, 0)
+        )
 
         filters = ttk.Frame(self.root)
         filters.pack(fill=X, padx=8, pady=(0, 6))
@@ -207,7 +221,10 @@ class UiDiagViewer:
         self.spread_threshold_var = StringVar(value="0.001")
 
         ttk.Checkbutton(
-            filters, text="Only Around Resize", variable=self.only_around_resize_var, command=self._apply_filters
+            filters,
+            text="Only Around Resize",
+            variable=self.only_around_resize_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Label(filters, text="Mode").pack(side=LEFT)
         resize_mode = ttk.Combobox(
@@ -224,19 +241,34 @@ class UiDiagViewer:
         window_entry.pack(side=LEFT, padx=(3, 8))
         window_entry.bind("<Return>", lambda _e: self._apply_filters())
         ttk.Checkbutton(
-            filters, text="Revision Changes Only", variable=self.revision_changes_only_var, command=self._apply_filters
+            filters,
+            text="Revision Changes Only",
+            variable=self.revision_changes_only_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Checkbutton(
-            filters, text="Geometry Changed Only", variable=self.geometry_changed_only_var, command=self._apply_filters
+            filters,
+            text="Geometry Changed Only",
+            variable=self.geometry_changed_only_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Checkbutton(
-            filters, text="Suspicious Only", variable=self.suspicious_only_var, command=self._apply_filters
+            filters,
+            text="Suspicious Only",
+            variable=self.suspicious_only_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Checkbutton(
-            filters, text="Scale Spread Only", variable=self.spread_only_var, command=self._apply_filters
+            filters,
+            text="Scale Spread Only",
+            variable=self.spread_only_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Checkbutton(
-            filters, text="Input After Resize", variable=self.input_after_resize_only_var, command=self._apply_filters
+            filters,
+            text="Input After Resize",
+            variable=self.input_after_resize_only_var,
+            command=self._apply_filters,
         ).pack(side=LEFT, padx=(0, 8))
         ttk.Label(filters, text="Spread eps").pack(side=LEFT)
         spread_entry = ttk.Entry(filters, width=7, textvariable=self.spread_threshold_var)
@@ -248,8 +280,12 @@ class UiDiagViewer:
         prefix_entry.bind("<Return>", lambda _e: self._on_frame_select(None))
         ttk.Button(filters, text="Apply", command=self._apply_filters).pack(side=LEFT, padx=(0, 6))
         ttk.Button(filters, text="Reset", command=self._reset_filters).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(filters, text="Find Suspicious", command=self._find_suspicious).pack(side=LEFT, padx=(0, 6))
-        ttk.Button(filters, text="Jump Nearest Resize", command=self._jump_nearest_resize).pack(side=LEFT)
+        ttk.Button(filters, text="Find Suspicious", command=self._find_suspicious).pack(
+            side=LEFT, padx=(0, 6)
+        )
+        ttk.Button(filters, text="Jump Nearest Resize", command=self._jump_nearest_resize).pack(
+            side=LEFT
+        )
 
         if self.run_log_path:
             self.run_log_var.insert(0, str(self.run_log_path))
@@ -311,13 +347,17 @@ class UiDiagViewer:
         self.output.pack(fill=BOTH, expand=True)
 
     def _browse_run(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")]
+        )
         if path:
             self.run_log_var.delete(0, END)
             self.run_log_var.insert(0, path)
 
     def _browse_ui(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")]
+        )
         if path:
             self.ui_log_var.delete(0, END)
             self.ui_log_var.insert(0, path)
@@ -333,7 +373,9 @@ class UiDiagViewer:
 
         try:
             self.run_records, self.warning_records = _load_run_records(run_path)
-            self.ui_frames, self.ui_frames_by_seq, self.ui_duplicate_count = _load_ui_frames(ui_path)
+            self.ui_frames, self.ui_frames_by_seq, self.ui_duplicate_count = _load_ui_frames(
+                ui_path
+            )
             self.run_index_by_ui_frame_seq = self._build_run_index_by_ui_frame_seq()
             self._compute_frame_change_sets()
             self._compute_scale_spread_sets()
@@ -376,7 +418,9 @@ class UiDiagViewer:
                     projection_revisions.append(int(part))
                 except ValueError:
                     pass
-        projection_monotonic = _is_non_decreasing(projection_revisions) if projection_revisions else True
+        projection_monotonic = (
+            _is_non_decreasing(projection_revisions) if projection_revisions else True
+        )
 
         unresolved_warnings = 0
         for w in self.warning_records:
@@ -384,9 +428,13 @@ class UiDiagViewer:
                 unresolved_warnings += 1
 
         resize_event_count = sum(1 for rec in self.run_records if "resize_event " in rec.msg)
-        projection_event_count = sum(1 for rec in self.run_records if "ui_projection revision=" in rec.msg)
+        projection_event_count = sum(
+            1 for rec in self.run_records if "ui_projection revision=" in rec.msg
+        )
         input_event_count = sum(
-            1 for rec in self.run_records if rec.logger.startswith("engine.input") and "input_event " in rec.msg
+            1
+            for rec in self.run_records
+            if rec.logger.startswith("engine.input") and "input_event " in rec.msg
         )
 
         lines = [
@@ -565,7 +613,9 @@ class UiDiagViewer:
             lines.append("No nearby run events found for this frame.")
         else:
             for rec in nearby:
-                lines.append(f"{rec.ts.isoformat(timespec='milliseconds')} | {rec.logger} | {rec.msg}")
+                lines.append(
+                    f"{rec.ts.isoformat(timespec='milliseconds')} | {rec.logger} | {rec.msg}"
+                )
         lines.extend(["", "== Filtered Primitives =="])
         lines.extend(self._format_primitives(linked))
         lines.extend(["", "== Retained Ops =="])
@@ -611,7 +661,8 @@ class UiDiagViewer:
         rows = [
             rec
             for rec in self.run_records
-            if window_start <= rec.ts.timestamp() <= window_end and self._is_interesting_run_record(rec)
+            if window_start <= rec.ts.timestamp() <= window_end
+            and self._is_interesting_run_record(rec)
         ]
         if self.input_after_resize_only_var.get():
             last_resize_ts = max(
@@ -646,7 +697,11 @@ class UiDiagViewer:
             if revision is not None and f"ui_projection revision={revision}" in msg:
                 candidates.append(rec)
                 continue
-            if width is not None and height is not None and f"applied_size=({width},{height})" in msg:
+            if (
+                width is not None
+                and height is not None
+                and f"applied_size=({width},{height})" in msg
+            ):
                 candidates.append(rec)
                 continue
         if self.input_after_resize_only_var.get():
@@ -679,8 +734,9 @@ class UiDiagViewer:
         resize_obj = frame.raw.get("resize")
         viewport_text = str(viewport_obj) if isinstance(viewport_obj, dict) else "-"
         resize_text = str(resize_obj) if isinstance(resize_obj, dict) else "-"
+        ts_text = frame.ts.isoformat(timespec="milliseconds") if frame.ts is not None else "-"
         return [
-            f"ts_utc={frame.ts.isoformat(timespec='milliseconds') if frame.ts is not None else '-'}",
+            f"ts_utc={ts_text}",
             f"frame_seq={frame.frame_seq}",
             f"reasons={frame.reasons}",
             f"anomalies={frame.anomalies}",
@@ -765,7 +821,10 @@ class UiDiagViewer:
             if prev is None:
                 prev = frame
                 continue
-            same_rev = frame.viewport_revision is not None and frame.viewport_revision == prev.viewport_revision
+            same_rev = (
+                frame.viewport_revision is not None
+                and frame.viewport_revision == prev.viewport_revision
+            )
             same_resize = frame.resize_seq is not None and frame.resize_seq == prev.resize_seq
             if same_rev and same_resize:
                 prev_map = self._button_rect_map(prev)
@@ -788,7 +847,10 @@ class UiDiagViewer:
             if prev is None:
                 prev = frame
                 continue
-            same_rev = frame.viewport_revision is not None and frame.viewport_revision == prev.viewport_revision
+            same_rev = (
+                frame.viewport_revision is not None
+                and frame.viewport_revision == prev.viewport_revision
+            )
             same_resize = frame.resize_seq is not None and frame.resize_seq == prev.resize_seq
             if same_rev and same_resize:
                 prev_map = self._button_ratio_map(prev)
@@ -806,7 +868,9 @@ class UiDiagViewer:
     @staticmethod
     def _button_rect_map(frame: UiFrame) -> dict[str, tuple[float, float, float, float]]:
         out: dict[str, tuple[float, float, float, float]] = {}
-        for item in frame.raw.get("primitives", []) if isinstance(frame.raw.get("primitives"), list) else []:
+        for item in (
+            frame.raw.get("primitives", []) if isinstance(frame.raw.get("primitives"), list) else []
+        ):
             if not isinstance(item, dict):
                 continue
             typ = item.get("type")
@@ -828,7 +892,9 @@ class UiDiagViewer:
     def _button_ratio_map(frame: UiFrame) -> dict[str, float]:
         rect_map: dict[str, tuple[float, float, float, float]] = {}
         text_map: dict[str, tuple[float, float, float, float]] = {}
-        for item in frame.raw.get("primitives", []) if isinstance(frame.raw.get("primitives"), list) else []:
+        for item in (
+            frame.raw.get("primitives", []) if isinstance(frame.raw.get("primitives"), list) else []
+        ):
             if not isinstance(item, dict):
                 continue
             typ = item.get("type")
@@ -889,7 +955,9 @@ class UiDiagViewer:
                 continue
             sx = float(rw) / float(sw)
             sy = float(rh) / float(sh)
-            text_ratio = float(text_size) / float(rh) if isinstance(text_size, (int, float)) else 0.0
+            text_ratio = (
+                float(text_size) / float(rh) if isinstance(text_size, (int, float)) else 0.0
+            )
             metrics[str(key)] = (sx, sy, text_ratio)
             sx_values.append(sx)
             sy_values.append(sy)
@@ -919,7 +987,9 @@ class UiDiagViewer:
         return lines
 
     @staticmethod
-    def _button_signature(frame: UiFrame) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
+    def _button_signature(
+        frame: UiFrame,
+    ) -> tuple[tuple[str, tuple[float, float, float, float]], ...]:
         buttons = frame.raw.get("buttons")
         out: list[tuple[str, tuple[float, float, float, float]]] = []
         if not isinstance(buttons, dict):
@@ -1039,10 +1109,14 @@ def _default_logs() -> tuple[Path | None, Path | None]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Visualize and validate Warships UI diagnostics logs.")
+    parser = argparse.ArgumentParser(
+        description="Visualize and validate Warships UI diagnostics logs."
+    )
     parser.add_argument("--run-log", type=Path, default=None, help="Path to warships_run_*.jsonl")
     parser.add_argument("--ui-log", type=Path, default=None, help="Path to ui_diag_run_*.jsonl")
-    parser.add_argument("--window-ms", type=int, default=250, help="Event window around warning timestamp")
+    parser.add_argument(
+        "--window-ms", type=int, default=250, help="Event window around warning timestamp"
+    )
     args = parser.parse_args()
 
     run_log = args.run_log

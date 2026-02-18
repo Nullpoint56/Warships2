@@ -107,9 +107,9 @@ class MetricsCollector:
         normalized = str(topic).strip()
         if not normalized:
             return
-        self._event_publish_by_topic[normalized] = (
-            self._event_publish_by_topic.get(normalized, 0) + int(count)
-        )
+        self._event_publish_by_topic[normalized] = self._event_publish_by_topic.get(
+            normalized, 0
+        ) + int(count)
 
     def set_scheduler_activity(self, enqueued_count: int, dequeued_count: int) -> None:
         self._scheduler_enqueued_count = int(enqueued_count)
@@ -155,7 +155,9 @@ class MetricsCollector:
         )
 
 
-def create_metrics_collector(*, enabled: bool, window_size: int = 60) -> MetricsCollector | NoopMetricsCollector:
+def create_metrics_collector(
+    *, enabled: bool, window_size: int = 60
+) -> MetricsCollector | NoopMetricsCollector:
     """Factory returning enabled collector or no-op implementation."""
     if not enabled:
         return NoopMetricsCollector()

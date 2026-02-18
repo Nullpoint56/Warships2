@@ -3,7 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
@@ -68,10 +67,9 @@ def test_engine_api_has_no_top_level_runtime_or_rendering_imports() -> None:
         for target in _collect_import_targets(path, top_level_only=True):
             if target.startswith("engine.runtime") or target.startswith("engine.rendering"):
                 violations.append(f"{path.relative_to(REPO_ROOT)} -> {target}")
-    assert (
-        not violations
-    ), "engine.api top-level imports must not depend on runtime/rendering internals:\n" + "\n".join(
-        violations
+    assert not violations, (
+        "engine.api top-level imports must not depend on runtime/rendering internals:\n"
+        + "\n".join(violations)
     )
 
 

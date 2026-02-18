@@ -6,9 +6,7 @@ from pathlib import Path
 
 def test_known_bad_ui_diag_fixture_has_valid_shape() -> None:
     fixture = (
-        Path(__file__).resolve().parent
-        / "fixtures"
-        / "ui_diag_known_bad_resize_then_input.jsonl"
+        Path(__file__).resolve().parent / "fixtures" / "ui_diag_known_bad_resize_then_input.jsonl"
     )
     lines = fixture.read_text(encoding="utf-8").strip().splitlines()
     assert lines

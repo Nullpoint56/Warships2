@@ -66,7 +66,9 @@ class DebugOverlay:
                         revision=int(ui_diagnostics.get("revision", 0)),
                         resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
                         anomaly_count=int(
-                            ui_diagnostics.get("anomaly_count", ui_diagnostics.get("jitter_count", 0))
+                            ui_diagnostics.get(
+                                "anomaly_count", ui_diagnostics.get("jitter_count", 0)
+                            )
                         ),
                     )
                 )

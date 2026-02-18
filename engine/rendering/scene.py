@@ -7,14 +7,12 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
-from engine.runtime.debug_config import load_debug_config
 from engine.rendering.scene_retained import (
     hide_inactive_nodes,
     upsert_grid,
     upsert_rect,
     upsert_text,
 )
-from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
@@ -26,6 +24,8 @@ from engine.rendering.scene_viewport import (
     to_design_space,
     viewport_transform,
 )
+from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
+from engine.runtime.debug_config import load_debug_config
 
 _gfx_import_error: Exception | None
 try:
@@ -92,9 +92,15 @@ class SceneRenderer:
     _rect_viewport_rev: dict[str, int] = field(default_factory=dict)
     _line_viewport_rev: dict[str, int] = field(default_factory=dict)
     _text_viewport_rev: dict[str, int] = field(default_factory=dict)
-    _rect_transformed_props: dict[str, tuple[float, float, float, float]] = field(default_factory=dict)
-    _line_transformed_props: dict[str, tuple[float, float, float, float]] = field(default_factory=dict)
-    _text_transformed_props: dict[str, tuple[float, float, float, float]] = field(default_factory=dict)
+    _rect_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
+    _line_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
+    _text_transformed_props: dict[str, tuple[float, float, float, float]] = field(
+        default_factory=dict
+    )
     _static_rect_keys: set[str] = field(default_factory=set)
     _static_line_keys: set[str] = field(default_factory=set)
     _static_text_keys: set[str] = field(default_factory=set)
@@ -191,7 +197,11 @@ class SceneRenderer:
                 logical_size = (float(size_payload[0]), float(size_payload[1]))
             physical_size: tuple[int, int] | None = None
             pixel_ratio = event.get("pixel_ratio")
-            if logical_size is not None and isinstance(pixel_ratio, (int, float)) and pixel_ratio > 0:
+            if (
+                logical_size is not None
+                and isinstance(pixel_ratio, (int, float))
+                and pixel_ratio > 0
+            ):
                 physical_size = (
                     int(logical_size[0] * float(pixel_ratio)),
                     int(logical_size[1] * float(pixel_ratio)),
@@ -206,7 +216,10 @@ class SceneRenderer:
 
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "resize_event event_size=(%.1f,%.1f) applied_size=(%d,%d) viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)",
+                (
+                    "resize_event event_size=(%.1f,%.1f) applied_size=(%d,%d) "
+                    "viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)"
+                ),
                 float(width),
                 float(height),
                 self.width,
@@ -305,8 +318,16 @@ class SceneRenderer:
             state["renderer_sizes"] = renderer_sizes
             logical = renderer_sizes.get("logical_size")
             physical = renderer_sizes.get("physical_size")
-            if logical is not None and physical is not None and logical[0] > 0.0 and logical[1] > 0.0:
-                state["renderer_physical_ratio"] = [physical[0] / logical[0], physical[1] / logical[1]]
+            if (
+                logical is not None
+                and physical is not None
+                and logical[0] > 0.0
+                and logical[1] > 0.0
+            ):
+                state["renderer_physical_ratio"] = [
+                    physical[0] / logical[0],
+                    physical[1] / logical[1],
+                ]
 
         renderer_scalars: dict[str, float] = {}
         for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
@@ -370,9 +391,21 @@ class SceneRenderer:
 
     def end_frame(self) -> None:
         """Hide dynamic retained nodes that were not touched this frame."""
-        hidden_rect = [k for k in self._rect_nodes if k not in self._static_rect_keys and k not in self._active_rect_keys]
-        hidden_line = [k for k in self._line_nodes if k not in self._static_line_keys and k not in self._active_line_keys]
-        hidden_text = [k for k in self._text_nodes if k not in self._static_text_keys and k not in self._active_text_keys]
+        hidden_rect = [
+            k
+            for k in self._rect_nodes
+            if k not in self._static_rect_keys and k not in self._active_rect_keys
+        ]
+        hidden_line = [
+            k
+            for k in self._line_nodes
+            if k not in self._static_line_keys and k not in self._active_line_keys
+        ]
+        hidden_text = [
+            k
+            for k in self._text_nodes
+            if k not in self._static_text_keys and k not in self._active_text_keys
+        ]
         hide_inactive_nodes(self._rect_nodes, self._static_rect_keys, self._active_rect_keys)
         hide_inactive_nodes(self._line_nodes, self._static_line_keys, self._active_line_keys)
         hide_inactive_nodes(self._text_nodes, self._static_text_keys, self._active_text_keys)
@@ -504,7 +537,10 @@ class SceneRenderer:
                 )
             if logger.isEnabledFor(logging.DEBUG):
                 logger.debug(
-                    "ui_button_geometry id=%s source=(%.2f,%.2f,%.2f,%.2f) transformed=(%.2f,%.2f,%.2f,%.2f)",
+                    (
+                        "ui_button_geometry id=%s source=(%.2f,%.2f,%.2f,%.2f) "
+                        "transformed=(%.2f,%.2f,%.2f,%.2f)"
+                    ),
                     key.removeprefix("button:bg:"),
                     x,
                     y,
@@ -803,7 +839,9 @@ class SceneRenderer:
                             ox,
                             oy,
                         )
-                    diagnostics.note_frame_state(stage="draw_pre", payload=self._collect_backend_state())
+                    diagnostics.note_frame_state(
+                        stage="draw_pre", payload=self._collect_backend_state()
+                    )
                 if self._draw_callback is None:
                     return
                 self._draw_callback()
@@ -811,7 +849,9 @@ class SceneRenderer:
                     return
                 self.renderer.render(self.scene, self.camera)
                 if diagnostics is not None:
-                    diagnostics.note_frame_state(stage="draw_post", payload=self._collect_backend_state())
+                    diagnostics.note_frame_state(
+                        stage="draw_post", payload=self._collect_backend_state()
+                    )
                     diagnostics.end_frame()
             except Exception:  # pylint: disable=broad-exception-caught
                 self._draw_failed = True

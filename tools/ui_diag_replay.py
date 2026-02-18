@@ -61,7 +61,9 @@ class ReplayApp:
         ttk.Button(top, text="Load", command=self._load_from_entry).pack(side=tk.LEFT, padx=(0, 12))
 
         ttk.Button(top, text="<<", command=self._prev).pack(side=tk.LEFT, padx=(0, 4))
-        ttk.Button(top, text="Play/Pause", command=self._toggle_play).pack(side=tk.LEFT, padx=(0, 4))
+        ttk.Button(top, text="Play/Pause", command=self._toggle_play).pack(
+            side=tk.LEFT, padx=(0, 4)
+        )
         ttk.Button(top, text=">>", command=self._next).pack(side=tk.LEFT, padx=(0, 8))
 
         ttk.Label(top, text="Key Prefix").pack(side=tk.LEFT)
@@ -80,7 +82,9 @@ class ReplayApp:
         self.canvas = tk.Canvas(mid, bg="#101114", highlightthickness=1, highlightbackground="#333")
         self.canvas.pack(fill=tk.BOTH, expand=True)
 
-        self.scale = ttk.Scale(self.root, from_=0, to=0, orient=tk.HORIZONTAL, command=self._on_seek)
+        self.scale = ttk.Scale(
+            self.root, from_=0, to=0, orient=tk.HORIZONTAL, command=self._on_seek
+        )
         self.scale.pack(fill=tk.X, padx=8, pady=(0, 6))
 
         bottom = ttk.Frame(self.root)
@@ -91,7 +95,9 @@ class ReplayApp:
         self.info.pack(fill=tk.BOTH, expand=True)
 
     def _browse(self) -> None:
-        path = filedialog.askopenfilename(filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")])
+        path = filedialog.askopenfilename(
+            filetypes=[("JSONL files", "*.jsonl"), ("All files", "*.*")]
+        )
         if path:
             self.path_entry.delete(0, tk.END)
             self.path_entry.insert(0, path)
@@ -171,16 +177,20 @@ class ReplayApp:
                     y = float(t.get("y", 0.0)) * sy
                     w = float(t.get("w", 0.0)) * sx
                     h = float(t.get("h", 0.0)) * sy
-                    if not self._draw_item(typ=typ, key=key if isinstance(key, str) else "", x=x, y=y, w=w, h=h):
+                    if not self._draw_item(
+                        typ=typ, key=key if isinstance(key, str) else "", x=x, y=y, w=w, h=h
+                    ):
                         continue
                     drawn += 1
 
         seq = frame.get("frame_seq")
         reasons = frame.get("reasons")
         resize = frame.get("resize")
-        self.status_var.set(
-            f"frame={seq} index={self.index+1}/{len(self.frames)} drawn={drawn} reasons={reasons} resize={resize}"
+        status_text = (
+            f"frame={seq} index={self.index + 1}/{len(self.frames)} "
+            f"drawn={drawn} reasons={reasons} resize={resize}"
         )
+        self.status_var.set(status_text)
 
         self.info.delete("1.0", tk.END)
         self.info.insert("1.0", json.dumps(frame, indent=2))
@@ -263,7 +273,9 @@ def _default_ui_log() -> Path | None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Replay UI diagnostic frames from ui_diag_run_*.jsonl")
+    parser = argparse.ArgumentParser(
+        description="Replay UI diagnostic frames from ui_diag_run_*.jsonl"
+    )
     parser.add_argument("--ui-log", type=Path, default=None, help="Path to ui_diag_run_*.jsonl")
     args = parser.parse_args()
     ui_log = args.ui_log or _default_ui_log()

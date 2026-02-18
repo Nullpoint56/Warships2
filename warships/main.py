@@ -2,8 +2,8 @@
 
 import os
 
-from warships.game.app.engine_hosted_runtime import run_engine_hosted_app
 from engine.api.logging import get_logger
+from warships.game.app.engine_hosted_runtime import run_engine_hosted_app
 from warships.game.infra.app_data import apply_runtime_path_defaults
 from warships.game.infra.config import load_default_env_files
 from warships.game.infra.logging import setup_logging

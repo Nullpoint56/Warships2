@@ -141,7 +141,9 @@ def test_scene_renderer_locks_viewport_within_frame(monkeypatch: pytest.MonkeyPa
 
 
 @pytest.mark.graphics
-def test_scene_renderer_exposes_ui_trace_scope_when_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_scene_renderer_exposes_ui_trace_scope_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
     monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
     monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)

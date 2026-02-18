@@ -7,8 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
-from engine.api.render import RenderAPI
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.render import RenderAPI
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
 from engine.runtime.scheduler import Scheduler
@@ -106,7 +106,11 @@ class EngineHost(HostControl):
             )
         )
         self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
-        if self._debug_overlay is not None and self._debug_overlay_visible and self._render_api is not None:
+        if (
+            self._debug_overlay is not None
+            and self._debug_overlay_visible
+            and self._render_api is not None
+        ):
             diagnostics_summary = None
             get_diag = getattr(self._render_api, "ui_diagnostics_summary", None)
             if callable(get_diag):

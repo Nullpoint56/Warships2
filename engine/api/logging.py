@@ -42,4 +42,3 @@ def get_logger(name: str) -> LoggerPort:
     from engine.runtime.logging import get_engine_logger
 
     return get_engine_logger(name)
-

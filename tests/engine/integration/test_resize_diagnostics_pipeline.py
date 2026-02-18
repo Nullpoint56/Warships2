@@ -153,7 +153,9 @@ def test_resize_input_and_button_diagnostics_pipeline(monkeypatch) -> None:
     )
 
     renderer = scene_mod.SceneRenderer(width=1200, height=720)
-    resize_handler = next(handler for handler, event in renderer.canvas.handlers if event == "resize")
+    resize_handler = next(
+        handler for handler, event in renderer.canvas.handlers if event == "resize"
+    )
     resize_handler({"width": 1400.0, "height": 800.0, "size": (1400.0, 800.0), "pixel_ratio": 1.0})
     renderer.canvas._size = (1400.0, 800.0)
     renderer.note_frame_reason("input:pointer")
