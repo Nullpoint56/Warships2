@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from engine.api.logging import EngineLoggingConfig, configure_logging
+from engine.runtime.logging import JsonFormatter
 from warships.game.infra.app_data import resolve_logs_dir
 
 
