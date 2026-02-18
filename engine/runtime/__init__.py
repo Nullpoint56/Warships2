@@ -16,6 +16,7 @@ from engine.runtime.flow import FlowMachine
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.interaction_modes import InteractionModeMachine
+from engine.runtime.logging import setup_engine_logging
 from engine.runtime.metrics import (
     FrameMetrics,
     MetricsCollector,
@@ -60,4 +61,5 @@ __all__ = [
     "create_metrics_collector",
     "load_debug_config",
     "run_pygfx_hosted_runtime",
+    "setup_engine_logging",
 ]

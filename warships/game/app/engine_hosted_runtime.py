@@ -13,6 +13,7 @@ from engine.api.ui_primitives import GridLayout
 from warships.game.app.controller import GameController
 from warships.game.app.engine_adapter import WarshipsAppAdapter
 from warships.game.app.engine_game_module import WarshipsGameModule
+from warships.game.infra.app_data import resolve_presets_dir
 from warships.game.presets.repository import PresetRepository
 from warships.game.presets.service import PresetService
 from warships.game.ui.game_view import GameView
@@ -32,7 +33,8 @@ def run_engine_hosted_app() -> None:
 
 
 def _build_controller() -> GameController:
-    preset_root = Path(__file__).resolve().parents[2] / "data" / "presets"
+    configured_presets = os.getenv("WARSHIPS_PRESETS_DIR", "").strip()
+    preset_root = Path(configured_presets) if configured_presets else resolve_presets_dir()
     preset_service = PresetService(PresetRepository(preset_root))
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
     return GameController(preset_service=preset_service, rng=random.Random(), debug_ui=debug_ui)

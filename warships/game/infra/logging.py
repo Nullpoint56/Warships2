@@ -1,67 +1,35 @@
-"""Logging configuration for the application."""
+"""App-level logging policy over engine logging API."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import UTC, datetime
+from pathlib import Path
 
-
-class JsonFormatter(logging.Formatter):
-    """Simple JSON log formatter."""
-
-    def format(self, record: logging.LogRecord) -> str:
-        payload: dict[str, object] = {
-            "ts": datetime.now(UTC).isoformat(),
-            "level": record.levelname,
-            "logger": record.name,
-            "msg": record.getMessage(),
-        }
-        standard = {
-            "name",
-            "msg",
-            "args",
-            "levelname",
-            "levelno",
-            "pathname",
-            "filename",
-            "module",
-            "exc_info",
-            "exc_text",
-            "stack_info",
-            "lineno",
-            "funcName",
-            "created",
-            "msecs",
-            "relativeCreated",
-            "thread",
-            "threadName",
-            "processName",
-            "process",
-            "message",
-        }
-        extras = {k: v for k, v in record.__dict__.items() if k not in standard}
-        if extras:
-            payload["fields"] = extras
-        if record.exc_info:
-            payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=True)
+from engine.api.logging import EngineLoggingConfig, configure_logging
+from warships.game.infra.app_data import resolve_logs_dir
 
 
 def setup_logging() -> None:
-    """Configure root logging once from environment."""
+    """Configure application logging via engine logging API."""
     level_name = os.getenv("WARSHIPS_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")).upper()
-    level = getattr(logging, level_name, logging.INFO)
-    fmt = os.getenv("LOG_FORMAT", "json").lower()
+    console_format = os.getenv("LOG_FORMAT", "json").lower()
+    file_path = _resolve_run_log_file_path()
+    configure_logging(
+        EngineLoggingConfig(
+            level_name=level_name,
+            console_format=console_format,
+            file_path=file_path,
+            file_format="json",
+        )
+    )
+    logging.getLogger(__name__).info("logging_file=%s", file_path)
 
-    handler = logging.StreamHandler()
-    if fmt == "text":
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
-    else:
-        handler.setFormatter(JsonFormatter())
 
-    root = logging.getLogger()
-    root.handlers.clear()
-    root.setLevel(level)
-    root.addHandler(handler)
+def _resolve_run_log_file_path() -> str:
+    configured = os.getenv("WARSHIPS_LOG_DIR", "").strip()
+    base_dir = Path(configured) if configured else resolve_logs_dir()
+    base_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+    return str(base_dir / f"warships_run_{stamp}.jsonl")

@@ -7,12 +7,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any, cast
 
+from engine.runtime.debug_config import load_debug_config
 from engine.rendering.scene_retained import (
     hide_inactive_nodes,
     upsert_grid,
     upsert_rect,
     upsert_text,
 )
+from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
@@ -104,6 +106,7 @@ class SceneRenderer:
     _is_closed: bool = field(init=False, default=False)
     _draw_callback: Callable[[], None] | None = field(init=False, default=None)
     _viewport_revision: int = field(init=False, default=0)
+    _ui_diagnostics: UIDiagnostics | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -127,8 +130,24 @@ class SceneRenderer:
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
         self._update_camera_projection()
+        self._configure_diagnostics()
         self._bind_resize_events()
         self._sync_size_from_canvas()
+
+    def _configure_diagnostics(self) -> None:
+        cfg = load_debug_config()
+        if not cfg.ui_trace_enabled and not cfg.resize_trace_enabled:
+            self._ui_diagnostics = None
+            return
+        self._ui_diagnostics = UIDiagnostics(
+            UIDiagnosticsConfig(
+                ui_trace_enabled=cfg.ui_trace_enabled,
+                resize_trace_enabled=cfg.resize_trace_enabled,
+                sampling_n=cfg.ui_trace_sampling_n,
+                auto_dump_on_anomaly=cfg.ui_trace_auto_dump,
+                dump_dir=cfg.ui_trace_dump_dir,
+            )
+        )
 
     def _bind_resize_events(self) -> None:
         add_handler = getattr(self.canvas, "add_event_handler", None)
@@ -148,6 +167,30 @@ class SceneRenderer:
             self._sync_size_from_canvas()
             return
         self._apply_canvas_size(width, height)
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            size_payload = event.get("size")
+            logical_size: tuple[float, float] | None = None
+            if (
+                isinstance(size_payload, (tuple, list))
+                and len(size_payload) == 2
+                and all(isinstance(v, (int, float)) for v in size_payload)
+            ):
+                logical_size = (float(size_payload[0]), float(size_payload[1]))
+            physical_size: tuple[int, int] | None = None
+            pixel_ratio = event.get("pixel_ratio")
+            if logical_size is not None and isinstance(pixel_ratio, (int, float)) and pixel_ratio > 0:
+                physical_size = (
+                    int(logical_size[0] * float(pixel_ratio)),
+                    int(logical_size[1] * float(pixel_ratio)),
+                )
+            diagnostics.note_resize_event(
+                event_size=(float(width), float(height)),
+                logical_size=logical_size,
+                physical_size=physical_size,
+                applied_size=(self.width, self.height),
+                viewport=self._viewport_transform(),
+            )
 
     def _apply_canvas_size(self, width: float, height: float) -> bool:
         if width <= 1.0 or height <= 1.0:
@@ -254,6 +297,10 @@ class SceneRenderer:
             dynamic_nodes=self._dynamic_nodes,
             static=static,
         )
+        if key is not None and key.startswith("button:bg:"):
+            diagnostics = self._ui_diagnostics
+            if diagnostics is not None:
+                diagnostics.note_button_rect(key.removeprefix("button:bg:"), tw=tw, th=th)
 
     def add_grid(
         self,
@@ -337,6 +384,10 @@ class SceneRenderer:
             dynamic_nodes=self._dynamic_nodes,
             static=static,
         )
+        if key is not None and key.startswith("button:text:"):
+            diagnostics = self._ui_diagnostics
+            if diagnostics is not None:
+                diagnostics.note_button_text(key.removeprefix("button:text:"), text_size=tsize)
 
     def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
         """Fill the entire window in window-space coordinates."""
@@ -381,8 +432,17 @@ class SceneRenderer:
         """Schedule one redraw."""
         if self._is_closed:
             return
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_reason("invalidate")
         if hasattr(self.canvas, "request_draw"):
             self.canvas.request_draw()
+
+    def note_frame_reason(self, reason: str) -> None:
+        """Record a frame trigger reason for diagnostics."""
+        diagnostics = self._ui_diagnostics
+        if diagnostics is not None:
+            diagnostics.note_frame_reason(reason)
 
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Start draw loop."""
@@ -393,12 +453,27 @@ class SceneRenderer:
                 return
             try:
                 self._sync_size_from_canvas()
+                diagnostics = self._ui_diagnostics
+                if diagnostics is not None:
+                    diagnostics.begin_frame()
+                    sx, sy, ox, oy = self._viewport_transform()
+                    diagnostics.note_viewport(
+                        width=self.width,
+                        height=self.height,
+                        viewport_revision=self._viewport_revision,
+                        sx=sx,
+                        sy=sy,
+                        ox=ox,
+                        oy=oy,
+                    )
                 if self._draw_callback is None:
                     return
                 self._draw_callback()
                 if self._is_closed:
                     return
                 self.renderer.render(self.scene, self.camera)
+                if diagnostics is not None:
+                    diagnostics.end_frame()
             except Exception:  # pylint: disable=broad-exception-caught
                 self._draw_failed = True
                 logger.exception("unhandled_exception_in_draw_loop")

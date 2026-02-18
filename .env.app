@@ -1,7 +1,0 @@
-﻿# Warships application settings
-WARSHIPS_DEBUG_INPUT=1
-WARSHIPS_DEBUG_UI=1
-
-# App logging
-LOG_FORMAT=json
-WARSHIPS_LOG_LEVEL=DEBUG

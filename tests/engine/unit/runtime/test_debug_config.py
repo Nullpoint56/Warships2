@@ -16,6 +16,8 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE", "yes")
     monkeypatch.setenv("ENGINE_DEBUG_RESIZE_TRACE", "on")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", "25")
+    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_AUTO_DUMP", "0")
+    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", "diag_logs")
     monkeypatch.setenv("ENGINE_LOG_LEVEL", "debug")
 
     cfg = load_debug_config()
@@ -24,6 +26,8 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     assert cfg.ui_trace_enabled is True
     assert cfg.resize_trace_enabled is True
     assert cfg.ui_trace_sampling_n == 25
+    assert cfg.ui_trace_auto_dump is False
+    assert cfg.ui_trace_dump_dir == "diag_logs"
     assert cfg.log_level == "DEBUG"
 
 
@@ -48,4 +52,3 @@ def test_enabled_helpers_read_current_env(monkeypatch) -> None:
     assert enabled_overlay() is False
     assert enabled_ui_trace() is True
     assert enabled_resize_trace() is False
-

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from engine.api.input_events import KeyEvent
 from engine.runtime.metrics import MetricsSnapshot
 from engine.runtime.host import EngineHost
 
@@ -79,6 +80,10 @@ class _FakeRenderer:
     def __init__(self) -> None:
         self.rect_calls: list[str] = []
         self.text_calls: list[str] = []
+        self.invalidates = 0
+
+    def to_design_space(self, x: float, y: float) -> tuple[float, float]:
+        return (x, y)
 
     def add_rect(self, key, x, y, w, h, color, z=0.0, static=False) -> None:
         _ = (x, y, w, h, color, z, static)
@@ -98,6 +103,9 @@ class _FakeRenderer:
     ) -> None:
         _ = (text, x, y, font_size, color, anchor, z, static)
         self.text_calls.append(str(key))
+
+    def invalidate(self) -> None:
+        self.invalidates += 1
 
 
 def test_engine_host_lifecycle_and_close() -> None:
@@ -154,6 +162,12 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     host = EngineHost(module=module, render_api=renderer)
 
     host.frame()
+    assert renderer.text_calls == []
 
-    assert any(key.endswith(":bg") for key in renderer.rect_calls)
+    handled = host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
+    assert handled is True
+    assert renderer.invalidates == 1
+
+    host.frame()
+
     assert any(":line:" in key for key in renderer.text_calls)

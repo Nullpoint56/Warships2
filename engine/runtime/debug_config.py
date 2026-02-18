@@ -32,6 +32,8 @@ class DebugConfig:
     ui_trace_enabled: bool
     resize_trace_enabled: bool
     ui_trace_sampling_n: int
+    ui_trace_auto_dump: bool
+    ui_trace_dump_dir: str
     log_level: str
 
 
@@ -51,6 +53,8 @@ def load_debug_config() -> DebugConfig:
         ui_trace_enabled=_flag("ENGINE_DEBUG_UI_TRACE", False),
         resize_trace_enabled=_flag("ENGINE_DEBUG_RESIZE_TRACE", False),
         ui_trace_sampling_n=max(1, _int("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", 10)),
+        ui_trace_auto_dump=_flag("ENGINE_DEBUG_UI_TRACE_AUTO_DUMP", False),
+        ui_trace_dump_dir=os.getenv("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", "logs").strip() or "logs",
         log_level=resolve_log_level_name(),
     )
 
@@ -69,4 +73,3 @@ def enabled_ui_trace() -> bool:
 
 def enabled_resize_trace() -> bool:
     return load_debug_config().resize_trace_enabled
-

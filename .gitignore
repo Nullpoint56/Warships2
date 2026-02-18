@@ -217,3 +217,5 @@ __marimo__/
 # Project specific
 data
 uv.lock
+warships/appdata
+tmp_appdata

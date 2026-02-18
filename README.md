@@ -49,15 +49,28 @@ Engine-owned:
 - `ENGINE_UI_ASPECT_MODE`: `contain` (default preserve) or other mode supported by runtime
 - `ENGINE_LOG_LEVEL`: engine diagnostics/runtime log verbosity
 - `ENGINE_DEBUG_METRICS`: `1` enables runtime metrics collection
-- `ENGINE_DEBUG_OVERLAY`: `1` draws in-frame metrics overlay
+- `ENGINE_DEBUG_OVERLAY`: `1` enables in-frame metrics overlay (toggle with `F3`)
 - `ENGINE_DEBUG_UI_TRACE`: `1` enables UI trace diagnostics hooks
 - `ENGINE_DEBUG_RESIZE_TRACE`: `1` enables resize diagnostics hooks
+- `ENGINE_DEBUG_UI_TRACE_AUTO_DUMP`: `1` dumps recent UI trace buffer on anomalies
+- `ENGINE_DEBUG_UI_TRACE_DUMP_DIR`: output directory for anomaly JSONL dumps
 
 App-owned:
 - `WARSHIPS_DEBUG_INPUT`: `1` enables input debug logs
 - `WARSHIPS_DEBUG_UI`: `1` enables UI debug logs
 - `WARSHIPS_LOG_LEVEL`: app log verbosity
+- `WARSHIPS_APP_DATA_DIR`: optional unified app-data root override
+- `WARSHIPS_LOG_DIR`: optional override for run log output directory
 - `LOG_FORMAT`: `json` | `text`
+
+Logging architecture:
+- Engine provides logging API/pipeline (`engine.api.logging`).
+- Warships configures that API for app policy (level/format/file sink).
+
+Run logs:
+- Default location: `<game_root>/appdata/logs`
+  - source runs: `warships/appdata/logs`
+- File model: one file per run (`warships_run_<timestamp>.jsonl`)
 
 ## Architecture Docs
 

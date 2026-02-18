@@ -16,6 +16,7 @@ from engine.runtime.time import FrameClock
 from engine.ui_runtime.debug_overlay import DebugOverlay
 
 _LOG = logging.getLogger("engine.runtime")
+_OVERLAY_TOGGLE_KEY = "f3"
 
 
 @dataclass(frozen=True, slots=True)
@@ -45,6 +46,7 @@ class EngineHost(HostControl):
         self._scheduler = Scheduler()
         self._render_api = render_api
         self._debug_overlay = DebugOverlay() if enabled_overlay() else None
+        self._debug_overlay_visible = False
         self._metrics_collector = create_metrics_collector(enabled=enabled_metrics())
 
     @property
@@ -70,6 +72,11 @@ class EngineHost(HostControl):
         return self._module.on_pointer_event(event)
 
     def handle_key_event(self, event: KeyEvent) -> bool:
+        if self._debug_overlay is not None and self._is_overlay_toggle_event(event):
+            self._debug_overlay_visible = not self._debug_overlay_visible
+            if self._render_api is not None and hasattr(self._render_api, "invalidate"):
+                self._render_api.invalidate()
+            return True
         return self._module.on_key_event(event)
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
@@ -96,7 +103,7 @@ class EngineHost(HostControl):
             )
         )
         self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
-        if self._debug_overlay is not None and self._render_api is not None:
+        if self._debug_overlay is not None and self._debug_overlay_visible and self._render_api is not None:
             self._debug_overlay.draw(self._render_api, self._metrics_collector.snapshot())
         if _LOG.isEnabledFor(logging.DEBUG):
             snapshot = self._metrics_collector.snapshot()
@@ -134,3 +141,7 @@ class EngineHost(HostControl):
 
     def is_closed(self) -> bool:
         return self._closed
+
+    @staticmethod
+    def _is_overlay_toggle_event(event: KeyEvent) -> bool:
+        return event.event_type == "key_down" and event.value.strip().lower() == _OVERLAY_TOGGLE_KEY
