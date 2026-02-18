@@ -13,6 +13,7 @@ from engine.api.logging import EngineLoggingConfig
 from engine.runtime.debug_config import resolve_log_level_name
 
 _QUEUE_LISTENER: QueueListener | None = None
+RESERVED_LOGGER_NAMES: tuple[str, ...] = ("engine.network", "engine.audio")
 
 
 class JsonFormatter(logging.Formatter):
@@ -114,4 +115,3 @@ def _resolve_formatter(kind: str) -> logging.Formatter:
     if kind.strip().lower() == "json":
         return JsonFormatter()
     return logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
-

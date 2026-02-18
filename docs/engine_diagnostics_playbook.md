@@ -58,3 +58,28 @@ Known-bad baseline trace fixture:
 - `tests/engine/integration/fixtures/ui_diag_known_bad_resize_then_input.jsonl`
 
 Use it to compare anomaly signatures and JSON shape when debugging regressions.
+
+## Performance Verification
+
+Run two short sessions of the same scene:
+
+1. Diagnostics disabled:
+   - `ENGINE_DEBUG_METRICS=0`
+   - `ENGINE_DEBUG_OVERLAY=0`
+   - `ENGINE_DEBUG_UI_TRACE=0`
+   - `ENGINE_DEBUG_RESIZE_TRACE=0`
+2. Diagnostics enabled:
+   - `ENGINE_DEBUG_METRICS=1`
+   - `ENGINE_DEBUG_OVERLAY=1`
+   - `ENGINE_DEBUG_UI_TRACE=1`
+   - `ENGINE_DEBUG_RESIZE_TRACE=1`
+
+Compare:
+
+- Rolling frame time (`FrameMs`) and FPS in overlay/logs
+- Stability of frame pacing during resize/input interaction
+
+Acceptance target:
+
+- Disabled diagnostics path should stay effectively baseline.
+- Enabled diagnostics path should remain bounded and not accumulate unbounded memory.

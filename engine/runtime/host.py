@@ -91,6 +91,9 @@ class EngineHost(HostControl):
         time_context = self._clock.next(self._frame_index)
         self._metrics_collector.begin_frame(self._frame_index)
         self._scheduler.advance(time_context.delta_seconds)
+        enqueued_count, dequeued_count = self._scheduler.consume_activity_counts()
+        if hasattr(self._metrics_collector, "set_scheduler_activity"):
+            self._metrics_collector.set_scheduler_activity(enqueued_count, dequeued_count)
         self._metrics_collector.set_scheduler_queue_size(self._scheduler.queued_task_count)
         if self._closed:
             self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
@@ -104,7 +107,15 @@ class EngineHost(HostControl):
         )
         self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
         if self._debug_overlay is not None and self._debug_overlay_visible and self._render_api is not None:
-            self._debug_overlay.draw(self._render_api, self._metrics_collector.snapshot())
+            diagnostics_summary = None
+            get_diag = getattr(self._render_api, "ui_diagnostics_summary", None)
+            if callable(get_diag):
+                diagnostics_summary = get_diag()
+            self._debug_overlay.draw(
+                self._render_api,
+                self._metrics_collector.snapshot(),
+                ui_diagnostics=diagnostics_summary,
+            )
         if _LOG.isEnabledFor(logging.DEBUG):
             snapshot = self._metrics_collector.snapshot()
             if snapshot.last_frame is not None:

@@ -18,10 +18,17 @@ class RuntimeEventBus:
         self._next_id = 1
         self._subscriptions: dict[int, tuple[type[object], EventHandler]] = {}
         self._metrics_collector: object | None = None
+        self._topic_counts_enabled = False
 
-    def set_metrics_collector(self, metrics_collector: object | None) -> None:
+    def set_metrics_collector(
+        self,
+        metrics_collector: object | None,
+        *,
+        per_topic_counts_enabled: bool = False,
+    ) -> None:
         """Attach optional metrics collector used for publish counts."""
         self._metrics_collector = metrics_collector
+        self._topic_counts_enabled = per_topic_counts_enabled
 
     def subscribe(
         self,
@@ -43,6 +50,8 @@ class RuntimeEventBus:
         metrics = self._metrics_collector
         if metrics is not None and hasattr(metrics, "increment_event_publish_count"):
             metrics.increment_event_publish_count(1)
+            if self._topic_counts_enabled and hasattr(metrics, "increment_event_publish_topic"):
+                metrics.increment_event_publish_topic(type(event).__name__, 1)
         invoked = 0
         for subscribed_type, handler in tuple(self._subscriptions.values()):
             if isinstance(event, subscribed_type):

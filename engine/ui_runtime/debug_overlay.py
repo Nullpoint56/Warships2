@@ -19,9 +19,15 @@ class DebugOverlay:
     font_size: float = 6.0
     z_text: float = 5001.0
 
-    def draw(self, renderer: RenderAPI, snapshot: MetricsSnapshot) -> None:
+    def draw(
+        self,
+        renderer: RenderAPI,
+        snapshot: MetricsSnapshot,
+        *,
+        ui_diagnostics: dict[str, int] | None = None,
+    ) -> None:
         """Draw overlay for the current metrics snapshot."""
-        lines = self._format_lines(snapshot)
+        lines = self._format_lines(snapshot, ui_diagnostics=ui_diagnostics)
         text_x, text_y = renderer.to_design_space(self.x, self.y)
         for idx, line in enumerate(lines):
             renderer.add_text(
@@ -36,10 +42,15 @@ class DebugOverlay:
                 static=False,
             )
 
-    def _format_lines(self, snapshot: MetricsSnapshot) -> list[str]:
+    def _format_lines(
+        self,
+        snapshot: MetricsSnapshot,
+        *,
+        ui_diagnostics: dict[str, int] | None = None,
+    ) -> list[str]:
         last = snapshot.last_frame
         if last is None:
-            return [
+            lines = [
                 "Diagnostics: waiting for first frame",
                 "FPS=0.00",
                 "FrameMs=0.00",
@@ -49,6 +60,15 @@ class DebugOverlay:
                 "2) -",
                 "3) -",
             ]
+            if ui_diagnostics is not None:
+                lines.append(
+                    "UI rev={revision} resize={resize_seq} jitter={jitter_count}".format(
+                        revision=int(ui_diagnostics.get("revision", 0)),
+                        resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
+                        jitter_count=int(ui_diagnostics.get("jitter_count", 0)),
+                    )
+                )
+            return lines
         lines = [
             f"Frame {last.frame_index}",
             f"FPS={snapshot.rolling_fps:.2f}",
@@ -63,4 +83,12 @@ class DebugOverlay:
                 lines.append(f"{idx + 1}) {system_id}: {elapsed_ms:.2f} ms")
             else:
                 lines.append(f"{idx + 1}) -")
+        if ui_diagnostics is not None:
+            lines.append(
+                "UI rev={revision} resize={resize_seq} jitter={jitter_count}".format(
+                    revision=int(ui_diagnostics.get("revision", 0)),
+                    resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
+                    jitter_count=int(ui_diagnostics.get("jitter_count", 0)),
+                )
+            )
         return lines

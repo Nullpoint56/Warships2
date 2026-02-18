@@ -16,9 +16,29 @@ def test_ui_diagnostics_detects_button_ratio_spread() -> None:
     )
     diag.begin_frame()
     diag.note_viewport(width=1200, height=720, viewport_revision=1, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
-    diag.note_button_rect("a", tw=120.0, th=60.0)
+    diag.note_button_rect(
+        "a",
+        x=10.0,
+        y=20.0,
+        w=120.0,
+        h=60.0,
+        tx=10.0,
+        ty=20.0,
+        tw=120.0,
+        th=60.0,
+    )
     diag.note_button_text("a", text_size=20.0)
-    diag.note_button_rect("b", tw=120.0, th=90.0)
+    diag.note_button_rect(
+        "b",
+        x=10.0,
+        y=100.0,
+        w=120.0,
+        h=90.0,
+        tx=10.0,
+        ty=100.0,
+        tw=120.0,
+        th=90.0,
+    )
     diag.note_button_text("b", text_size=20.0)
     diag.end_frame()
 
@@ -26,6 +46,10 @@ def test_ui_diagnostics_detects_button_ratio_spread() -> None:
     anomalies = last.get("anomalies")
     assert isinstance(anomalies, list)
     assert any(str(item).startswith("button_ratio_spread:") for item in anomalies)
+    buttons = last.get("buttons")
+    assert isinstance(buttons, dict)
+    assert "source_rect" in buttons["a"]
+    assert "rect" in buttons["a"]
 
 
 def test_ui_diagnostics_detects_button_jitter_same_viewport_revision() -> None:
@@ -39,13 +63,33 @@ def test_ui_diagnostics_detects_button_jitter_same_viewport_revision() -> None:
 
     diag.begin_frame()
     diag.note_viewport(width=1200, height=720, viewport_revision=7, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
-    diag.note_button_rect("new_game", tw=120.0, th=46.0)
+    diag.note_button_rect(
+        "new_game",
+        x=10.0,
+        y=10.0,
+        w=120.0,
+        h=46.0,
+        tx=10.0,
+        ty=10.0,
+        tw=120.0,
+        th=46.0,
+    )
     diag.note_button_text("new_game", text_size=18.0)
     diag.end_frame()
 
     diag.begin_frame()
     diag.note_viewport(width=1200, height=720, viewport_revision=7, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
-    diag.note_button_rect("new_game", tw=128.0, th=46.0)
+    diag.note_button_rect(
+        "new_game",
+        x=10.0,
+        y=10.0,
+        w=128.0,
+        h=46.0,
+        tx=10.0,
+        ty=10.0,
+        tw=128.0,
+        th=46.0,
+    )
     diag.note_button_text("new_game", text_size=18.0)
     diag.end_frame()
 
@@ -87,3 +131,23 @@ def test_ui_diagnostics_dump_writes_jsonl(tmp_path: Path) -> None:
     assert payload["frame_seq"] == 1
     assert "resize" in payload
     assert "reasons" in payload
+    assert "reason_events" in payload
+
+
+def test_ui_diagnostics_tracks_reason_timestamps() -> None:
+    diag = UIDiagnostics(
+        UIDiagnosticsConfig(
+            ui_trace_enabled=True,
+            resize_trace_enabled=False,
+            auto_dump_on_anomaly=False,
+        )
+    )
+    diag.note_frame_reason("input:pointer:move")
+    diag.begin_frame()
+    diag.note_viewport(width=1200, height=720, viewport_revision=1, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
+    diag.end_frame()
+    frame = diag.recent_frames()[-1]
+    reason_events = frame.get("reason_events")
+    assert isinstance(reason_events, list)
+    assert reason_events
+    assert reason_events[0]["reason"] == "input:pointer:move"

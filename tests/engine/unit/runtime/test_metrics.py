@@ -12,12 +12,19 @@ def test_metrics_collector_records_frame_and_top_systems() -> None:
     collector.record_system_time("render", 6.1)
     collector.set_scheduler_queue_size(7)
     collector.increment_event_publish_count(3)
+    collector.increment_event_publish_topic("BaseEvent", 2)
+    collector.set_scheduler_activity(enqueued_count=5, dequeued_count=4)
+    collector.increment_system_exception_count(1)
     frame = collector.end_frame(16.0)
 
     assert frame.frame_index == 1
     assert frame.dt_ms == 16.0
     assert frame.scheduler_queue_size == 7
     assert frame.event_publish_count == 3
+    assert frame.scheduler_enqueued_count == 5
+    assert frame.scheduler_dequeued_count == 4
+    assert frame.system_exception_count == 1
+    assert frame.event_publish_by_topic["BaseEvent"] == 2
     assert frame.system_timings_ms["render"] == 6.1
 
     snap = collector.snapshot()
@@ -47,6 +54,9 @@ def test_noop_collector_is_safe() -> None:
     collector.record_system_time("sys", 1.0)
     collector.set_scheduler_queue_size(2)
     collector.increment_event_publish_count()
+    collector.increment_event_publish_topic("SampleEvent")
+    collector.set_scheduler_activity(enqueued_count=1, dequeued_count=1)
+    collector.increment_system_exception_count()
     collector.end_frame(16.0)
     snap = collector.snapshot()
     assert snap.last_frame is None
@@ -58,4 +68,3 @@ def test_noop_collector_is_safe() -> None:
 def test_factory_returns_expected_type() -> None:
     assert isinstance(create_metrics_collector(enabled=True), MetricsCollector)
     assert isinstance(create_metrics_collector(enabled=False), NoopMetricsCollector)
-

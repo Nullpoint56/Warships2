@@ -26,6 +26,8 @@ class Scheduler:
         self._next_task_id = 1
         self._tasks: dict[int, _Task] = {}
         self._queue: list[tuple[float, int]] = []
+        self._frame_enqueued_count = 0
+        self._frame_dequeued_count = 0
 
     @property
     def now_seconds(self) -> float:
@@ -81,6 +83,7 @@ class Scheduler:
                 continue
             task.callback()
             executed += 1
+            self._frame_dequeued_count += 1
             if task.cancelled:
                 self._tasks.pop(task_id, None)
                 continue
@@ -90,6 +93,13 @@ class Scheduler:
             task.due_seconds += task.interval_seconds
             heappush(self._queue, (task.due_seconds, task.task_id))
         return executed
+
+    def consume_activity_counts(self) -> tuple[int, int]:
+        """Return and reset scheduler activity counters for current frame."""
+        counts = (self._frame_enqueued_count, self._frame_dequeued_count)
+        self._frame_enqueued_count = 0
+        self._frame_dequeued_count = 0
+        return counts
 
     def _schedule(
         self,
@@ -108,4 +118,5 @@ class Scheduler:
         )
         self._tasks[task_id] = task
         heappush(self._queue, (due_seconds, task_id))
+        self._frame_enqueued_count += 1
         return task_id

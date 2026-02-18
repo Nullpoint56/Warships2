@@ -15,6 +15,10 @@ class FrameMetrics:
     fps_rolling: float
     scheduler_queue_size: int
     event_publish_count: int
+    scheduler_enqueued_count: int = 0
+    scheduler_dequeued_count: int = 0
+    event_publish_by_topic: dict[str, int] = field(default_factory=dict)
+    system_exception_count: int = 0
     system_timings_ms: dict[str, float] = field(default_factory=dict)
 
 
@@ -43,6 +47,15 @@ class NoopMetricsCollector:
     def increment_event_publish_count(self, count: int = 1) -> None:
         _ = count
 
+    def increment_event_publish_topic(self, topic: str, count: int = 1) -> None:
+        _ = (topic, count)
+
+    def set_scheduler_activity(self, enqueued_count: int, dequeued_count: int) -> None:
+        _ = (enqueued_count, dequeued_count)
+
+    def increment_system_exception_count(self, count: int = 1) -> None:
+        _ = count
+
     def end_frame(self, dt_ms: float) -> None:
         _ = dt_ms
 
@@ -64,6 +77,10 @@ class MetricsCollector:
         self._frame_index = 0
         self._scheduler_queue_size = 0
         self._event_publish_count = 0
+        self._event_publish_by_topic: dict[str, int] = {}
+        self._scheduler_enqueued_count = 0
+        self._scheduler_dequeued_count = 0
+        self._system_exception_count = 0
         self._system_timings_ms: dict[str, float] = {}
         self._last_frame: FrameMetrics | None = None
 
@@ -71,6 +88,10 @@ class MetricsCollector:
         self._frame_index = frame_index
         self._scheduler_queue_size = 0
         self._event_publish_count = 0
+        self._event_publish_by_topic = {}
+        self._scheduler_enqueued_count = 0
+        self._scheduler_dequeued_count = 0
+        self._system_exception_count = 0
         self._system_timings_ms = {}
 
     def record_system_time(self, system_name: str, elapsed_ms: float) -> None:
@@ -81,6 +102,21 @@ class MetricsCollector:
 
     def increment_event_publish_count(self, count: int = 1) -> None:
         self._event_publish_count += int(count)
+
+    def increment_event_publish_topic(self, topic: str, count: int = 1) -> None:
+        normalized = str(topic).strip()
+        if not normalized:
+            return
+        self._event_publish_by_topic[normalized] = (
+            self._event_publish_by_topic.get(normalized, 0) + int(count)
+        )
+
+    def set_scheduler_activity(self, enqueued_count: int, dequeued_count: int) -> None:
+        self._scheduler_enqueued_count = int(enqueued_count)
+        self._scheduler_dequeued_count = int(dequeued_count)
+
+    def increment_system_exception_count(self, count: int = 1) -> None:
+        self._system_exception_count += int(count)
 
     def end_frame(self, dt_ms: float) -> FrameMetrics:
         dt = float(dt_ms)
@@ -93,6 +129,10 @@ class MetricsCollector:
             fps_rolling=rolling_fps,
             scheduler_queue_size=self._scheduler_queue_size,
             event_publish_count=self._event_publish_count,
+            scheduler_enqueued_count=self._scheduler_enqueued_count,
+            scheduler_dequeued_count=self._scheduler_dequeued_count,
+            event_publish_by_topic=dict(self._event_publish_by_topic),
+            system_exception_count=self._system_exception_count,
             system_timings_ms=dict(self._system_timings_ms),
         )
         return self._last_frame
@@ -120,4 +160,3 @@ def create_metrics_collector(*, enabled: bool, window_size: int = 60) -> Metrics
     if not enabled:
         return NoopMetricsCollector()
     return MetricsCollector(window_size=window_size)
-

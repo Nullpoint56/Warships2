@@ -8,6 +8,7 @@ from collections import deque
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from time import perf_counter
 
 _LOG = logging.getLogger("engine.rendering")
 
@@ -32,13 +33,15 @@ class UIDiagnostics:
         self._cfg = config
         self._frames: deque[dict[str, object]] = deque(maxlen=max(1, config.max_frames))
         self._pending_reasons: set[str] = set()
+        self._pending_reason_events: list[dict[str, object]] = []
         self._latest_resize: dict[str, object] | None = None
         self._frame_seq = 0
         self._resize_seq = 0
         self._current: dict[str, object] | None = None
-        self._last_button_rect: dict[str, tuple[int, float, float]] = {}
+        self._last_button_rect: dict[str, tuple[int, int, float, float]] = {}
         self._dump_count = 0
         self._session_dump_path: Path | None = None
+        self._latest_summary: dict[str, int] = {"revision": 0, "resize_seq": 0, "jitter_count": 0}
 
     def note_frame_reason(self, reason: str) -> None:
         if not self._cfg.ui_trace_enabled:
@@ -46,6 +49,7 @@ class UIDiagnostics:
         normalized = reason.strip()
         if normalized:
             self._pending_reasons.add(normalized)
+            self._pending_reason_events.append({"reason": normalized, "ts": perf_counter()})
 
     def note_resize_event(
         self,
@@ -80,12 +84,14 @@ class UIDiagnostics:
         self._current = {
             "frame_seq": self._frame_seq,
             "reasons": sorted(self._pending_reasons),
+            "reason_events": list(self._pending_reason_events),
             "resize": self._latest_resize,
             "viewport": None,
             "buttons": {},
             "anomalies": [],
         }
         self._pending_reasons.clear()
+        self._pending_reason_events.clear()
 
     def note_viewport(
         self,
@@ -110,7 +116,19 @@ class UIDiagnostics:
             "oy": oy,
         }
 
-    def note_button_rect(self, button_id: str, *, tw: float, th: float) -> None:
+    def note_button_rect(
+        self,
+        button_id: str,
+        *,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        tx: float,
+        ty: float,
+        tw: float,
+        th: float,
+    ) -> None:
         if self._current is None:
             return
         buttons = self._current["buttons"]
@@ -118,7 +136,8 @@ class UIDiagnostics:
             return
         entry = buttons.setdefault(button_id, {})
         if isinstance(entry, dict):
-            entry["rect"] = {"w": tw, "h": th}
+            entry["source_rect"] = {"x": x, "y": y, "w": w, "h": h}
+            entry["rect"] = {"x": tx, "y": ty, "w": tw, "h": th}
 
     def note_button_text(self, button_id: str, *, text_size: float) -> None:
         if self._current is None:
@@ -137,6 +156,17 @@ class UIDiagnostics:
             return
         anomalies = self._detect_anomalies(frame)
         frame["anomalies"] = anomalies
+        revision = 0
+        if isinstance(frame.get("viewport"), dict):
+            revision = int(frame["viewport"].get("revision", 0))
+        jitter_count = sum(
+            1 for item in anomalies if isinstance(item, str) and item.startswith("button_jitter:")
+        )
+        self._latest_summary = {
+            "revision": revision,
+            "resize_seq": self._resize_seq,
+            "jitter_count": jitter_count,
+        }
         self._frames.append(frame)
         frame_seq = int(frame.get("frame_seq", 0))
         if self._cfg.ui_trace_enabled and frame_seq % max(1, self._cfg.sampling_n) == 0:
@@ -163,6 +193,10 @@ class UIDiagnostics:
         """Return collected frame diagnostics (oldest to newest)."""
         return list(self._frames)
 
+    def latest_summary(self) -> dict[str, int]:
+        """Return latest compact UI diagnostic summary for overlay display."""
+        return dict(self._latest_summary)
+
     def _detect_anomalies(self, frame: dict[str, object]) -> list[str]:
         anomalies: list[str] = []
         viewport = frame.get("viewport")
@@ -171,6 +205,12 @@ class UIDiagnostics:
             rev_value = viewport.get("revision")
             if isinstance(rev_value, int):
                 revision = rev_value
+        resize_seq = self._resize_seq
+        resize = frame.get("resize")
+        if isinstance(resize, dict):
+            resize_value = resize.get("resize_seq")
+            if isinstance(resize_value, int):
+                resize_seq = resize_value
         buttons = frame.get("buttons")
         if not isinstance(buttons, dict) or not buttons:
             return anomalies
@@ -186,10 +226,15 @@ class UIDiagnostics:
                 height = rect.get("h")
                 if isinstance(width, (float, int)) and isinstance(height, (float, int)):
                     prev = self._last_button_rect.get(str(button_id))
-                    if prev is not None and prev[0] == revision:
-                        if abs(prev[1] - float(width)) > 0.5 or abs(prev[2] - float(height)) > 0.5:
+                    if prev is not None and prev[0] == revision and prev[1] == resize_seq:
+                        if abs(prev[2] - float(width)) > 0.5 or abs(prev[3] - float(height)) > 0.5:
                             anomalies.append(f"button_jitter:{button_id}")
-                    self._last_button_rect[str(button_id)] = (revision, float(width), float(height))
+                    self._last_button_rect[str(button_id)] = (
+                        revision,
+                        resize_seq,
+                        float(width),
+                        float(height),
+                    )
             if isinstance(rect, dict) and isinstance(text_size, (float, int)) and float(text_size) > 0.0:
                 height = rect.get("h")
                 if isinstance(height, (float, int)):

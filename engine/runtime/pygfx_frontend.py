@@ -50,6 +50,10 @@ class PygfxFrontendWindow:
         pointer_count = 0
         for pointer_event in self._input.drain_pointer_events():
             pointer_count += 1
+            event_type = getattr(pointer_event, "event_type", "")
+            if isinstance(event_type, str) and event_type.strip():
+                normalized_type = event_type.strip().lower().replace(" ", "_")
+                self._renderer.note_frame_reason(f"input:pointer:{normalized_type}")
             changed = self._host.handle_pointer_event(pointer_event) or changed
         key_count = 0
         for key_event in self._input.drain_key_events():

@@ -191,6 +191,18 @@ class SceneRenderer:
                 applied_size=(self.width, self.height),
                 viewport=self._viewport_transform(),
             )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "resize_event event_size=(%.1f,%.1f) applied_size=(%d,%d) viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)",
+                float(width),
+                float(height),
+                self.width,
+                self.height,
+                self._viewport_transform()[0],
+                self._viewport_transform()[1],
+                self._viewport_transform()[2],
+                self._viewport_transform()[3],
+            )
 
     def _apply_canvas_size(self, width: float, height: float) -> bool:
         if width <= 1.0 or height <= 1.0:
@@ -300,7 +312,30 @@ class SceneRenderer:
         if key is not None and key.startswith("button:bg:"):
             diagnostics = self._ui_diagnostics
             if diagnostics is not None:
-                diagnostics.note_button_rect(key.removeprefix("button:bg:"), tw=tw, th=th)
+                diagnostics.note_button_rect(
+                    key.removeprefix("button:bg:"),
+                    x=x,
+                    y=y,
+                    w=w,
+                    h=h,
+                    tx=tx,
+                    ty=ty,
+                    tw=tw,
+                    th=th,
+                )
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(
+                    "ui_button_geometry id=%s source=(%.2f,%.2f,%.2f,%.2f) transformed=(%.2f,%.2f,%.2f,%.2f)",
+                    key.removeprefix("button:bg:"),
+                    x,
+                    y,
+                    w,
+                    h,
+                    tx,
+                    ty,
+                    tw,
+                    th,
+                )
 
     def add_grid(
         self,
@@ -444,6 +479,13 @@ class SceneRenderer:
         if diagnostics is not None:
             diagnostics.note_frame_reason(reason)
 
+    def ui_diagnostics_summary(self) -> dict[str, int] | None:
+        """Return compact UI diagnostics summary for overlay consumption."""
+        diagnostics = self._ui_diagnostics
+        if diagnostics is None:
+            return None
+        return diagnostics.latest_summary()
+
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Start draw loop."""
         self._draw_callback = draw_callback
@@ -466,6 +508,15 @@ class SceneRenderer:
                         ox=ox,
                         oy=oy,
                     )
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "ui_projection revision=%d viewport=(sx=%.4f,sy=%.4f,ox=%.2f,oy=%.2f)",
+                            self._viewport_revision,
+                            sx,
+                            sy,
+                            ox,
+                            oy,
+                        )
                 if self._draw_callback is None:
                     return
                 self._draw_callback()

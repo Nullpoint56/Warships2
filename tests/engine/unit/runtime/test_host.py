@@ -80,6 +80,7 @@ class _FakeRenderer:
     def __init__(self) -> None:
         self.rect_calls: list[str] = []
         self.text_calls: list[str] = []
+        self.text_values: list[str] = []
         self.invalidates = 0
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
@@ -103,6 +104,7 @@ class _FakeRenderer:
     ) -> None:
         _ = (text, x, y, font_size, color, anchor, z, static)
         self.text_calls.append(str(key))
+        self.text_values.append(str(text))
 
     def invalidate(self) -> None:
         self.invalidates += 1
@@ -171,3 +173,20 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     host.frame()
 
     assert any(":line:" in key for key in renderer.text_calls)
+
+
+def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    module = FakeModule()
+    renderer = _FakeRenderer()
+
+    def _summary() -> dict[str, int]:
+        return {"revision": 9, "resize_seq": 42, "jitter_count": 2}
+
+    renderer.ui_diagnostics_summary = _summary  # type: ignore[attr-defined]
+    host = EngineHost(module=module, render_api=renderer)
+    host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
+    host.frame()
+
+    assert any(text.startswith("UI rev=9 resize=42 jitter=2") for text in renderer.text_values)

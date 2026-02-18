@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from engine.runtime.logging import setup_engine_logging
+from engine.runtime.logging import RESERVED_LOGGER_NAMES, setup_engine_logging
 
 
 def test_setup_engine_logging_adds_handler_when_missing(monkeypatch) -> None:
@@ -39,3 +39,7 @@ def test_setup_engine_logging_does_not_override_existing_handlers() -> None:
         root.handlers.extend(original_handlers)
         root.setLevel(original_level)
 
+
+def test_reserved_future_logger_namespaces_are_defined() -> None:
+    assert "engine.network" in RESERVED_LOGGER_NAMES
+    assert "engine.audio" in RESERVED_LOGGER_NAMES

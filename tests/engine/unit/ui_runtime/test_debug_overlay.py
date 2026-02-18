@@ -74,3 +74,28 @@ def test_debug_overlay_handles_empty_snapshot() -> None:
     assert renderer.text_calls[0][1].startswith("Diagnostics:")
     assert renderer.text_calls[4][1] == "Events=0"
     assert renderer.text_calls[5][1] == "1) -"
+
+
+def test_debug_overlay_adds_ui_diagnostics_row_when_provided() -> None:
+    overlay = DebugOverlay()
+    renderer = _FakeRenderer()
+    snapshot = MetricsSnapshot(
+        last_frame=FrameMetrics(
+            frame_index=1,
+            dt_ms=16.0,
+            fps_rolling=62.5,
+            scheduler_queue_size=0,
+            event_publish_count=0,
+        ),
+        rolling_dt_ms=16.0,
+        rolling_fps=62.5,
+        top_systems_last_frame=[],
+    )
+
+    overlay.draw(
+        renderer,
+        snapshot,
+        ui_diagnostics={"revision": 7, "resize_seq": 42, "jitter_count": 3},
+    )
+
+    assert renderer.text_calls[-1][1] == "UI rev=7 resize=42 jitter=3"
