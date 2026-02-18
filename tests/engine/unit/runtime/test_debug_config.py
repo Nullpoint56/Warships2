@@ -3,6 +3,7 @@ from __future__ import annotations
 from engine.runtime.debug_config import (
     enabled_metrics,
     enabled_overlay,
+    enabled_profiling,
     enabled_resize_trace,
     enabled_ui_trace,
     load_debug_config,
@@ -27,6 +28,8 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_DEBUG_RESIZE_CAMERA_SET_VIEW_SIZE", "true")
     monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SYNC_FROM_PHYSICAL_SIZE", "1")
     monkeypatch.setenv("ENGINE_DEBUG_RENDERER_FORCE_PIXEL_RATIO", "1.0")
+    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_PROFILING_SAMPLING_N", "5")
     monkeypatch.setenv("ENGINE_LOG_LEVEL", "debug")
 
     cfg = load_debug_config()
@@ -46,6 +49,8 @@ def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
     assert cfg.resize_camera_set_view_size is True
     assert cfg.resize_sync_from_physical_size is True
     assert cfg.renderer_force_pixel_ratio == 1.0
+    assert cfg.profiling_enabled is True
+    assert cfg.profiling_sampling_n == 5
     assert cfg.log_level == "DEBUG"
 
 
@@ -66,7 +71,9 @@ def test_enabled_helpers_read_current_env(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "0")
     monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE", "1")
     monkeypatch.setenv("ENGINE_DEBUG_RESIZE_TRACE", "0")
+    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
     assert enabled_metrics() is True
     assert enabled_overlay() is False
     assert enabled_ui_trace() is True
     assert enabled_resize_trace() is False
+    assert enabled_profiling() is True

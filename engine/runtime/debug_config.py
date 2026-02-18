@@ -70,6 +70,8 @@ class DebugConfig:
     resize_camera_set_view_size: bool = False
     resize_sync_from_physical_size: bool = False
     renderer_force_pixel_ratio: float = 0.0
+    profiling_enabled: bool = False
+    profiling_sampling_n: int = 1
 
 
 def resolve_log_level_name(default: str = "INFO") -> str:
@@ -99,6 +101,8 @@ def load_debug_config() -> DebugConfig:
         resize_camera_set_view_size=_flag("ENGINE_DEBUG_RESIZE_CAMERA_SET_VIEW_SIZE", False),
         resize_sync_from_physical_size=_flag("ENGINE_DEBUG_RESIZE_SYNC_FROM_PHYSICAL_SIZE", False),
         renderer_force_pixel_ratio=_float("ENGINE_DEBUG_RENDERER_FORCE_PIXEL_RATIO", 0.0),
+        profiling_enabled=_flag("ENGINE_DEBUG_PROFILING", False),
+        profiling_sampling_n=max(1, _int("ENGINE_DEBUG_PROFILING_SAMPLING_N", 1)),
         log_level=resolve_log_level_name(),
     )
 
@@ -117,3 +121,7 @@ def enabled_ui_trace() -> bool:
 
 def enabled_resize_trace() -> bool:
     return load_debug_config().resize_trace_enabled
+
+
+def enabled_profiling() -> bool:
+    return load_debug_config().profiling_enabled

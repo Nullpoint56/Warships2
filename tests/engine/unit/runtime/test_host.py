@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+import json
+import logging
+from pathlib import Path
+
+import pytest
+
 from engine.api.input_events import KeyEvent
 from engine.runtime.host import EngineHost
 from engine.runtime.metrics import MetricsSnapshot
@@ -190,3 +196,100 @@ def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monk
     host.frame()
 
     assert any(text.startswith("UI rev=9 resize=42 anomalies=2") for text in renderer.text_values)
+
+
+def test_engine_host_emits_profile_records_when_enabled(monkeypatch, caplog) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
+    monkeypatch.setenv("ENGINE_DEBUG_PROFILING_SAMPLING_N", "1")
+    caplog.set_level(logging.INFO, logger="engine.profiling")
+
+    module = FakeModule()
+    host = EngineHost(module=module)
+    host.frame()
+
+    messages = [
+        record.getMessage() for record in caplog.records if record.name == "engine.profiling"
+    ]
+    assert any("frame_profile" in message for message in messages)
+    prof_records = [record for record in caplog.records if record.name == "engine.profiling"]
+    assert prof_records
+    assert isinstance(getattr(prof_records[0], "profile", None), dict)
+
+
+def test_engine_host_emits_frame_events_to_diagnostics_hub(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    module = FakeModule()
+    host = EngineHost(module=module)
+
+    host.frame()
+    events = host.diagnostics_hub.snapshot(limit=20, category="frame")
+
+    names = [event.name for event in events]
+    assert "frame.start" in names
+    assert "frame.time_ms" in names
+    assert "frame.end" in names
+
+
+class _ExplodingModule(FakeModule):
+    def on_frame(self, context) -> None:
+        _ = context
+        raise RuntimeError("host-frame-failure")
+
+
+class _HashingModule(FakeModule):
+    def debug_state_hash(self) -> dict[str, int]:
+        return {"frames": len(self.frames)}
+
+
+def test_engine_host_writes_crash_bundle_on_frame_exception(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("ENGINE_DIAG_CRASH_BUNDLE", "1")
+    monkeypatch.setenv("ENGINE_DIAG_CRASH_DIR", str(tmp_path))
+    host = EngineHost(module=_ExplodingModule())
+
+    with pytest.raises(RuntimeError):
+        host.frame()
+
+    bundles = sorted(tmp_path.glob("engine_crash_bundle_*.json"))
+    assert bundles
+    payload = json.loads(bundles[-1].read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "engine.crash_bundle.v1"
+    assert payload["exception"]["type"] == "RuntimeError"
+    assert payload["exception"]["message"] == "host-frame-failure"
+    assert payload["recent_events"]
+
+
+def test_engine_host_emits_perf_events_when_diag_timeline_enabled(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    host = EngineHost(module=FakeModule())
+
+    host.frame()
+    span_events = host.diagnostics_hub.snapshot(category="perf", name="perf.span")
+    assert span_events
+
+
+def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("WARSHIPS_RNG_SEED", "12345")
+    host = EngineHost(module=FakeModule())
+
+    host.handle_key_event(KeyEvent(event_type="key_down", value="a"))
+    host.frame()
+
+    manifest = host.diagnostics_replay_manifest
+    assert int(getattr(manifest, "seed", 0)) == 12345
+    assert int(getattr(manifest, "command_count", 0)) >= 1
+    replay_events = host.diagnostics_hub.snapshot(category="replay", name="replay.command")
+    assert replay_events
+
+
+def test_engine_host_records_replay_state_hash_when_provider_available(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAG_REPLAY_HASH_INTERVAL", "1")
+    host = EngineHost(module=_HashingModule())
+    host.frame()
+    host.frame()
+
+    hash_events = host.diagnostics_hub.snapshot(category="replay", name="replay.state_hash")
+    assert hash_events

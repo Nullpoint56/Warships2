@@ -2,6 +2,10 @@
 
 This playbook is the operational companion to `docs/engine_diagnostics_plan.md`.
 
+## Primary Tooling
+
+Use `tools/engine_observability.py` as the default diagnostics UI and session inspector.
+
 ## Scope
 
 - Runtime metrics (`ENGINE_DEBUG_METRICS`)
