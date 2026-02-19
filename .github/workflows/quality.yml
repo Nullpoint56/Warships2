@@ -5,9 +5,52 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 jobs:
+  detect_changes:
+    runs-on: ubuntu-latest
+    outputs:
+      rerun_everything: ${{ steps.filter.outputs.rerun_everything }}
+      engine_src: ${{ steps.filter.outputs.engine_src }}
+      warships_src: ${{ steps.filter.outputs.warships_src }}
+      tests_engine: ${{ steps.filter.outputs.tests_engine }}
+      tests_warships: ${{ steps.filter.outputs.tests_warships }}
+      tools_src: ${{ steps.filter.outputs.tools_src }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rerun_everything:
+              - 'pyproject.toml'
+              - 'pytest.ini'
+              - 'scripts/**'
+              - 'uv.lock'
+              - '.github/**'
+            engine_src:
+              - 'engine/**'
+            warships_src:
+              - 'warships/**'
+            tests_engine:
+              - 'tests/engine/**'
+            tests_warships:
+              - 'tests/warships/**'
+            tools_src:
+              - 'tools/**'
+            docs:
+              - 'docs/**'
+              - '**/*.md'
+
   lint_format_typecheck:
+    needs: detect_changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.rerun_everything == 'true' || needs.detect_changes.outputs.engine_src == 'true' || needs.detect_changes.outputs.warships_src == 'true' || needs.detect_changes.outputs.tests_engine == 'true' || needs.detect_changes.outputs.tests_warships == 'true' || needs.detect_changes.outputs.tools_src == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,7 +70,34 @@ jobs:
       - name: Lint, format check, and mypy
         run: uv run python scripts/check.py --skip-engine-tests --skip-warships-tests
 
+  lint_docs:
+    needs: detect_changes
+    if: github.event_name != 'workflow_dispatch' && needs.detect_changes.outputs.docs == 'true' && needs.detect_changes.outputs.rerun_everything != 'true' && needs.detect_changes.outputs.engine_src != 'true' && needs.detect_changes.outputs.warships_src != 'true' && needs.detect_changes.outputs.tests_engine != 'true' && needs.detect_changes.outputs.tests_warships != 'true' && needs.detect_changes.outputs.tools_src != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Ruff check docs and markdown
+        run: uv run ruff check docs README.md
+
+      - name: Ruff format check docs and markdown
+        run: uv run ruff format --check docs README.md
+
   test_engine:
+    needs: detect_changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.rerun_everything == 'true' || needs.detect_changes.outputs.engine_src == 'true' || needs.detect_changes.outputs.warships_src == 'true' || needs.detect_changes.outputs.tests_engine == 'true'
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .
@@ -50,6 +120,8 @@ jobs:
         run: uv run python scripts/check.py --skip-lint-format-typecheck --skip-warships-tests
 
   test_warships:
+    needs: detect_changes
+    if: github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.rerun_everything == 'true' || needs.detect_changes.outputs.engine_src == 'true' || needs.detect_changes.outputs.warships_src == 'true' || needs.detect_changes.outputs.tests_warships == 'true'
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: .

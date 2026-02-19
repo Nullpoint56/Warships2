@@ -10,7 +10,34 @@ on:
   workflow_dispatch:
 
 jobs:
+  detect_changes:
+    runs-on: ubuntu-latest
+    outputs:
+      build_inputs_changed: ${{ steps.filter.outputs.build_inputs_changed }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            build_inputs_changed:
+              - 'engine/**'
+              - 'warships/**'
+              - 'scripts/**'
+              - 'Warships.spec'
+              - 'WarshipsDbg.spec'
+              - 'pyproject.toml'
+              - 'pytest.ini'
+              - 'uv.lock'
+              - '.github/**'
+
   build_windows:
+    needs: detect_changes
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v') || needs.detect_changes.outputs.build_inputs_changed == 'true'
     runs-on: windows-latest
     steps:
       - name: Checkout
