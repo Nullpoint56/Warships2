@@ -84,6 +84,7 @@ def _candidate_placements(
     size: int,
     occupied: set[tuple[int, int]],
 ) -> list[ShipPlacement]:
+    forbidden = _build_forbidden_zone(occupied, size)
     candidates: list[ShipPlacement] = []
     for orientation in (Orientation.HORIZONTAL, Orientation.VERTICAL):
         max_row = size if orientation is Orientation.HORIZONTAL else size - ship_type.size + 1
@@ -94,23 +95,22 @@ def _candidate_placements(
                     ship_type=ship_type, bow=Coord(row=row, col=col), orientation=orientation
                 )
                 cells = cells_for_placement(placement)
-                if _touches_existing(cells, occupied, size):
+                if any((c.row, c.col) in forbidden for c in cells):
                     continue
                 candidates.append(placement)
     return candidates
 
 
-def _touches_existing(cells: list[Coord], occupied: set[tuple[int, int]], size: int) -> bool:
-    for cell in cells:
+def _build_forbidden_zone(occupied: set[tuple[int, int]], size: int) -> set[tuple[int, int]]:
+    forbidden: set[tuple[int, int]] = set()
+    for row, col in occupied:
         for dr in (-1, 0, 1):
             for dc in (-1, 0, 1):
-                rr = cell.row + dr
-                cc = cell.col + dc
-                if not (0 <= rr < size and 0 <= cc < size):
-                    continue
-                if (rr, cc) in occupied:
-                    return True
-    return False
+                rr = row + dr
+                cc = col + dc
+                if 0 <= rr < size and 0 <= cc < size:
+                    forbidden.add((rr, cc))
+    return forbidden
 
 
 def _generate_relaxed_fleet(rng: random.Random, size: int) -> FleetPlacement:
