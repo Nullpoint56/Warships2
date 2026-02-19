@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tracemalloc
+from importlib import import_module
 from dataclasses import dataclass
 from typing import Any
 
@@ -111,9 +112,16 @@ def _process_rss_mb() -> float | None:
         pass
 
     try:
-        import resource
-
-        rss = float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        resource_mod = import_module("resource")
+        getrusage = getattr(resource_mod, "getrusage", None)
+        rusage_self = getattr(resource_mod, "RUSAGE_SELF", None)
+        if not callable(getrusage) or rusage_self is None:
+            return None
+        usage = getrusage(rusage_self)
+        rss_raw = getattr(usage, "ru_maxrss", None)
+        if not isinstance(rss_raw, (int, float)):
+            return None
+        rss = float(rss_raw)
         # Linux reports KB, macOS reports bytes; this heuristic keeps values reasonable.
         if rss > 1024.0 * 1024.0 * 8:
             return rss / (1024.0 * 1024.0)

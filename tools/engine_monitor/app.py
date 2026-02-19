@@ -84,9 +84,7 @@ class MonitorApp:
     def _tick_once(self) -> None:
         snap = self.source.poll()
         polled_at = snap.polled_at_utc or "n/a"
-        self.status_var.set(
-            f"events={len(snap.events)} spans={len(snap.spans)} polled={polled_at}"
-        )
+        self.status_var.set(f"events={len(snap.events)} spans={len(snap.spans)} polled={polled_at}")
         self._update_health(snap)
         self._update_timeline(snap)
         self._update_hitches(snap)

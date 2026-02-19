@@ -113,9 +113,9 @@ def discover_session_bundles(log_dir: Path, *, recursive: bool = False) -> list[
     if log_dir.name == "logs":
         # Allow passing appdata/logs while ui traces are in sibling appdata/ui.
         search_roots.append(log_dir.parent)
+    run_logs: list[Path] = []
+    ui_logs: list[Path] = []
     if recursive:
-        run_logs = []
-        ui_logs = []
         for root in search_roots:
             run_logs.extend(root.rglob("*_logs_*.jsonl"))
             run_logs.extend(root.rglob("warships_run_*.jsonl"))
@@ -124,8 +124,6 @@ def discover_session_bundles(log_dir: Path, *, recursive: bool = False) -> list[
         run_logs = sorted(set(run_logs))
         ui_logs = sorted(set(ui_logs))
     else:
-        run_logs = []
-        ui_logs = []
         for root in search_roots:
             run_logs.extend(root.glob("*_logs_*.jsonl"))
             run_logs.extend(root.glob("warships_run_*.jsonl"))

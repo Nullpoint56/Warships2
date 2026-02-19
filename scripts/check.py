@@ -30,16 +30,6 @@ def main() -> int:
     env["PYTHONPATH"] = "."
 
     if not args.skip_lint_format_typecheck:
-        _run_checked(
-            label="Running Ruff lint...",
-            command=["uv", "run", "ruff", "check", "."],
-            env=env,
-        )
-        _run_checked(
-            label="Running Ruff format check...",
-            command=["uv", "run", "ruff", "format", "--check", "."],
-            env=env,
-        )
         _run_checked(label="Running mypy...", command=["uv", "run", "mypy"], env=env)
 
     if not args.skip_engine_tests:

@@ -423,7 +423,11 @@ class SceneRenderer:
         )
         logical = get_canvas_logical_size(self.canvas)
         physical = self._get_canvas_physical_size()
-        renderer_sizes = self._collect_backend_state().get("renderer_sizes", {})
+        backend_state = self._collect_backend_state()
+        renderer_sizes_obj = backend_state.get("renderer_sizes")
+        renderer_sizes: dict[str, object] = {}
+        if isinstance(renderer_sizes_obj, dict):
+            renderer_sizes = {str(key): value for key, value in renderer_sizes_obj.items()}
         hub.emit_fast(
             category="render",
             name="render.surface_dims",
@@ -648,9 +652,7 @@ class SceneRenderer:
             return "unknown"
 
     def _resolve_runtime_info(self) -> dict[str, object]:
-        renderer_type = (
-            f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}"
-        )
+        renderer_type = f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}"
         return {
             "canvas_type": f"{self.canvas.__class__.__module__}.{self.canvas.__class__.__name__}",
             "renderer_type": renderer_type,

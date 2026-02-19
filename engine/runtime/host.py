@@ -376,7 +376,7 @@ class EngineHost(HostControl):
     def _is_overlay_toggle_event(event: KeyEvent) -> bool:
         return event.event_type == "key_down" and event.value.strip().lower() == _OVERLAY_TOGGLE_KEY
 
-    def _resolve_replay_state_hash(self) -> object | None:
+    def _resolve_replay_state_hash(self) -> str | None:
         try:
             return _try_state_hash_provider(self._module)
         except Exception:  # pylint: disable=broad-exception-caught
@@ -493,8 +493,13 @@ def _resolve_replay_seed() -> int | None:
         return None
 
 
-def _try_state_hash_provider(module: object) -> object | None:
+def _try_state_hash_provider(module: object) -> str | None:
     provider = getattr(module, "debug_state_hash", None)
     if not callable(provider):
         return None
-    return provider()
+    state_hash = provider()
+    if state_hash is None:
+        return None
+    if isinstance(state_hash, str):
+        return state_hash
+    return str(state_hash)
