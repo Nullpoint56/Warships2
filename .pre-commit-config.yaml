@@ -3,13 +3,51 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
-      - id: ruff-format
-        name: ruff format
-        entry: uv run ruff format .
+      - id: ruff-docs-check
+        name: ruff check docs
+        entry: uv run ruff check docs README.md
         language: system
         pass_filenames: false
-      - id: composite-check
-        name: composite check script
-        entry: uv run python scripts/check.py --skip-lint-format-typecheck
+        files: ^(docs/|.*\.md$)
+
+      - id: ruff-docs-format
+        name: ruff format docs
+        entry: uv run ruff format --check docs README.md
         language: system
         pass_filenames: false
+        files: ^(docs/|.*\.md$)
+
+      - id: check-engine-or-warships
+        name: quality check (engine/warships)
+        entry: uv run python scripts/check.py
+        language: system
+        pass_filenames: false
+        files: ^(engine/|warships/)
+
+      - id: check-tests-engine
+        name: quality check (tests/engine)
+        entry: uv run python scripts/check.py --skip-warships-tests
+        language: system
+        pass_filenames: false
+        files: ^tests/engine/
+
+      - id: check-tests-warships
+        name: quality check (tests/warships)
+        entry: uv run python scripts/check.py --skip-engine-tests
+        language: system
+        pass_filenames: false
+        files: ^tests/warships/
+
+      - id: check-tools
+        name: quality check (tools)
+        entry: uv run python scripts/check.py --skip-engine-tests --skip-warships-tests
+        language: system
+        pass_filenames: false
+        files: ^tools/
+
+      - id: check-rerun-everything
+        name: quality check (config/scripts/workflows)
+        entry: uv run python scripts/check.py
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|pytest\.ini|uv\.lock|scripts/|\.github/)
