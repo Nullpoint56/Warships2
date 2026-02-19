@@ -1,5 +1,7 @@
 # Warships2
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Nullpoint56/Warships2)
+
 Warships game built on a reusable Python engine runtime (`engine/`) with game-specific logic in `warships/`.
 
 ## Repository Layout
