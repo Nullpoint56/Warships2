@@ -3,20 +3,6 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
-      - id: ruff-docs-check
-        name: ruff check docs
-        entry: uv run ruff check docs README.md
-        language: system
-        pass_filenames: false
-        files: ^(docs/|.*\.md$)
-
-      - id: ruff-docs-format
-        name: ruff format docs
-        entry: uv run ruff format --check docs README.md
-        language: system
-        pass_filenames: false
-        files: ^(docs/|.*\.md$)
-
       - id: check-engine-or-warships
         name: quality check (engine/warships)
         entry: uv run python scripts/check.py

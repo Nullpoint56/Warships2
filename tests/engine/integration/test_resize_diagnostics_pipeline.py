@@ -180,6 +180,23 @@ def test_resize_input_and_button_diagnostics_pipeline(monkeypatch) -> None:
     assert isinstance(resize_payload, dict)
     assert resize_payload.get("event_size") == [1400.0, 800.0]
     assert resize_payload.get("applied_size") == [1400, 800]
+    assert isinstance(resize_payload.get("event_ts"), float)
+    assert isinstance(resize_payload.get("size_applied_ts"), float)
+    assert float(resize_payload.get("event_to_apply_ms", -1.0)) >= 0.0
+
+    timing = frame.get("timing")
+    assert isinstance(timing, dict)
+    assert isinstance(timing.get("frame_render_ts"), float)
+    assert float(timing.get("event_to_frame_ms", -1.0)) >= 0.0
+    assert float(timing.get("apply_to_frame_ms", -1.0)) >= 0.0
+
+    runtime = frame.get("runtime")
+    assert isinstance(runtime, dict)
+    versions = runtime.get("versions")
+    assert isinstance(versions, dict)
+    assert "pygfx" in versions
+    assert "wgpu" in versions
+    assert "rendercanvas" in versions
 
     viewport = frame.get("viewport")
     assert isinstance(viewport, dict)

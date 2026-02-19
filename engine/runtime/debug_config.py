@@ -23,12 +23,30 @@ def _int(name: str, default: int) -> int:
         return default
 
 
+def _float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
 def _csv(name: str) -> tuple[str, ...]:
     raw = os.getenv(name)
     if raw is None:
         return ()
     values = [part.strip() for part in raw.split(",")]
     return tuple(value for value in values if value)
+
+
+def _str(name: str, default: str) -> str:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    value = raw.strip()
+    return value if value else default
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +64,14 @@ class DebugConfig:
     ui_trace_primitives_enabled: bool = True
     ui_trace_key_filter: tuple[str, ...] = field(default_factory=tuple)
     ui_trace_log_every_frame: bool = False
+    resize_force_invalidate: bool = False
+    resize_size_source_mode: str = "both"
+    resize_size_quantization: str = "trunc"
+    resize_camera_set_view_size: bool = False
+    resize_sync_from_physical_size: bool = False
+    renderer_force_pixel_ratio: float = 0.0
+    profiling_enabled: bool = False
+    profiling_sampling_n: int = 1
 
 
 def resolve_log_level_name(default: str = "INFO") -> str:
@@ -69,6 +95,14 @@ def load_debug_config() -> DebugConfig:
         ui_trace_primitives_enabled=_flag("ENGINE_DEBUG_UI_TRACE_PRIMITIVES", True),
         ui_trace_key_filter=_csv("ENGINE_DEBUG_UI_TRACE_KEY_FILTER"),
         ui_trace_log_every_frame=_flag("ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME", False),
+        resize_force_invalidate=_flag("ENGINE_DEBUG_RESIZE_FORCE_INVALIDATE", False),
+        resize_size_source_mode=_str("ENGINE_DEBUG_RESIZE_SIZE_SOURCE_MODE", "both").lower(),
+        resize_size_quantization=_str("ENGINE_DEBUG_RESIZE_SIZE_QUANTIZATION", "trunc").lower(),
+        resize_camera_set_view_size=_flag("ENGINE_DEBUG_RESIZE_CAMERA_SET_VIEW_SIZE", False),
+        resize_sync_from_physical_size=_flag("ENGINE_DEBUG_RESIZE_SYNC_FROM_PHYSICAL_SIZE", False),
+        renderer_force_pixel_ratio=_float("ENGINE_DEBUG_RENDERER_FORCE_PIXEL_RATIO", 0.0),
+        profiling_enabled=_flag("ENGINE_DEBUG_PROFILING", False),
+        profiling_sampling_n=max(1, _int("ENGINE_DEBUG_PROFILING_SAMPLING_N", 1)),
         log_level=resolve_log_level_name(),
     )
 
@@ -87,3 +121,7 @@ def enabled_ui_trace() -> bool:
 
 def enabled_resize_trace() -> bool:
     return load_debug_config().resize_trace_enabled
+
+
+def enabled_profiling() -> bool:
+    return load_debug_config().profiling_enabled

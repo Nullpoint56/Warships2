@@ -116,8 +116,10 @@ def test_ui_diagnostics_dump_writes_jsonl(tmp_path: Path) -> None:
         physical_size=(1200, 720),
         applied_size=(1200, 720),
         viewport=(1.0, 1.0, 0.0, 0.0),
+        event_ts=10.0,
+        size_applied_ts=10.001,
     )
-    diag.begin_frame()
+    diag.begin_frame(frame_render_ts=10.010)
     diag.note_viewport(width=1200, height=720, viewport_revision=1, sx=1.0, sy=1.0, ox=0.0, oy=0.0)
     diag.end_frame()
 
@@ -130,8 +132,16 @@ def test_ui_diagnostics_dump_writes_jsonl(tmp_path: Path) -> None:
     payload = json.loads(lines[0])
     assert payload["frame_seq"] == 1
     assert "resize" in payload
+    assert "timing" in payload
     assert "reasons" in payload
     assert "reason_events" in payload
+    resize = payload["resize"]
+    assert isinstance(resize, dict)
+    assert resize["event_to_apply_ms"] >= 0.0
+    timing = payload["timing"]
+    assert isinstance(timing, dict)
+    assert timing["event_to_frame_ms"] >= 0.0
+    assert timing["apply_to_frame_ms"] >= 0.0
 
 
 def test_ui_diagnostics_tracks_reason_timestamps() -> None:

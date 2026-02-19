@@ -28,8 +28,8 @@ Practical name for this project: **Quality Gates + CI Rollout**.
 1. Ruff linting (`ruff check`).
 2. Type checking (initially: mypy with scoped modules).
 3. Existing pytest + coverage gates:
-   - Engine coverage policy from `docs/engine_test_plan.md`.
-   - Warships coverage policy from `docs/warships_test_plan.md`.
+   - Engine coverage policy from `docs/plans/archive/engine_test_plan.md`.
+   - Warships coverage policy from `docs/plans/archive/warships_test_plan.md`.
 
 ## Phased Rollout
 
@@ -66,7 +66,7 @@ Exit criteria:
 
 ## Phase Q3: Packaging CI
 
-1. Add Windows build workflow using existing packaging approach from `docs/build_windows_exe.md`.
+1. Add Windows build workflow using existing packaging approach from `docs/operations/windows_build.md`.
 2. Run on:
    - `main` pushes
    - tags (release candidates/finals)

@@ -5,8 +5,11 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, cast
+from importlib.metadata import PackageNotFoundError, version
+from time import perf_counter
+from typing import TYPE_CHECKING, Any, cast
 
+from engine.diagnostics.hub import DiagnosticHub
 from engine.rendering.scene_retained import (
     hide_inactive_nodes,
     upsert_grid,
@@ -16,6 +19,8 @@ from engine.rendering.scene_retained import (
 from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
+    resolve_render_loop_config,
+    resolve_render_vsync,
     run_backend_loop,
     stop_backend_loop,
 )
@@ -64,6 +69,9 @@ else:
         pass
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from engine.diagnostics.hub import DiagnosticHub
 
 
 @dataclass(slots=True)
@@ -120,6 +128,22 @@ class SceneRenderer:
     _frame_viewport: tuple[float, float, float, float] | None = field(init=False, default=None)
     _frame_viewport_revision: int | None = field(init=False, default=None)
     _frame_window_size: tuple[float, float] | None = field(init=False, default=None)
+    _runtime_info: dict[str, object] = field(init=False, default_factory=dict)
+    _resize_force_invalidate: bool = field(init=False, default=False)
+    _resize_size_source_mode: str = field(init=False, default="both")
+    _resize_size_quantization: str = field(init=False, default="trunc")
+    _resize_camera_set_view_size: bool = field(init=False, default=False)
+    _resize_sync_from_physical_size: bool = field(init=False, default=False)
+    _renderer_force_pixel_ratio: float = field(init=False, default=0.0)
+    _render_loop_mode: str = field(init=False, default="on_demand")
+    _render_fps_cap: float = field(init=False, default=60.0)
+    _render_vsync: bool = field(init=False, default=True)
+    _render_resize_cooldown_s: float = field(init=False, default=0.25)
+    _resize_continuous_until: float = field(init=False, default=0.0)
+    _next_continuous_frame_due: float = field(init=False, default=0.0)
+    _diagnostics_hub: DiagnosticHub | None = field(init=False, default=None)
+    _last_resize_applied_ts: float | None = field(init=False, default=None)
+    _last_resize_event_to_apply_ms: float | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -137,18 +161,64 @@ class SceneRenderer:
         if canvas_cls is None:
             raise RuntimeError("rendercanvas.auto did not expose RenderCanvas.")
 
-        self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
+        bootstrap_loop_cfg = resolve_render_loop_config()
+        self._render_loop_mode = bootstrap_loop_cfg.mode
+        self._render_fps_cap = bootstrap_loop_cfg.fps_cap
+        self._render_resize_cooldown_s = max(
+            0.0, float(bootstrap_loop_cfg.resize_cooldown_ms) / 1000.0
+        )
+        self._render_vsync = resolve_render_vsync()
+        bootstrap_update_mode = (
+            "continuous" if self._render_loop_mode == "continuous" else "ondemand"
+        )
+        bootstrap_max_fps = self._render_fps_cap if self._render_fps_cap > 0.0 else 240.0
+        try:
+            self.canvas = canvas_cls(
+                size=(self.width, self.height),
+                title=self.title,
+                update_mode=bootstrap_update_mode,
+                min_fps=0.0,
+                max_fps=float(bootstrap_max_fps),
+                vsync=self._render_vsync,
+            )
+        except TypeError:
+            # Keep compatibility with simplified test/fallback canvas factories.
+            self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
         self.preserve_aspect = resolve_preserve_aspect()
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
-        self._update_camera_projection()
         self._configure_diagnostics()
+        self._update_camera_projection()
         self._bind_resize_events()
         self._sync_size_from_canvas()
 
     def _configure_diagnostics(self) -> None:
         cfg = load_debug_config()
+        self._resize_force_invalidate = cfg.resize_force_invalidate
+        mode = cfg.resize_size_source_mode
+        if mode not in {"both", "event_only", "poll_only"}:
+            mode = "both"
+        self._resize_size_source_mode = mode
+        quant = cfg.resize_size_quantization
+        if quant not in {"trunc", "round"}:
+            quant = "trunc"
+        self._resize_size_quantization = quant
+        self._resize_camera_set_view_size = cfg.resize_camera_set_view_size
+        self._resize_sync_from_physical_size = cfg.resize_sync_from_physical_size
+        self._renderer_force_pixel_ratio = (
+            float(cfg.renderer_force_pixel_ratio) if cfg.renderer_force_pixel_ratio > 0.0 else 0.0
+        )
+        render_loop_cfg = resolve_render_loop_config()
+        self._render_loop_mode = render_loop_cfg.mode
+        self._render_fps_cap = render_loop_cfg.fps_cap
+        self._render_resize_cooldown_s = max(
+            0.0, float(render_loop_cfg.resize_cooldown_ms) / 1000.0
+        )
+        self._render_vsync = resolve_render_vsync()
+        self._apply_canvas_update_mode()
+        self._apply_renderer_pixel_ratio_experiment()
+        self._runtime_info = self._resolve_runtime_info()
         if not cfg.ui_trace_enabled and not cfg.resize_trace_enabled:
             self._ui_diagnostics = None
             return
@@ -164,6 +234,19 @@ class SceneRenderer:
                 log_every_frame=cfg.ui_trace_log_every_frame,
             )
         )
+        self._ui_diagnostics.set_runtime_info(self._runtime_info)
+
+    def _apply_canvas_update_mode(self) -> None:
+        set_update_mode = getattr(self.canvas, "set_update_mode", None)
+        if not callable(set_update_mode):
+            return
+        # rendercanvas defaults max_fps to 30; always override it from runtime config.
+        max_fps = self._render_fps_cap if self._render_fps_cap > 0.0 else 240.0
+        update_mode = "continuous" if self._render_loop_mode == "continuous" else "ondemand"
+        try:
+            set_update_mode(update_mode, min_fps=0.0, max_fps=float(max_fps))
+        except Exception:
+            logger.debug("canvas_update_mode_apply_failed", exc_info=True)
 
     def _bind_resize_events(self) -> None:
         add_handler = getattr(self.canvas, "add_event_handler", None)
@@ -175,6 +258,9 @@ class SceneRenderer:
             logger.debug("resize_event_binding_failed", exc_info=True)
 
     def _on_resize(self, event: object) -> None:
+        event_ts = perf_counter()
+        if self._render_loop_mode == "continuous_during_resize":
+            self._resize_continuous_until = event_ts + self._render_resize_cooldown_s
         diagnostics = self._ui_diagnostics
         if diagnostics is not None:
             diagnostics.note_frame_reason("resize")
@@ -185,7 +271,26 @@ class SceneRenderer:
         if width is None or height is None:
             self._sync_size_from_canvas()
             return
-        self._apply_canvas_size(width, height)
+        if self._resize_size_source_mode != "poll_only":
+            self._apply_canvas_size(width, height)
+        size_applied_ts = perf_counter()
+        event_to_apply_ms = (size_applied_ts - event_ts) * 1000.0
+        self._last_resize_applied_ts = size_applied_ts
+        self._last_resize_event_to_apply_ms = event_to_apply_ms
+        hub = self._diagnostics_hub
+        if hub is not None:
+            hub.emit_fast(
+                category="render",
+                name="render.resize_event",
+                tick=max(0, self._viewport_revision),
+                value={"width": int(self.width), "height": int(self.height)},
+                metadata={
+                    "event_size": (float(width), float(height)),
+                    "applied_size": (int(self.width), int(self.height)),
+                    "viewport": self._viewport_transform(),
+                    "event_to_apply_ms": event_to_apply_ms,
+                },
+            )
         if diagnostics is not None:
             size_payload = event.get("size")
             logical_size: tuple[float, float] | None = None
@@ -212,6 +317,8 @@ class SceneRenderer:
                 physical_size=physical_size,
                 applied_size=(self.width, self.height),
                 viewport=self._viewport_transform(),
+                event_ts=event_ts,
+                size_applied_ts=size_applied_ts,
             )
 
         if logger.isEnabledFor(logging.DEBUG):
@@ -229,12 +336,14 @@ class SceneRenderer:
                 self._viewport_transform()[2],
                 self._viewport_transform()[3],
             )
+        if self._resize_force_invalidate:
+            self.invalidate()
 
     def _apply_canvas_size(self, width: float, height: float) -> bool:
         if width <= 1.0 or height <= 1.0:
             return False
-        new_width = int(width)
-        new_height = int(height)
+        new_width = self._quantize_size(width)
+        new_height = self._quantize_size(height)
         if new_width == self.width and new_height == self.height:
             return False
         self.width = new_width
@@ -244,19 +353,113 @@ class SceneRenderer:
         return True
 
     def _update_camera_projection(self) -> None:
+        if self._resize_camera_set_view_size and hasattr(self.camera, "set_view_size"):
+            try:
+                self.camera.set_view_size(float(self.width), float(self.height))
+            except Exception:
+                logger.debug("camera_set_view_size_failed", exc_info=True)
         if hasattr(self.camera, "width"):
             self.camera.width = self.width
         if hasattr(self.camera, "height"):
             self.camera.height = self.height
         self.camera.local.position = (self.width / 2.0, self.height / 2.0, 0.0)
         self.camera.local.scale_y = -1.0
+        self._emit_render_projection_events(reason="projection_update")
+
+    def _emit_render_projection_events(self, *, reason: str) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        tick = max(0, self._viewport_revision)
+        sx, sy, ox, oy = self._viewport_transform()
+        hub.emit_fast(
+            category="render",
+            name="render.viewport_applied",
+            tick=tick,
+            value={
+                "width": int(self.width),
+                "height": int(self.height),
+                "revision": int(self._viewport_revision),
+                "sx": float(sx),
+                "sy": float(sy),
+                "ox": float(ox),
+                "oy": float(oy),
+            },
+            metadata={"reason": reason},
+        )
+        hub.emit_fast(
+            category="render",
+            name="render.camera_projection",
+            tick=tick,
+            value={
+                "camera_width": float(getattr(self.camera, "width", self.width)),
+                "camera_height": float(getattr(self.camera, "height", self.height)),
+                "camera_position": [
+                    float(self.width / 2.0),
+                    float(self.height / 2.0),
+                    0.0,
+                ],
+                "camera_scale_y": float(getattr(self.camera.local, "scale_y", -1.0)),
+            },
+            metadata={"reason": reason},
+        )
+        canvas_ratio = self._get_canvas_pixel_ratio()
+        renderer_ratio = getattr(self.renderer, "pixel_ratio", None)
+        renderer_ratio_f = (
+            float(renderer_ratio)
+            if isinstance(renderer_ratio, (int, float)) and float(renderer_ratio) > 0.0
+            else None
+        )
+        hub.emit_fast(
+            category="render",
+            name="render.pixel_ratio",
+            tick=tick,
+            value={
+                "effective": float(self._effective_size_pixel_ratio()),
+                "canvas": float(canvas_ratio) if canvas_ratio is not None else None,
+                "renderer": renderer_ratio_f,
+            },
+            metadata={"reason": reason},
+        )
+        logical = get_canvas_logical_size(self.canvas)
+        physical = self._get_canvas_physical_size()
+        backend_state = self._collect_backend_state()
+        renderer_sizes_obj = backend_state.get("renderer_sizes")
+        renderer_sizes: dict[str, object] = {}
+        if isinstance(renderer_sizes_obj, dict):
+            renderer_sizes = {str(key): value for key, value in renderer_sizes_obj.items()}
+        hub.emit_fast(
+            category="render",
+            name="render.surface_dims",
+            tick=tick,
+            value={
+                "canvas_logical": [float(logical[0]), float(logical[1])] if logical else None,
+                "canvas_physical": [float(physical[0]), float(physical[1])] if physical else None,
+                "renderer_logical": renderer_sizes.get("logical_size"),
+                "renderer_physical": renderer_sizes.get("physical_size"),
+            },
+            metadata={"reason": reason},
+        )
 
     def _sync_size_from_canvas(self) -> bool:
+        if self._resize_sync_from_physical_size:
+            physical = self._get_canvas_physical_size()
+            if physical is not None:
+                ratio = self._effective_size_pixel_ratio()
+                if ratio > 0.0:
+                    width = physical[0] / ratio
+                    height = physical[1] / ratio
+                    return self._apply_canvas_size(width, height)
         size = get_canvas_logical_size(self.canvas)
         if size is None:
             return False
         width, height = size
         return self._apply_canvas_size(width, height)
+
+    def _quantize_size(self, value: float) -> int:
+        if self._resize_size_quantization == "round":
+            return int(round(value))
+        return int(value)
 
     @staticmethod
     def _coerce_size2(value: object) -> tuple[float, float] | None:
@@ -266,6 +469,109 @@ class SceneRenderer:
         if not isinstance(a, (int, float)) or not isinstance(b, (int, float)):
             return None
         return float(a), float(b)
+
+    def _get_canvas_physical_size(self) -> tuple[float, float] | None:
+        get_physical_size = getattr(self.canvas, "get_physical_size", None)
+        if not callable(get_physical_size):
+            return None
+        try:
+            return self._coerce_size2(get_physical_size())
+        except Exception:
+            return None
+
+    def _get_canvas_pixel_ratio(self) -> float | None:
+        get_pixel_ratio = getattr(self.canvas, "get_pixel_ratio", None)
+        if not callable(get_pixel_ratio):
+            return None
+        try:
+            ratio = get_pixel_ratio()
+        except Exception:
+            return None
+        if not isinstance(ratio, (int, float)):
+            return None
+        ratio_f = float(ratio)
+        return ratio_f if ratio_f > 0.0 else None
+
+    def _effective_size_pixel_ratio(self) -> float:
+        if self._renderer_force_pixel_ratio > 0.0:
+            return self._renderer_force_pixel_ratio
+        canvas_ratio = self._get_canvas_pixel_ratio()
+        if canvas_ratio is not None:
+            return canvas_ratio
+        renderer_ratio = getattr(self.renderer, "pixel_ratio", None)
+        if isinstance(renderer_ratio, (int, float)) and float(renderer_ratio) > 0.0:
+            return float(renderer_ratio)
+        return 1.0
+
+    def _apply_renderer_pixel_ratio_experiment(self) -> None:
+        if self._renderer_force_pixel_ratio <= 0.0:
+            return
+        forced = float(self._renderer_force_pixel_ratio)
+        for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+            if hasattr(self.renderer, attr):
+                try:
+                    setattr(self.renderer, attr, forced)
+                except Exception:
+                    pass
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("pixel_ratio", "device_pixel_ratio", "_pixel_ratio"):
+                if hasattr(target, attr):
+                    try:
+                        setattr(target, attr, forced)
+                    except Exception:
+                        pass
+
+    @staticmethod
+    def _to_scalar(value: object) -> object:
+        if isinstance(value, (str, bool, int, float)):
+            return value
+        return str(value)
+
+    def _collect_backend_probe(self) -> dict[str, object]:
+        probe: dict[str, object] = {}
+        for attr in ("backend", "backend_type", "present_mode", "surface_format"):
+            value = getattr(self.renderer, attr, None)
+            if value is not None:
+                probe[f"renderer.{attr}"] = self._to_scalar(value)
+        target = getattr(self.renderer, "target", None)
+        if target is not None:
+            for attr in ("backend", "backend_type", "present_mode", "surface_format"):
+                value = getattr(target, attr, None)
+                if value is not None:
+                    probe[f"renderer.target.{attr}"] = self._to_scalar(value)
+        device = getattr(self.renderer, "device", None)
+        if device is None:
+            device = getattr(self.renderer, "_device", None)
+        if device is not None:
+            probe["device.type"] = f"{device.__class__.__module__}.{device.__class__.__name__}"
+            adapter = getattr(device, "adapter", None)
+            if adapter is not None:
+                info = getattr(adapter, "info", None)
+                if info is not None:
+                    if isinstance(info, dict):
+                        probe["adapter.info"] = {
+                            str(k): self._to_scalar(v)
+                            for k, v in info.items()
+                            if isinstance(k, str)
+                        }
+                    else:
+                        adapter_info: dict[str, object] = {}
+                        for attr in (
+                            "backend_type",
+                            "device",
+                            "description",
+                            "vendor",
+                            "architecture",
+                            "driver",
+                            "adapter_type",
+                        ):
+                            value = getattr(info, attr, None)
+                            if value is not None:
+                                adapter_info[attr] = self._to_scalar(value)
+                        if adapter_info:
+                            probe["adapter.info"] = adapter_info
+        return probe
 
     def _collect_backend_state(self) -> dict[str, object]:
         state: dict[str, object] = {
@@ -277,23 +583,13 @@ class SceneRenderer:
         if logical_size is not None:
             state["canvas_logical_size"] = [logical_size[0], logical_size[1]]
 
-        get_physical_size = getattr(self.canvas, "get_physical_size", None)
-        if callable(get_physical_size):
-            try:
-                physical = self._coerce_size2(get_physical_size())
-                if physical is not None:
-                    state["canvas_physical_size"] = [physical[0], physical[1]]
-            except Exception:
-                pass
+        physical = self._get_canvas_physical_size()
+        if physical is not None:
+            state["canvas_physical_size"] = [physical[0], physical[1]]
 
-        get_pixel_ratio = getattr(self.canvas, "get_pixel_ratio", None)
-        if callable(get_pixel_ratio):
-            try:
-                ratio = get_pixel_ratio()
-                if isinstance(ratio, (int, float)):
-                    state["canvas_pixel_ratio"] = float(ratio)
-            except Exception:
-                pass
+        canvas_ratio = self._get_canvas_pixel_ratio()
+        if canvas_ratio is not None:
+            state["canvas_pixel_ratio"] = canvas_ratio
 
         if hasattr(self.camera, "width") and hasattr(self.camera, "height"):
             try:
@@ -342,8 +638,47 @@ class SceneRenderer:
                     renderer_scalars[f"renderer.target.{attr}"] = float(value)
         if renderer_scalars:
             state["renderer_scalars"] = renderer_scalars
+        backend_probe = self._collect_backend_probe()
+        if backend_probe:
+            state["backend_probe"] = backend_probe
 
         return state
+
+    @staticmethod
+    def _package_version(name: str) -> str:
+        try:
+            return version(name)
+        except PackageNotFoundError:
+            return "unknown"
+
+    def _resolve_runtime_info(self) -> dict[str, object]:
+        renderer_type = f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}"
+        return {
+            "canvas_type": f"{self.canvas.__class__.__module__}.{self.canvas.__class__.__name__}",
+            "renderer_type": renderer_type,
+            "camera_type": f"{self.camera.__class__.__module__}.{self.camera.__class__.__name__}",
+            "versions": {
+                "pygfx": self._package_version("pygfx"),
+                "wgpu": self._package_version("wgpu"),
+                "rendercanvas": self._package_version("rendercanvas"),
+            },
+            "resize_experiment": {
+                "force_invalidate": self._resize_force_invalidate,
+                "size_source_mode": self._resize_size_source_mode,
+                "size_quantization": self._resize_size_quantization,
+                "camera_set_view_size": self._resize_camera_set_view_size,
+                "sync_from_physical_size": self._resize_sync_from_physical_size,
+            },
+            "backend_experiment": {
+                "renderer_force_pixel_ratio": self._renderer_force_pixel_ratio,
+            },
+            "render_loop": {
+                "mode": self._render_loop_mode,
+                "fps_cap": self._render_fps_cap,
+                "vsync": self._render_vsync,
+                "resize_cooldown_ms": int(self._render_resize_cooldown_s * 1000.0),
+            },
+        }
 
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
@@ -786,6 +1121,12 @@ class SceneRenderer:
         if hasattr(self.canvas, "request_draw"):
             self.canvas.request_draw()
 
+    def set_diagnostics_hub(self, hub: DiagnosticHub | None) -> None:
+        """Attach optional engine diagnostics hub for render/resize events."""
+        self._diagnostics_hub = hub
+        if hub is not None:
+            self._emit_render_projection_events(reason="hub_attached")
+
     def note_frame_reason(self, reason: str) -> None:
         """Record a frame trigger reason for diagnostics."""
         diagnostics = self._ui_diagnostics
@@ -808,6 +1149,34 @@ class SceneRenderer:
             return None
         return diagnostics.scope_decorator(name)
 
+    def _continuous_mode_active(self, now: float) -> bool:
+        if self._render_loop_mode == "continuous":
+            return True
+        if self._render_loop_mode == "continuous_during_resize":
+            return now <= self._resize_continuous_until
+        return False
+
+    def _continuous_frame_due(self, now: float) -> bool:
+        if self._render_loop_mode == "continuous":
+            return True
+        if self._render_fps_cap <= 0.0:
+            return True
+        if self._next_continuous_frame_due <= 0.0:
+            return True
+        return now >= self._next_continuous_frame_due
+
+    def _mark_continuous_frame_scheduled(self, now: float) -> None:
+        if self._render_fps_cap <= 0.0:
+            self._next_continuous_frame_due = 0.0
+            return
+        self._next_continuous_frame_due = now + (1.0 / self._render_fps_cap)
+
+    def _schedule_next_continuous_frame(self) -> None:
+        if self._is_closed:
+            return
+        if hasattr(self.canvas, "request_draw"):
+            self.canvas.request_draw()
+
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Start draw loop."""
         self._draw_callback = draw_callback
@@ -815,11 +1184,18 @@ class SceneRenderer:
         def _draw_frame() -> None:
             if self._draw_failed or self._is_closed:
                 return
+            frame_start = perf_counter()
+            continuous_active = self._continuous_mode_active(frame_start)
+            if continuous_active and not self._continuous_frame_due(frame_start):
+                self._schedule_next_continuous_frame()
+                return
             try:
-                self._sync_size_from_canvas()
+                self._apply_renderer_pixel_ratio_experiment()
+                if self._resize_size_source_mode != "event_only":
+                    self._sync_size_from_canvas()
                 diagnostics = self._ui_diagnostics
                 if diagnostics is not None:
-                    diagnostics.begin_frame()
+                    diagnostics.begin_frame(frame_render_ts=frame_start)
                     sx, sy, ox, oy = self._viewport_transform()
                     diagnostics.note_viewport(
                         width=self.width,
@@ -840,7 +1216,14 @@ class SceneRenderer:
                             oy,
                         )
                     diagnostics.note_frame_state(
-                        stage="draw_pre", payload=self._collect_backend_state()
+                        stage="draw_pre",
+                        payload={
+                            **self._collect_backend_state(),
+                            "render_loop_mode": self._render_loop_mode,
+                            "continuous_active": continuous_active,
+                            "render_fps_cap": self._render_fps_cap,
+                            "resize_continuous_until": self._resize_continuous_until,
+                        },
                     )
                 if self._draw_callback is None:
                     return
@@ -848,12 +1231,87 @@ class SceneRenderer:
                 if self._is_closed:
                     return
                 self.renderer.render(self.scene, self.camera)
+                frame_end = perf_counter()
+                hub = self._diagnostics_hub
+                if hub is not None:
+                    frame_ms = (frame_end - frame_start) * 1000.0
+                    draw_count = 0
+                    try:
+                        draw_count = int(len(getattr(self.scene, "children", ())))
+                    except Exception:
+                        draw_count = 0
+                    hub.emit_fast(
+                        category="render",
+                        name="render.frame_ms",
+                        tick=max(0, self._viewport_revision),
+                        value=frame_ms,
+                        metadata={
+                            "viewport_revision": self._viewport_revision,
+                            "size": (int(self.width), int(self.height)),
+                        },
+                    )
+                    hub.emit_fast(
+                        category="render",
+                        name="render.present",
+                        tick=max(0, self._viewport_revision),
+                        value=frame_ms,
+                        metadata={
+                            "draw_count": draw_count,
+                            "size": (int(self.width), int(self.height)),
+                        },
+                    )
+                    hub.emit_fast(
+                        category="render",
+                        name="render.present_interval",
+                        tick=max(0, self._viewport_revision),
+                        value=frame_ms,
+                        metadata={
+                            "vsync": bool(self._render_vsync),
+                            "fps_cap": float(self._render_fps_cap),
+                            "mode": self._render_loop_mode,
+                        },
+                    )
+                    apply_ts = self._last_resize_applied_ts
+                    if apply_ts is not None:
+                        apply_to_frame_ms = (frame_end - apply_ts) * 1000.0
+                        hub.emit_fast(
+                            category="render",
+                            name="render.resize_event",
+                            tick=max(0, self._viewport_revision),
+                            value={"width": int(self.width), "height": int(self.height)},
+                            metadata={
+                                "event_to_apply_ms": self._last_resize_event_to_apply_ms,
+                                "apply_to_frame_ms": apply_to_frame_ms,
+                                "viewport": self._viewport_transform(),
+                            },
+                        )
+                        self._last_resize_applied_ts = None
+                        self._last_resize_event_to_apply_ms = None
                 if diagnostics is not None:
                     diagnostics.note_frame_state(
-                        stage="draw_post", payload=self._collect_backend_state()
+                        stage="draw_post",
+                        payload={
+                            **self._collect_backend_state(),
+                            "render_loop_mode": self._render_loop_mode,
+                            "continuous_active": continuous_active,
+                            "render_fps_cap": self._render_fps_cap,
+                        },
                     )
                     diagnostics.end_frame()
+                if self._render_loop_mode == "continuous_during_resize" and continuous_active:
+                    now = perf_counter()
+                    self._mark_continuous_frame_scheduled(now)
+                    self._schedule_next_continuous_frame()
             except Exception:  # pylint: disable=broad-exception-caught
+                hub = self._diagnostics_hub
+                if hub is not None:
+                    hub.emit_fast(
+                        category="error",
+                        name="render.unhandled_exception",
+                        tick=max(0, self._viewport_revision),
+                        level="error",
+                        metadata={"message": "unhandled_exception_in_draw_loop"},
+                    )
                 self._draw_failed = True
                 logger.exception("unhandled_exception_in_draw_loop")
                 self.close()

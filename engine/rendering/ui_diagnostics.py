@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -54,6 +55,7 @@ class UIDiagnostics:
             "jitter_count": 0,
         }
         self._primitive_seq = 0
+        self._runtime_info: dict[str, object] | None = None
 
     def note_frame_reason(self, reason: str) -> None:
         if not self._cfg.ui_trace_enabled:
@@ -63,6 +65,10 @@ class UIDiagnostics:
             self._pending_reasons.add(normalized)
             self._pending_reason_events.append({"reason": normalized, "ts": perf_counter()})
 
+    def set_runtime_info(self, info: dict[str, object]) -> None:
+        """Set stable runtime metadata to be stamped into each frame."""
+        self._runtime_info = dict(info)
+
     def note_resize_event(
         self,
         *,
@@ -71,6 +77,8 @@ class UIDiagnostics:
         physical_size: tuple[int, int] | None,
         applied_size: tuple[int, int],
         viewport: tuple[float, float, float, float],
+        event_ts: float | None = None,
+        size_applied_ts: float | None = None,
     ) -> None:
         if not self._cfg.resize_trace_enabled:
             return
@@ -81,6 +89,12 @@ class UIDiagnostics:
             "applied_size": [applied_size[0], applied_size[1]],
             "viewport": {"sx": sx, "sy": sy, "ox": ox, "oy": oy},
         }
+        if isinstance(event_ts, float):
+            payload["event_ts"] = event_ts
+        if isinstance(size_applied_ts, float):
+            payload["size_applied_ts"] = size_applied_ts
+        if isinstance(event_ts, float) and isinstance(size_applied_ts, float):
+            payload["event_to_apply_ms"] = max(0.0, (size_applied_ts - event_ts) * 1000.0)
         if event_size is not None:
             payload["event_size"] = [event_size[0], event_size[1]]
         if logical_size is not None:
@@ -89,16 +103,33 @@ class UIDiagnostics:
             payload["physical_size"] = [physical_size[0], physical_size[1]]
         self._latest_resize = payload
 
-    def begin_frame(self) -> None:
+    def begin_frame(self, *, frame_render_ts: float | None = None) -> None:
         if not self._cfg.ui_trace_enabled and not self._cfg.resize_trace_enabled:
             return
         self._frame_seq += 1
+        if frame_render_ts is None:
+            frame_render_ts = perf_counter()
+        timing: dict[str, object] = {"frame_render_ts": frame_render_ts}
+        resize = self._latest_resize
+        if isinstance(resize, dict):
+            resize_event_ts = resize.get("event_ts")
+            if isinstance(resize_event_ts, float):
+                timing["last_resize_event_ts"] = resize_event_ts
+                timing["event_to_frame_ms"] = max(0.0, (frame_render_ts - resize_event_ts) * 1000.0)
+            resize_applied_ts = resize.get("size_applied_ts")
+            if isinstance(resize_applied_ts, float):
+                timing["last_resize_applied_ts"] = resize_applied_ts
+                timing["apply_to_frame_ms"] = max(
+                    0.0, (frame_render_ts - resize_applied_ts) * 1000.0
+                )
         self._current = {
             "ts_utc": datetime.now(UTC).isoformat(timespec="milliseconds"),
             "frame_seq": self._frame_seq,
             "reasons": sorted(self._pending_reasons),
             "reason_events": list(self._pending_reason_events),
             "resize": self._latest_resize,
+            "runtime": self._runtime_info,
+            "timing": timing,
             "viewport": None,
             "buttons": {},
             "primitives": [],
@@ -322,8 +353,13 @@ class UIDiagnostics:
         dump_root = Path(self._cfg.dump_dir)
         dump_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        self._dump_count += 1
-        self._session_dump_path = dump_root / f"ui_diag_run_{stamp}_{self._dump_count:02d}.jsonl"
+        game_name = (
+            str(
+                (self._runtime_info or {}).get("game_name") or os.getenv("ENGINE_GAME_NAME", "game")
+            ).strip()
+            or "game"
+        )
+        self._session_dump_path = dump_root / f"{game_name}_ui_trace_{stamp}.jsonl"
         return self._session_dump_path
 
     @staticmethod
@@ -331,6 +367,8 @@ class UIDiagnostics:
         packet: dict[str, object] = {
             "frame_seq": frame.get("frame_seq"),
             "ts_utc": frame.get("ts_utc"),
+            "runtime": frame.get("runtime"),
+            "timing": frame.get("timing"),
             "viewport": frame.get("viewport"),
             "resize": frame.get("resize"),
             "reasons": frame.get("reasons"),

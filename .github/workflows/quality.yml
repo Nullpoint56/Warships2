@@ -142,3 +142,25 @@ jobs:
 
       - name: Warships tests coverage gates
         run: uv run python scripts/check.py --skip-lint-format-typecheck --skip-engine-tests
+
+  test_tools:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: .
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Sync dependencies
+        run: uv sync --group dev
+
+      - name: Tools test suite
+        run: uv run pytest tests/tools -q

@@ -6,9 +6,11 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from engine.rendering.scene_runtime import (
+    RenderLoopConfig,
     apply_startup_window_mode,
     get_canvas_logical_size,
     resolve_preserve_aspect,
+    resolve_render_loop_config,
     resolve_window_mode,
     run_backend_loop,
     stop_backend_loop,
@@ -101,6 +103,31 @@ def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setenv("ENGINE_WINDOW_MODE", "FULLSCREEN")
     assert resolve_window_mode() == "fullscreen"
+
+
+def test_resolve_render_loop_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENGINE_RENDER_LOOP_MODE", raising=False)
+    monkeypatch.delenv("ENGINE_RENDER_FPS_CAP", raising=False)
+    monkeypatch.delenv("ENGINE_RENDER_RESIZE_COOLDOWN_MS", raising=False)
+    assert resolve_render_loop_config() == RenderLoopConfig()
+
+
+def test_resolve_render_loop_config_parsing_and_clamping(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_RENDER_LOOP_MODE", "continuous_during_resize")
+    monkeypatch.setenv("ENGINE_RENDER_FPS_CAP", "-1.0")
+    monkeypatch.setenv("ENGINE_RENDER_RESIZE_COOLDOWN_MS", "-42")
+    cfg = resolve_render_loop_config()
+    assert cfg.mode == "continuous_during_resize"
+    assert cfg.fps_cap == 0.0
+    assert cfg.resize_cooldown_ms == 0
+
+
+def test_resolve_render_loop_config_invalid_mode_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ENGINE_RENDER_LOOP_MODE", "bad_mode")
+    cfg = resolve_render_loop_config()
+    assert cfg.mode == "on_demand"
 
 
 def test_get_canvas_logical_size_tolerant_parsing() -> None:

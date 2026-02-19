@@ -20,6 +20,21 @@ from engine.api.app_port import EngineAppPort
 from engine.api.assets import AssetHandle, AssetRegistry, create_asset_registry
 from engine.api.commands import Command, CommandMap, create_command_map
 from engine.api.context import RuntimeContext, create_runtime_context
+from engine.api.debug import (
+    DebugLoadedSession,
+    DebugSessionBundle,
+    discover_debug_sessions,
+    export_crash_bundle,
+    export_profiling_snapshot,
+    export_replay_session,
+    get_diagnostics_snapshot,
+    get_metrics_snapshot,
+    get_profiling_snapshot,
+    get_replay_manifest,
+    get_replay_snapshot,
+    load_debug_session,
+    validate_replay_snapshot,
+)
 from engine.api.dialogs import DialogOpenSpec, open_dialog, resolve_confirm_button_id
 from engine.api.events import EventBus, Subscription, create_event_bus
 from engine.api.flow import (
@@ -93,6 +108,8 @@ __all__ = [
     "Command",
     "CommandMap",
     "DecisionContext",
+    "DebugLoadedSession",
+    "DebugSessionBundle",
     "DirectActionHandler",
     "DialogOpenSpec",
     "EngineAppPort",
@@ -153,7 +170,18 @@ __all__ = [
     "configure_logging",
     "get_logger",
     "create_ui_framework",
+    "discover_debug_sessions",
+    "export_crash_bundle",
+    "export_replay_session",
+    "export_profiling_snapshot",
+    "get_diagnostics_snapshot",
+    "get_metrics_snapshot",
+    "get_profiling_snapshot",
+    "get_replay_manifest",
+    "get_replay_snapshot",
+    "load_debug_session",
     "normalize_scores",
+    "validate_replay_snapshot",
     "run_pygfx_hosted_runtime",
     "create_module_graph",
     "create_runtime_context",
