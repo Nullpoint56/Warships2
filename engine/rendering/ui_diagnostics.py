@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
 from collections import deque
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
@@ -352,8 +353,13 @@ class UIDiagnostics:
         dump_root = Path(self._cfg.dump_dir)
         dump_root.mkdir(parents=True, exist_ok=True)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        self._dump_count += 1
-        self._session_dump_path = dump_root / f"ui_diag_run_{stamp}_{self._dump_count:02d}.jsonl"
+        game_name = (
+            str(
+                (self._runtime_info or {}).get("game_name") or os.getenv("ENGINE_GAME_NAME", "game")
+            ).strip()
+            or "game"
+        )
+        self._session_dump_path = dump_root / f"{game_name}_ui_trace_{stamp}.jsonl"
         return self._session_dump_path
 
     @staticmethod

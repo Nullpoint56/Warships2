@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
+import json
 from importlib.metadata import PackageNotFoundError, version
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from engine.diagnostics import (
@@ -23,6 +25,7 @@ from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.render import RenderAPI
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
+from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
 from engine.runtime.profiling import FrameProfiler
 from engine.runtime.scheduler import Scheduler
@@ -62,6 +65,7 @@ class EngineHost(HostControl):
         self._render_api = render_api
         cfg = load_debug_config()
         diag_cfg = load_diagnostics_config()
+        self._diag_cfg = diag_cfg
         self._debug_overlay = DebugOverlay() if enabled_overlay() else None
         self._debug_overlay_visible = False
         self._metrics_collector = create_metrics_collector(
@@ -105,6 +109,8 @@ class EngineHost(HostControl):
             hash_interval=diag_cfg.replay_hash_interval,
             hub=self._diagnostics_hub,
         )
+        self._diagnostics_http: DiagnosticsHttpServer | None = None
+        self._try_start_diagnostics_http()
 
     @property
     def config(self) -> EngineHostConfig:
@@ -354,6 +360,11 @@ class EngineHost(HostControl):
         if self._closed:
             return
         self._closed = True
+        self._export_profiling_on_shutdown()
+        self._export_replay_capture_on_shutdown()
+        if self._diagnostics_http is not None:
+            self._diagnostics_http.stop()
+            self._diagnostics_http = None
         self._diagnostics_hub.unsubscribe(self._diagnostics_subscriber_token)
         self._frame_profiler.close()
         self._module.on_shutdown()
@@ -380,7 +391,74 @@ class EngineHost(HostControl):
                 versions[pkg] = version(pkg)
             except PackageNotFoundError:
                 versions[pkg] = "unknown"
-        return {"engine_versions": versions}
+        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        return {"engine_versions": versions, "game_name": game_name}
+
+    def _try_start_diagnostics_http(self) -> None:
+        enabled_raw = os.getenv("ENGINE_DEBUG_OBS_HTTP", "1").strip().lower()
+        if enabled_raw in {"0", "false", "off", "no"}:
+            return
+        bind_host = os.getenv("ENGINE_DEBUG_OBS_HTTP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        try:
+            bind_port = int(os.getenv("ENGINE_DEBUG_OBS_HTTP_PORT", "8765"))
+        except ValueError:
+            bind_port = 8765
+        server = DiagnosticsHttpServer(host_obj=self, bind_host=bind_host, bind_port=bind_port)
+        try:
+            server.start()
+        except OSError:
+            _LOG.warning(
+                "diagnostics_http_start_failed endpoint=http://%s:%d", bind_host, bind_port
+            )
+            return
+        self._diagnostics_http = server
+        _LOG.info("diagnostics_http_endpoint=%s", server.endpoint)
+
+    def _export_replay_capture_on_shutdown(self) -> None:
+        manifest = self._replay_recorder.manifest()
+        if not self._diag_cfg.replay_capture:
+            return
+        if manifest.command_count <= 0:
+            return
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        out_dir = Path(self._diag_cfg.replay_export_dir)
+        out_path = out_dir / f"{game_name}_replay_session_{stamp}.json"
+        try:
+            exported = self._replay_recorder.export_json(path=out_path)
+        except OSError:
+            _LOG.warning("replay_export_failed path=%s", out_path)
+            return
+        _LOG.info("replay_export_written path=%s", exported)
+
+    def _export_profiling_on_shutdown(self) -> None:
+        snapshot = self._diagnostics_profiler.snapshot(limit=50_000)
+        spans = list(getattr(snapshot, "spans", []))
+        if not spans:
+            return
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
+        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        out_dir = Path(self._diag_cfg.profile_export_dir)
+        out_path = out_dir / f"{game_name}_profiling_data_{stamp}.jsonl"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with out_path.open("w", encoding="utf-8") as out:
+                for span in spans:
+                    payload = {
+                        "tick": int(getattr(span, "tick", 0)),
+                        "category": str(getattr(span, "category", "")),
+                        "name": str(getattr(span, "name", "")),
+                        "start_s": float(getattr(span, "start_s", 0.0)),
+                        "end_s": float(getattr(span, "end_s", 0.0)),
+                        "duration_ms": float(getattr(span, "duration_ms", 0.0)),
+                        "metadata": dict(getattr(span, "metadata", {}) or {}),
+                    }
+                    out.write(json.dumps(payload, ensure_ascii=True))
+                    out.write("\n")
+        except OSError:
+            _LOG.warning("profiling_export_failed path=%s", out_path)
+            return
+        _LOG.info("profiling_export_written path=%s spans=%d", out_path, len(spans))
 
 
 def _profiling_snapshot_payload(snapshot: object) -> dict[str, object]:

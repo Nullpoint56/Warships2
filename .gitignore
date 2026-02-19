@@ -212,7 +212,9 @@ __marimo__/
 
 
 # IDE specific
-.idea
+.idea/*
+!.idea/runConfigurations/
+!.idea/runConfigurations/*.xml
 
 # Project specific
 data

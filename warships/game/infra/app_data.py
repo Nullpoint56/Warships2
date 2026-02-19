@@ -32,6 +32,26 @@ def resolve_logs_dir() -> Path:
     return resolve_app_data_root() / "logs"
 
 
+def resolve_ui_dir() -> Path:
+    """Resolve UI trace directory under app-data root."""
+    return resolve_app_data_root() / "ui"
+
+
+def resolve_profiling_dir() -> Path:
+    """Resolve profiling directory under app-data root."""
+    return resolve_app_data_root() / "profiling"
+
+
+def resolve_replay_dir() -> Path:
+    """Resolve replay directory under app-data root."""
+    return resolve_app_data_root() / "replay"
+
+
+def resolve_crash_dir() -> Path:
+    """Resolve crash bundle directory under app-data root."""
+    return resolve_app_data_root() / "crash"
+
+
 def resolve_presets_dir() -> Path:
     """Resolve presets directory under app-data root."""
     return resolve_app_data_root() / "presets"
@@ -46,13 +66,30 @@ def ensure_app_data_dirs() -> dict[str, Path]:
     """Create app-data directories and return resolved paths."""
     root = resolve_app_data_root()
     logs = resolve_logs_dir()
+    ui = resolve_ui_dir()
+    profiling = resolve_profiling_dir()
+    replay = resolve_replay_dir()
+    crash = resolve_crash_dir()
     presets = resolve_presets_dir()
     saves = resolve_saves_dir()
     root.mkdir(parents=True, exist_ok=True)
     logs.mkdir(parents=True, exist_ok=True)
+    ui.mkdir(parents=True, exist_ok=True)
+    profiling.mkdir(parents=True, exist_ok=True)
+    replay.mkdir(parents=True, exist_ok=True)
+    crash.mkdir(parents=True, exist_ok=True)
     presets.mkdir(parents=True, exist_ok=True)
     saves.mkdir(parents=True, exist_ok=True)
-    return {"root": root, "logs": logs, "presets": presets, "saves": saves}
+    return {
+        "root": root,
+        "logs": logs,
+        "ui": ui,
+        "profiling": profiling,
+        "replay": replay,
+        "crash": crash,
+        "presets": presets,
+        "saves": saves,
+    }
 
 
 def apply_runtime_path_defaults() -> dict[str, Path]:
@@ -60,13 +97,33 @@ def apply_runtime_path_defaults() -> dict[str, Path]:
     paths = ensure_app_data_dirs()
     log_dir = _normalize_runtime_path_env("WARSHIPS_LOG_DIR", paths["logs"])
     presets_dir = _normalize_runtime_path_env("WARSHIPS_PRESETS_DIR", paths["presets"])
-    trace_dump_dir = _normalize_runtime_path_env("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", paths["logs"])
+    trace_dump_dir = _normalize_runtime_path_env("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", paths["ui"])
+    profiling_dir = _normalize_runtime_path_env(
+        "ENGINE_DIAG_PROFILE_EXPORT_DIR", paths["profiling"]
+    )
+    replay_dir = _normalize_runtime_path_env("ENGINE_DIAG_REPLAY_EXPORT_DIR", paths["replay"])
+    crash_dir = _normalize_runtime_path_env("ENGINE_DIAG_CRASH_DIR", paths["crash"])
+    if not os.getenv("ENGINE_GAME_NAME", "").strip():
+        game_name = os.getenv("WARSHIPS_GAME_NAME", "warships").strip() or "warships"
+        os.environ["ENGINE_GAME_NAME"] = game_name
 
     log_dir.mkdir(parents=True, exist_ok=True)
     presets_dir.mkdir(parents=True, exist_ok=True)
     trace_dump_dir.mkdir(parents=True, exist_ok=True)
+    profiling_dir.mkdir(parents=True, exist_ok=True)
+    replay_dir.mkdir(parents=True, exist_ok=True)
+    crash_dir.mkdir(parents=True, exist_ok=True)
 
-    return {"root": paths["root"], "logs": log_dir, "presets": presets_dir, "saves": paths["saves"]}
+    return {
+        "root": paths["root"],
+        "logs": log_dir,
+        "ui": trace_dump_dir,
+        "profiling": profiling_dir,
+        "replay": replay_dir,
+        "crash": crash_dir,
+        "presets": presets_dir,
+        "saves": paths["saves"],
+    }
 
 
 def _normalize_runtime_path_env(var_name: str, default_path: Path) -> Path:

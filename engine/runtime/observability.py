@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
@@ -69,13 +70,19 @@ def _parse_iso_timestamp(value: object) -> datetime | None:
 
 
 def _extract_stamp(path: Path, prefix: str) -> datetime | None:
-    name = path.name
-    if not name.startswith(prefix):
-        return None
-    raw = name[len(prefix) :]
-    if raw.endswith(".jsonl"):
-        raw = raw[:-6]
-    raw = raw.split("_", 1)[0]
+    name = path.stem
+    # New pattern: <game>_<kind>_<YYYYMMDDTHHMMSS>[...]
+    match = re.search(r"_(\d{8}T\d{6})(?:_|$)", name)
+    if match:
+        raw = match.group(1)
+    else:
+        # Legacy pattern support: warships_run_<stamp>, ui_diag_run_<stamp>
+        if not path.name.startswith(prefix):
+            return None
+        raw = path.name[len(prefix) :]
+        if raw.endswith(".jsonl"):
+            raw = raw[:-6]
+        raw = raw.split("_", 1)[0]
     try:
         return datetime.strptime(raw, "%Y%m%dT%H%M%S")
     except ValueError:
@@ -102,12 +109,30 @@ def _p95(values: list[float]) -> float | None:
 
 
 def discover_session_bundles(log_dir: Path, *, recursive: bool = False) -> list[SessionBundle]:
+    search_roots = [log_dir]
+    if log_dir.name == "logs":
+        # Allow passing appdata/logs while ui traces are in sibling appdata/ui.
+        search_roots.append(log_dir.parent)
     if recursive:
-        run_logs = sorted(log_dir.rglob("warships_run_*.jsonl"))
-        ui_logs = sorted(log_dir.rglob("ui_diag_run_*.jsonl"))
+        run_logs = []
+        ui_logs = []
+        for root in search_roots:
+            run_logs.extend(root.rglob("*_logs_*.jsonl"))
+            run_logs.extend(root.rglob("warships_run_*.jsonl"))
+            ui_logs.extend(root.rglob("*_ui_trace_*.jsonl"))
+            ui_logs.extend(root.rglob("ui_diag_run_*.jsonl"))
+        run_logs = sorted(set(run_logs))
+        ui_logs = sorted(set(ui_logs))
     else:
-        run_logs = sorted(log_dir.glob("warships_run_*.jsonl"))
-        ui_logs = sorted(log_dir.glob("ui_diag_run_*.jsonl"))
+        run_logs = []
+        ui_logs = []
+        for root in search_roots:
+            run_logs.extend(root.glob("*_logs_*.jsonl"))
+            run_logs.extend(root.glob("warships_run_*.jsonl"))
+            ui_logs.extend(root.glob("*_ui_trace_*.jsonl"))
+            ui_logs.extend(root.glob("ui_diag_run_*.jsonl"))
+        run_logs = sorted(set(run_logs))
+        ui_logs = sorted(set(ui_logs))
     run_items = [(p, _extract_stamp(p, "warships_run_")) for p in run_logs]
     ui_items = [(p, _extract_stamp(p, "ui_diag_run_")) for p in ui_logs]
 

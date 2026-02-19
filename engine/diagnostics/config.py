@@ -37,14 +37,14 @@ class DiagnosticsConfig:
     enabled: bool = True
     buffer_capacity: int = 10_000
     crash_bundle_enabled: bool = True
-    crash_bundle_dir: str = "tools/data/crash"
+    crash_bundle_dir: str = "appdata/crash"
     crash_recent_events_limit: int = 400
     profile_mode: str = "off"
     profile_sampling_n: int = 1
     profile_span_capacity: int = 5_000
-    profile_export_dir: str = "tools/data/profiles"
+    profile_export_dir: str = "appdata/profiling"
     replay_capture: bool = False
-    replay_export_dir: str = "tools/data/replay"
+    replay_export_dir: str = "appdata/replay"
     replay_hash_interval: int = 60
 
 
@@ -56,14 +56,14 @@ def load_diagnostics_config() -> DiagnosticsConfig:
         enabled=_flag("ENGINE_DIAG_ENABLED", True),
         buffer_capacity=max(100, _int("ENGINE_DIAG_BUFFER_CAP", 10_000)),
         crash_bundle_enabled=_flag("ENGINE_DIAG_CRASH_BUNDLE", True),
-        crash_bundle_dir=_str("ENGINE_DIAG_CRASH_DIR", "tools/data/crash"),
+        crash_bundle_dir=_str("ENGINE_DIAG_CRASH_DIR", "appdata/crash"),
         crash_recent_events_limit=max(10, _int("ENGINE_DIAG_CRASH_RECENT_EVENTS", 400)),
         profile_mode=mode,
         profile_sampling_n=max(1, _int("ENGINE_DIAG_PROFILE_SAMPLING_N", 1)),
         profile_span_capacity=max(100, _int("ENGINE_DIAG_PROFILE_SPAN_CAP", 5_000)),
-        profile_export_dir=_str("ENGINE_DIAG_PROFILE_EXPORT_DIR", "tools/data/profiles"),
+        profile_export_dir=_str("ENGINE_DIAG_PROFILE_EXPORT_DIR", "appdata/profiling"),
         replay_capture=_flag("ENGINE_DIAG_REPLAY_CAPTURE", False),
-        replay_export_dir=_str("ENGINE_DIAG_REPLAY_EXPORT_DIR", "tools/data/replay"),
+        replay_export_dir=_str("ENGINE_DIAG_REPLAY_EXPORT_DIR", "appdata/replay"),
         replay_hash_interval=max(1, _int("ENGINE_DIAG_REPLAY_HASH_INTERVAL", 60)),
     )
 
