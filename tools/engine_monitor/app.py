@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, X, Y, Canvas, StringVar, Tk, ttk
+from tkinter import BOTH, END, LEFT, RIGHT, VERTICAL, Canvas, StringVar, Tk, X, Y, ttk
 from tkinter.scrolledtext import ScrolledText
 
-from tools.engine_obs_core.datasource.live_source import LiveObsSource
 from tools.engine_monitor.views.health import build_health_view_model
 from tools.engine_monitor.views.hitches import build_hitch_rows
 from tools.engine_monitor.views.render_resize import build_render_resize_model
 from tools.engine_monitor.views.timeline import build_timeline_points
+from tools.engine_obs_core.datasource.live_source import LiveObsSource
 
 
 class MonitorApp:
@@ -83,8 +83,9 @@ class MonitorApp:
 
     def _tick_once(self) -> None:
         snap = self.source.poll()
+        polled_at = snap.polled_at_utc or "n/a"
         self.status_var.set(
-            f"events={len(snap.events)} spans={len(snap.spans)} polled={snap.polled_at_utc or 'n/a'}"
+            f"events={len(snap.events)} spans={len(snap.spans)} polled={polled_at}"
         )
         self._update_health(snap)
         self._update_timeline(snap)

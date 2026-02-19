@@ -38,7 +38,9 @@ def build_crash_focus_text(
         "recent:",
     ]
     for event in recent:
-        lines.append(
-            f"- ts={event.ts_utc} tick={event.tick} level={event.level} category={event.category} name={event.name}"
+        summary = (
+            f"- ts={event.ts_utc} tick={event.tick} "
+            f"level={event.level} category={event.category} name={event.name}"
         )
+        lines.append(summary)
     return "\n".join(lines)

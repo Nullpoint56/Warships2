@@ -1,14 +1,9 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from tkinter import TclError, Tk
 
 import pytest
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from tools.engine_monitor.app import MonitorApp
 from tools.engine_session_inspector.app import SessionInspectorApp

@@ -1,12 +1,7 @@
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from engine.api.debug import ReplayValidationView
 from tools.engine_repro_lab.runner import (
@@ -42,7 +37,7 @@ def test_load_replay_snapshot_rejects_non_object(tmp_path: Path) -> None:
     except ValueError as exc:
         assert "JSON object" in str(exc)
     else:
-        assert False, "Expected ValueError for non-object replay payload."
+        raise AssertionError("Expected ValueError for non-object replay payload.")
 
 
 def test_run_validation_from_file_uses_engine_api(tmp_path: Path, monkeypatch) -> None:

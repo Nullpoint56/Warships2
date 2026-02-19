@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Iterable
+from typing import Any
 
 from tools.engine_repro_lab.runner import ValidationConfig, ValidationRun, run_validation_from_file
-
 
 SimulatorFactory = Callable[[], tuple[Any, Any]]
 

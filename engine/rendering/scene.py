@@ -648,9 +648,12 @@ class SceneRenderer:
             return "unknown"
 
     def _resolve_runtime_info(self) -> dict[str, object]:
+        renderer_type = (
+            f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}"
+        )
         return {
             "canvas_type": f"{self.canvas.__class__.__module__}.{self.canvas.__class__.__name__}",
-            "renderer_type": f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}",
+            "renderer_type": renderer_type,
             "camera_type": f"{self.camera.__class__.__module__}.{self.camera.__class__.__name__}",
             "versions": {
                 "pygfx": self._package_version("pygfx"),

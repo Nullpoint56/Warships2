@@ -1,19 +1,13 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from time import perf_counter
 
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
-
-from tools.engine_obs_core.contracts import EventRecord, FramePoint, SpanRecord
-from tools.engine_obs_core.datasource.live_source import LiveSnapshot
 from tools.engine_monitor.views.health import build_health_view_model
 from tools.engine_monitor.views.hitches import build_hitch_rows
 from tools.engine_monitor.views.render_resize import build_render_resize_model
 from tools.engine_monitor.views.timeline import build_timeline_points
+from tools.engine_obs_core.contracts import EventRecord, FramePoint, SpanRecord
+from tools.engine_obs_core.datasource.live_source import LiveSnapshot
 
 
 def _big_snapshot() -> LiveSnapshot:

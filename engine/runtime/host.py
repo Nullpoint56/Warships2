@@ -2,28 +2,28 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import os
-import json
-from importlib.metadata import PackageNotFoundError, version
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
+from engine.api.game_module import GameModule, HostControl, HostFrameContext
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.render import RenderAPI
 from engine.diagnostics import (
     CrashBundleWriter,
     DiagnosticHub,
+    DiagnosticsMetricsStore,
     DiagnosticsProfiler,
     ReplayRecorder,
-    DiagnosticsMetricsStore,
     emit_frame_metrics,
     load_diagnostics_config,
     resolve_crash_bundle_dir,
 )
-from engine.api.game_module import GameModule, HostControl, HostFrameContext
-from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
-from engine.api.render import RenderAPI
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
 from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector

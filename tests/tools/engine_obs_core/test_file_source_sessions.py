@@ -8,10 +8,14 @@ from tools.engine_obs_core.datasource.file_source import FileObsSource
 def _write_session_files(root: Path) -> None:
     run = root / "warships_run_20260101T000000.jsonl"
     ui = root / "ui_diag_run_20260101T000000.jsonl"
+    run_first = (
+        '{"ts":"2026-01-01T00:00:00","logger":"engine.runtime",'
+        '"level":"INFO","msg":"frame_metrics frame=1 dt_ms=16.0"}'
+    )
     run.write_text(
         "\n".join(
             [
-                '{"ts":"2026-01-01T00:00:00","logger":"engine.runtime","level":"INFO","msg":"frame_metrics frame=1 dt_ms=16.0"}',
+                run_first,
                 '{"ts":"2026-01-01T00:00:01","logger":"engine.rendering.scene","level":"INFO","msg":"resize_event"}',
             ]
         ),

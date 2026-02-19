@@ -12,11 +12,11 @@ from engine.diagnostics.schema import (
     ENGINE_CRASH_BUNDLE_SCHEMA_VERSION,
 )
 from tools.engine_obs_core.contracts import (
+    CrashBundleRecord,
     EventRecord,
     ReplayCheckpointRecord,
     ReplayCommandRecord,
     SpanRecord,
-    CrashBundleRecord,
     is_crash_bundle_payload,
     is_profiling_payload,
     is_replay_payload,
@@ -304,12 +304,14 @@ class FileObsSource(ObsSource):
             if subdir == "profiling":
                 candidates.append(session.root / "profiles")
                 candidates.append(session.root.parent / "profiles")
+                candidates.append(session.root / "tools" / "data" / "profiles")
         candidates.append(self._root / subdir)
         candidates.append(self._root.parent / subdir)
         candidates.append(self._root / "tools" / "data" / subdir)
         if subdir == "profiling":
             candidates.append(self._root / "profiles")
             candidates.append(self._root.parent / "profiles")
+            candidates.append(self._root / "tools" / "data" / "profiles")
 
         json_paths: list[Path] = []
         for base in candidates:

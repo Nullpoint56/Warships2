@@ -12,42 +12,42 @@ repos:
 
       - id: ruff-docs-format
         name: ruff format docs
-        entry: uv run ruff format --check docs README.md
+        entry: uv run ruff format --preview --check docs README.md
         language: system
         pass_filenames: false
         files: ^(docs/|.*\.md$)
 
       - id: check-engine-or-warships
         name: quality check (engine/warships)
-        entry: uv run python scripts/check.py
+        entry: uv run python scripts/check.py --skip-lint-format-typecheck
         language: system
         pass_filenames: false
         files: ^(engine/|warships/)
 
       - id: check-tests-engine
         name: quality check (tests/engine)
-        entry: uv run python scripts/check.py --skip-warships-tests
+        entry: uv run python scripts/check.py --skip-lint-format-typecheck --skip-warships-tests
         language: system
         pass_filenames: false
         files: ^tests/engine/
 
       - id: check-tests-warships
         name: quality check (tests/warships)
-        entry: uv run python scripts/check.py --skip-engine-tests
+        entry: uv run python scripts/check.py --skip-lint-format-typecheck --skip-engine-tests
         language: system
         pass_filenames: false
         files: ^tests/warships/
 
       - id: check-tools
         name: quality check (tools)
-        entry: uv run python scripts/check.py --skip-engine-tests --skip-warships-tests
+        entry: uv run python scripts/check.py --skip-lint-format-typecheck --skip-engine-tests --skip-warships-tests
         language: system
         pass_filenames: false
         files: ^tools/
 
       - id: check-rerun-everything
         name: quality check (config/scripts/workflows)
-        entry: uv run python scripts/check.py
+        entry: uv run python scripts/check.py --skip-lint-format-typecheck
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|pytest\.ini|uv\.lock|scripts/|\.github/)

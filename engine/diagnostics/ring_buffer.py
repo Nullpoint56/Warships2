@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
 
-T = TypeVar("T")
-
-
-class RingBuffer(Generic[T]):
+class RingBuffer[T]:
     """Drop-oldest ring buffer with O(1) append."""
 
     def __init__(self, capacity: int) -> None:

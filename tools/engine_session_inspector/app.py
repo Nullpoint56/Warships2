@@ -8,14 +8,14 @@ from tkinter import (
     LEFT,
     RIGHT,
     VERTICAL,
-    X,
-    Y,
     Canvas,
     StringVar,
     Tk,
+    X,
+    Y,
+    simpledialog,
     ttk,
 )
-from tkinter import simpledialog
 from tkinter.scrolledtext import ScrolledText
 
 from tools.engine_obs_core.datasource.file_source import FileObsSource
@@ -813,7 +813,7 @@ class SessionInspectorApp:
                 total_ms = float(row[2])
                 y0 = bar_top + idx * row_h
                 y1 = min(bar_bottom, y0 + row_h - 3)
-                fill_w = int(((bar_right - bar_left) * (total_ms / max_total)))
+                fill_w = int((bar_right - bar_left) * (total_ms / max_total))
                 canvas.create_rectangle(
                     bar_left, y0, bar_left + fill_w, y1, fill="#3b82f6", outline=""
                 )

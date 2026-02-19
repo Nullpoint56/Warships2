@@ -102,9 +102,11 @@ def main() -> int:
         print(f"total_replays={summary.total_replays}")
         print(f"passed={summary.passed_count} failed={summary.failed_count}")
         print(f"total_mismatches={summary.total_mismatches}")
-        print(
-            f"worst_replay={summary.worst_replay} worst_mismatch_count={summary.worst_mismatch_count}"
+        worst_line = (
+            f"worst_replay={summary.worst_replay} "
+            f"worst_mismatch_count={summary.worst_mismatch_count}"
         )
+        print(worst_line)
         return 0 if summary.failed_count == 0 else 1
 
     if args.baseline_dir is not None or args.candidate_dir is not None:
@@ -125,17 +127,23 @@ def main() -> int:
         )
         diffs, summary = compare_batch_runs(baseline_runs, candidate_runs)
         print(f"total_compared={summary.total_compared}")
-        print(
-            f"regressions={summary.regressions} improvements={summary.improvements} unchanged={summary.unchanged}"
+        summary_line = (
+            f"regressions={summary.regressions} "
+            f"improvements={summary.improvements} "
+            f"unchanged={summary.unchanged}"
         )
+        print(summary_line)
         print(f"missing_in_candidate={len(summary.missing_in_candidate)}")
         print(f"missing_in_baseline={len(summary.missing_in_baseline)}")
         if diffs:
             first = diffs[0]
+            divergence_tick = (
+                first.first_divergence.tick if first.first_divergence is not None else "n/a"
+            )
             print(
                 f"sample_diff replay={first.replay_path} "
                 f"delta={first.mismatch_delta} "
-                f"first_divergence_tick={first.first_divergence.tick if first.first_divergence else 'n/a'}"
+                f"first_divergence_tick={divergence_tick}"
             )
         return 0 if summary.regressions == 0 else 1
 

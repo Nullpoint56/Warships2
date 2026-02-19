@@ -1,12 +1,6 @@
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from time import perf_counter
-
-ROOT = Path(__file__).resolve().parents[3]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from tools.engine_obs_core.aggregations import compute_frame_stats, top_span_aggregates
 from tools.engine_obs_core.contracts import EventRecord, SpanRecord

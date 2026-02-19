@@ -7,8 +7,12 @@ from tools.engine_obs_core.datasource.file_source import FileObsSource
 
 
 def _write_session_files(root: Path) -> None:
+    run_line = (
+        '{"ts":"2026-01-01T00:00:00","logger":"engine.runtime",'
+        '"level":"INFO","msg":"frame_metrics frame=1 dt_ms=16.0"}\n'
+    )
     (root / "warships_run_20260101T000000.jsonl").write_text(
-        '{"ts":"2026-01-01T00:00:00","logger":"engine.runtime","level":"INFO","msg":"frame_metrics frame=1 dt_ms=16.0"}\n',
+        run_line,
         encoding="utf-8",
     )
     (root / "ui_diag_run_20260101T000000.jsonl").write_text(

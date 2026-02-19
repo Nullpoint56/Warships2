@@ -35,4 +35,4 @@ def _resolve_run_log_file_path() -> str:
     base_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     game_name = os.getenv("WARSHIPS_GAME_NAME", "warships").strip() or "warships"
-    return str(base_dir / f"{game_name}_logs_{stamp}.jsonl")
+    return str(base_dir / f"{game_name}_run_{stamp}.jsonl")
