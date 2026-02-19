@@ -2,9 +2,15 @@ name: Build Windows EXE
 
 on:
   pull_request:
+    paths:
+      - 'engine/**'
+      - 'warships/**'
   push:
     branches:
       - main
+    paths:
+      - 'engine/**'
+      - 'warships/**'
     tags:
       - "v*"
   workflow_dispatch:

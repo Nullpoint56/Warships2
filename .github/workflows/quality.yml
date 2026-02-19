@@ -2,9 +2,19 @@ name: Quality
 
 on:
   pull_request:
+    paths:
+      - 'warships/**'
+      - 'engine/**'
+      - 'tests/**'
+      - 'tools/**'
   push:
     branches:
       - main
+    paths:
+      - 'warships/**'
+      - 'engine/**'
+      - 'tests/**'
+      - 'tools/**'
 
 jobs:
   lint_format_typecheck:
