@@ -1,5 +1,7 @@
 # Warships2
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Nullpoint56/Warships2)
+
 PyGFX-based Warships game running on an engine-hosted runtime.
 
 ## Run (Dev)
