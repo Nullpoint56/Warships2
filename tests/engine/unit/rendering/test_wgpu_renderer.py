@@ -409,6 +409,18 @@ class _FakeQueue:
         self.submissions.append(cmds)
 
 
+class _FlakyQueue(_FakeQueue):
+    def __init__(self, fail_times: int = 1) -> None:
+        super().__init__()
+        self._fail_times = fail_times
+
+    def submit(self, cmds: list[object]) -> None:
+        if self._fail_times > 0:
+            self._fail_times -= 1
+            raise RuntimeError("submit failed")
+        super().submit(cmds)
+
+
 class _FakeTexture:
     def create_view(self) -> object:
         return object()
@@ -554,6 +566,18 @@ def test_wgpu_backend_present_mode_fallback_chain(monkeypatch) -> None:
     assert backend._present_mode == "immediate"  # noqa: SLF001
 
 
+def test_wgpu_backend_present_mode_vsync_on_fallback_chain(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    monkeypatch.setenv("ENGINE_RENDER_VSYNC", "1")
+    monkeypatch.setenv("ENGINE_WGPU_PRESENT_MODES", "immediate")
+    backend = _WgpuBackend()
+
+    assert backend._present_mode == "immediate"  # noqa: SLF001
+    telemetry = backend.resize_telemetry()
+    assert telemetry["vsync_enabled"] is True
+    assert telemetry["present_mode_supported"] == ("immediate",)
+
+
 def test_wgpu_backend_color_policy_uses_srgb_surface_and_linear_payload(monkeypatch) -> None:
     _install_fake_wgpu_module(monkeypatch)
     backend = _WgpuBackend()
@@ -651,3 +675,42 @@ def test_wgpu_backend_fails_when_system_font_discovery_fails(monkeypatch) -> Non
     with pytest.raises(WgpuInitError, match="wgpu backend initialization failed") as exc_info:
         _WgpuBackend()
     assert "font_candidates_checked" in exc_info.value.details
+
+
+def test_wgpu_backend_acquire_frame_view_recovers_after_one_failure(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+
+    class _FlakyContext:
+        def __init__(self) -> None:
+            self.failures_left = 1
+
+        def get_current_texture(self):
+            if self.failures_left > 0:
+                self.failures_left -= 1
+                raise RuntimeError("acquire failed")
+            return _FakeTexture()
+
+        def configure(self, **kwargs) -> None:
+            _ = kwargs
+
+    backend._canvas_context = _FlakyContext()  # noqa: SLF001
+    view = backend._acquire_frame_color_view()  # noqa: SLF001
+
+    assert view is not None
+    telemetry = backend.resize_telemetry()
+    assert int(telemetry["acquire_failures"]) >= 1
+    assert int(telemetry["acquire_recoveries"]) >= 1
+
+
+def test_wgpu_backend_present_recovers_after_submit_failure(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._queue = _FlakyQueue(fail_times=1)  # noqa: SLF001
+    backend._command_encoder = _FakeEncoder()  # noqa: SLF001
+
+    backend.present()
+
+    telemetry = backend.resize_telemetry()
+    assert int(telemetry["present_failures"]) >= 1
+    assert int(telemetry["present_recoveries"]) >= 1

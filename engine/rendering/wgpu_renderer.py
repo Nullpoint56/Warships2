@@ -847,6 +847,15 @@ class _WgpuBackend:
     _design_width: int = field(init=False, default=1200)
     _design_height: int = field(init=False, default=720)
     _preserve_aspect: bool = field(init=False, default=False)
+    _acquire_attempts_last: int = field(init=False, default=0)
+    _acquire_failures: int = field(init=False, default=0)
+    _acquire_recoveries: int = field(init=False, default=0)
+    _present_attempts_last: int = field(init=False, default=0)
+    _present_failures: int = field(init=False, default=0)
+    _present_recoveries: int = field(init=False, default=0)
+    _last_present_error: str = field(init=False, default="")
+    _vsync_enabled: bool = field(init=False, default=True)
+    _present_mode_supported: tuple[str, ...] = field(init=False, default=("fifo", "mailbox", "immediate"))
 
     def __post_init__(self) -> None:
         self._preserve_aspect = resolve_preserve_aspect()
@@ -947,10 +956,30 @@ class _WgpuBackend:
         finish = getattr(encoder, "finish", None)
         if not callable(finish):
             return
-        command_buffer = finish()
-        submit = getattr(self._queue, "submit", None)
-        if callable(submit):
-            submit([command_buffer])
+        self._present_attempts_last = 0
+        for attempt in range(1, self._reconfigure_retry_limit + 1):
+            self._present_attempts_last = attempt
+            try:
+                command_buffer = finish()
+                submit = getattr(self._queue, "submit", None)
+                if callable(submit):
+                    submit([command_buffer])
+                return
+            except Exception as exc:
+                self._present_failures += 1
+                self._last_present_error = f"{exc.__class__.__name__}: {exc}"
+                recovered = self._recover_surface_context(reason="present_submit")
+                if recovered:
+                    self._present_recoveries += 1
+                    continue
+                if attempt >= self._reconfigure_retry_limit:
+                    raise RuntimeError(
+                        "wgpu_present_failed "
+                        f"attempts={self._present_attempts_last} "
+                        f"present_mode={self._present_mode} "
+                        f"size=({self._target_width},{self._target_height}) "
+                        f"error={self._last_present_error}"
+                    ) from exc
 
     def end_frame(self) -> None:
         self._command_encoder = None
@@ -975,6 +1004,7 @@ class _WgpuBackend:
         self._surface_state["physical_width"] = self._target_width
         self._surface_state["physical_height"] = self._target_height
         self._surface_state["dpi_scale"] = float(event.dpi_scale)
+        self._configure_canvas_context()
         self._rebuild_frame_targets_with_retry()
         return
 
@@ -991,10 +1021,19 @@ class _WgpuBackend:
             "reconfigure_attempts": int(self._reconfigure_attempts_last),
             "reconfigure_failures": int(self._reconfigure_failures),
             "present_mode": str(self._present_mode),
+            "present_mode_supported": tuple(self._present_mode_supported),
+            "vsync_enabled": bool(self._vsync_enabled),
             "surface_format": str(self._surface_format),
             "width": int(self._target_width),
             "height": int(self._target_height),
             "dpi_scale": dpi,
+            "acquire_attempts": int(self._acquire_attempts_last),
+            "acquire_failures": int(self._acquire_failures),
+            "acquire_recoveries": int(self._acquire_recoveries),
+            "present_attempts": int(self._present_attempts_last),
+            "present_failures": int(self._present_failures),
+            "present_recoveries": int(self._present_recoveries),
+            "last_present_error": str(self._last_present_error),
         }
 
     def _request_adapter(self) -> tuple[object, str]:
@@ -1094,6 +1133,8 @@ class _WgpuBackend:
             state["backend"] = str(self.surface.backend)
         state["present_mode"] = self._resolve_present_mode()
         self._present_mode = str(state["present_mode"])
+        state["present_mode_supported"] = tuple(self._present_mode_supported)
+        state["vsync_enabled"] = bool(self._vsync_enabled)
         return state
 
     def _setup_pipelines(self) -> None:
@@ -1164,8 +1205,10 @@ class _WgpuBackend:
             supported = tuple(item.strip() for item in raw_supported.split(",") if item.strip())
         else:
             supported = ("fifo", "mailbox", "immediate")
+        self._present_mode_supported = tuple(supported)
         vsync_raw = os.getenv("ENGINE_RENDER_VSYNC", "1").strip().lower()
         vsync = vsync_raw in {"1", "true", "yes", "on"}
+        self._vsync_enabled = bool(vsync)
         if vsync:
             preferred = ("fifo", "mailbox", "immediate")
         else:
@@ -1222,26 +1265,7 @@ class _WgpuBackend:
         if context is None:
             return
         self._canvas_context = context
-        configure = getattr(context, "configure", None)
-        if not callable(configure):
-            return
-        try:
-            configure(
-                device=self._device,
-                format=self._surface_format,
-                usage=_resolve_texture_usage(self._wgpu),
-                present_mode=self._present_mode,
-                alpha_mode="premultiplied",
-            )
-        except TypeError:
-            try:
-                configure(
-                    device=self._device,
-                    format=self._surface_format,
-                    present_mode=self._present_mode,
-                )
-            except TypeError:
-                configure(device=self._device, format=self._surface_format)
+        self._configure_canvas_context()
 
     def _acquire_frame_color_view(self) -> object | None:
         context = self._canvas_context
@@ -1250,11 +1274,67 @@ class _WgpuBackend:
         get_current_texture = getattr(context, "get_current_texture", None)
         if not callable(get_current_texture):
             return None
-        texture = get_current_texture()
-        create_view = getattr(texture, "create_view", None)
-        if callable(create_view):
-            return cast(object, create_view())
-        return cast(object, texture)
+        self._acquire_attempts_last = 0
+        for attempt in range(1, self._reconfigure_retry_limit + 1):
+            self._acquire_attempts_last = attempt
+            try:
+                texture = get_current_texture()
+                create_view = getattr(texture, "create_view", None)
+                if callable(create_view):
+                    return cast(object, create_view())
+                return cast(object, texture)
+            except Exception:
+                self._acquire_failures += 1
+                if self._recover_surface_context(reason="acquire_current_texture"):
+                    self._acquire_recoveries += 1
+                    continue
+                return None
+        return None
+
+    def _configure_canvas_context(self) -> bool:
+        context = self._canvas_context
+        if context is None:
+            return False
+        configure = getattr(context, "configure", None)
+        if not callable(configure):
+            return False
+        try:
+            configure(
+                device=self._device,
+                format=self._surface_format,
+                usage=_resolve_texture_usage(self._wgpu),
+                present_mode=self._present_mode,
+                alpha_mode="premultiplied",
+                size=(int(self._target_width), int(self._target_height)),
+            )
+            return True
+        except TypeError:
+            try:
+                configure(
+                    device=self._device,
+                    format=self._surface_format,
+                    present_mode=self._present_mode,
+                    size=(int(self._target_width), int(self._target_height)),
+                )
+                return True
+            except TypeError:
+                try:
+                    configure(device=self._device, format=self._surface_format)
+                    return True
+                except Exception:
+                    return False
+        except Exception:
+            return False
+
+    def _recover_surface_context(self, *, reason: str) -> bool:
+        _ = reason
+        configured = self._configure_canvas_context()
+        try:
+            self._rebuild_frame_targets_with_retry()
+            rebuilt = True
+        except Exception:
+            rebuilt = False
+        return bool(configured or rebuilt)
 
     def _geometry_pipeline_descriptor(self, color_target: object, shader: object) -> dict[str, object]:
         return {
