@@ -8,7 +8,7 @@ import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.window import SurfaceHandle, WindowResizeEvent
@@ -72,6 +72,15 @@ class _DrawPacket:
     sort_key: str
     transform: tuple[float, ...]
     data: tuple[tuple[str, object], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _DrawRect:
+    x: float
+    y: float
+    w: float
+    h: float
+    color: tuple[float, float, float, float]
 
 
 @dataclass(slots=True)
@@ -524,6 +533,100 @@ def _srgb_to_linear_channel(value: float) -> float:
     return float(((clamped + 0.055) / 1.055) ** 2.4)
 
 
+def _normalize_rgba(value: object) -> tuple[float, float, float, float]:
+    if not isinstance(value, tuple) or len(value) < 4:
+        return (1.0, 1.0, 1.0, 1.0)
+    rgba: list[float] = []
+    for channel in value[:4]:
+        if isinstance(channel, (int, float)):
+            rgba.append(min(1.0, max(0.0, float(channel))))
+        else:
+            rgba.append(1.0)
+    return (rgba[0], rgba[1], rgba[2], rgba[3])
+
+
+def _payload_float(payload: dict[str, object], key: str, default: float) -> float:
+    raw = payload.get(key, default)
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    return float(default)
+
+
+def _payload_int(payload: dict[str, object], key: str, default: int) -> int:
+    raw = payload.get(key, default)
+    if isinstance(raw, int):
+        return int(raw)
+    if isinstance(raw, float):
+        return int(round(raw))
+    return int(default)
+
+
+def _rect_from_payload(payload: dict[str, object], *, color: tuple[float, float, float, float]) -> _DrawRect:
+    return _DrawRect(
+        x=_payload_float(payload, "x", 0.0),
+        y=_payload_float(payload, "y", 0.0),
+        w=max(1.0, _payload_float(payload, "w", _payload_float(payload, "width", 1.0))),
+        h=max(1.0, _payload_float(payload, "h", _payload_float(payload, "height", 1.0))),
+        color=color,
+    )
+
+
+def _grid_draw_rects(
+    payload: dict[str, object], *, color: tuple[float, float, float, float]
+) -> tuple[_DrawRect, ...]:
+    x = _payload_float(payload, "x", 0.0)
+    y = _payload_float(payload, "y", 0.0)
+    width = max(1.0, _payload_float(payload, "width", 1.0))
+    height = max(1.0, _payload_float(payload, "height", 1.0))
+    lines = max(1, _payload_int(payload, "lines", 1))
+    divisions = max(1, lines)
+    thickness = max(1.0, min(width, height) / 300.0)
+    rects: list[_DrawRect] = []
+    for i in range(divisions + 1):
+        t = float(i) / float(divisions)
+        vx = x + (width * t)
+        hy = y + (height * t)
+        rects.append(
+            _DrawRect(
+                x=vx - (thickness * 0.5),
+                y=y,
+                w=thickness,
+                h=height,
+                color=color,
+            )
+        )
+        rects.append(
+            _DrawRect(
+                x=x,
+                y=hy - (thickness * 0.5),
+                w=width,
+                h=thickness,
+                color=color,
+            )
+        )
+    return tuple(rects)
+
+
+def _geometry_wgsl_for_color(color: tuple[float, float, float, float]) -> str:
+    r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
+    return f"""
+@vertex
+fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {{
+    var pos = array<vec2<f32>, 3>(
+        vec2<f32>(-1.0, -1.0),
+        vec2<f32>( 3.0, -1.0),
+        vec2<f32>(-1.0,  3.0),
+    );
+    return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+}}
+
+@fragment
+fn fs_main() -> @location(0) vec4<f32> {{
+    return vec4<f32>({r:.8f}, {g:.8f}, {b:.8f}, {a:.8f});
+}}
+"""
+
+
 @dataclass(slots=True)
 class _WgpuBackend:
     """Backend initialization scaffold used during migration."""
@@ -541,6 +644,7 @@ class _WgpuBackend:
     _text_pipeline: object | None = field(init=False, default=None)
     _frame_texture: object | None = field(init=False, default=None)
     _frame_texture_view: object | None = field(init=False, default=None)
+    _frame_color_view: object | None = field(init=False, default=None)
     _command_encoder: object | None = field(init=False, default=None)
     _queued_packets: list[tuple[str, tuple[_DrawPacket, ...]]] = field(init=False, default_factory=list)
     _target_width: int = field(init=False, default=1200)
@@ -560,6 +664,13 @@ class _WgpuBackend:
     _font_path: str = field(init=False, default="")
     _frame_in_flight: bool = field(init=False, default=False)
     _frame_in_flight_limit: int = field(init=False, default=1)
+    _clear_pending: bool = field(init=False, default=True)
+    _canvas: object | None = field(init=False, default=None)
+    _canvas_context: object | None = field(init=False, default=None)
+    _geometry_shader_module: object | None = field(init=False, default=None)
+    _geometry_pipeline_cache: dict[tuple[float, float, float, float], object] = field(
+        init=False, default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         try:
@@ -596,6 +707,7 @@ class _WgpuBackend:
         if self._queue is None:
             raise RuntimeError("wgpu device queue unavailable")
         self._surface_state = self._setup_surface_state()
+        self._init_canvas_surface_context()
         self._setup_pipelines()
         self._rebuild_frame_targets()
         self._wgpu_loaded = True
@@ -609,6 +721,8 @@ class _WgpuBackend:
             self._command_encoder = create_command_encoder(label="engine.wgpu.frame")
         else:
             self._command_encoder = SimpleNamespace()
+        self._frame_color_view = self._acquire_frame_color_view()
+        self._clear_pending = True
         self._queued_packets.clear()
 
     def draw_packets(self, pass_name: str, packets: tuple[_DrawPacket, ...]) -> None:
@@ -620,30 +734,27 @@ class _WgpuBackend:
         begin_render_pass = getattr(encoder, "begin_render_pass", None)
         if not callable(begin_render_pass):
             return
-        color_attachments = [
-            {
-                "view": self._frame_texture_view,
-                "clear_value": (0.0, 0.0, 0.0, 1.0),
-                "load_op": "clear",
-                "store_op": "store",
-            }
-        ]
-        render_pass = begin_render_pass(color_attachments=color_attachments)
-        set_pipeline = getattr(render_pass, "set_pipeline", None)
-        draw = getattr(render_pass, "draw", None)
+        target_view = self._frame_color_view or self._frame_texture_view
+        if target_view is None:
+            return
         for packet in packets:
-            pipeline = (
-                self._text_pipeline
-                if str(packet.kind) == "text"
-                else self._geometry_pipeline
-            )
-            if callable(set_pipeline) and pipeline is not None:
-                set_pipeline(pipeline)
-            if callable(draw):
-                draw(3, 1, 0, 0)
-        end = getattr(render_pass, "end", None)
-        if callable(end):
-            end()
+            for draw_rect in self._packet_draw_rects(packet):
+                color_attachments = [
+                    {
+                        "view": target_view,
+                        "clear_value": draw_rect.color,
+                        "load_op": "clear" if self._clear_pending else "load",
+                        "store_op": "store",
+                    }
+                ]
+                self._clear_pending = False
+                render_pass = begin_render_pass(color_attachments=color_attachments)
+                try:
+                    self._apply_draw_rect(render_pass, draw_rect)
+                finally:
+                    end = getattr(render_pass, "end", None)
+                    if callable(end):
+                        end()
 
     def present(self) -> None:
         encoder = self._command_encoder
@@ -659,6 +770,7 @@ class _WgpuBackend:
 
     def end_frame(self) -> None:
         self._command_encoder = None
+        self._frame_color_view = None
         self._frame_in_flight = False
         return
 
@@ -666,6 +778,7 @@ class _WgpuBackend:
         self._queued_packets.clear()
         self._frame_texture = None
         self._frame_texture_view = None
+        self._frame_color_view = None
         self._command_encoder = None
         return
 
@@ -807,18 +920,10 @@ class _WgpuBackend:
             self._text_pipeline = {"kind": "text", "format": self._surface_format}
             return
         geometry_shader = create_shader_module(code=_GEOMETRY_WGSL)
+        self._geometry_shader_module = geometry_shader
         text_shader = create_shader_module(code=_TEXT_WGSL)
         color_target = {"format": self._surface_format, "blend": None, "write_mask": 0xF}
-        geometry_descriptor = {
-            "layout": "auto",
-            "vertex": {"module": geometry_shader, "entry_point": "vs_main", "buffers": []},
-            "fragment": {
-                "module": geometry_shader,
-                "entry_point": "fs_main",
-                "targets": [color_target],
-            },
-            "primitive": {"topology": "triangle-list"},
-        }
+        geometry_descriptor = self._geometry_pipeline_descriptor(color_target, geometry_shader)
         text_descriptor = {
             "layout": "auto",
             "vertex": {"module": text_shader, "entry_point": "vs_main", "buffers": []},
@@ -831,6 +936,7 @@ class _WgpuBackend:
         }
         self._geometry_pipeline = create_render_pipeline(**geometry_descriptor)
         self._text_pipeline = create_render_pipeline(**text_descriptor)
+        self._geometry_pipeline_cache[(0.1, 0.1, 0.1, 1.0)] = self._geometry_pipeline
 
     def _rebuild_frame_targets(self) -> None:
         create_texture = getattr(self._device, "create_texture", None)
@@ -921,6 +1027,135 @@ class _WgpuBackend:
             except Exception:
                 pass
         self._stream_write_cursor = (self._stream_write_cursor + packet_count) % 1_000_000
+
+    def _init_canvas_surface_context(self) -> None:
+        provider = self.surface.provider if self.surface is not None else None
+        self._canvas = provider
+        get_context = getattr(provider, "get_context", None)
+        if not callable(get_context):
+            return
+        context = get_context("wgpu")
+        if context is None:
+            return
+        self._canvas_context = context
+        configure = getattr(context, "configure", None)
+        if not callable(configure):
+            return
+        try:
+            configure(
+                device=self._device,
+                format=self._surface_format,
+                usage=_resolve_texture_usage(self._wgpu),
+                present_mode=self._present_mode,
+                alpha_mode="premultiplied",
+            )
+        except TypeError:
+            try:
+                configure(
+                    device=self._device,
+                    format=self._surface_format,
+                    present_mode=self._present_mode,
+                )
+            except TypeError:
+                configure(device=self._device, format=self._surface_format)
+
+    def _acquire_frame_color_view(self) -> object | None:
+        context = self._canvas_context
+        if context is None:
+            return None
+        get_current_texture = getattr(context, "get_current_texture", None)
+        if not callable(get_current_texture):
+            return None
+        texture = get_current_texture()
+        create_view = getattr(texture, "create_view", None)
+        if callable(create_view):
+            return cast(object, create_view())
+        return cast(object, texture)
+
+    def _geometry_pipeline_descriptor(self, color_target: object, shader: object) -> dict[str, object]:
+        return {
+            "layout": "auto",
+            "vertex": {"module": shader, "entry_point": "vs_main", "buffers": []},
+            "fragment": {
+                "module": shader,
+                "entry_point": "fs_main",
+                "targets": [color_target],
+            },
+            "primitive": {"topology": "triangle-list"},
+        }
+
+    def _pipeline_for_color(self, color: tuple[float, float, float, float]) -> object | None:
+        cached = self._geometry_pipeline_cache.get(color)
+        if cached is not None:
+            return cached
+        create_shader_module = getattr(self._device, "create_shader_module", None)
+        create_render_pipeline = getattr(self._device, "create_render_pipeline", None)
+        if not callable(create_shader_module) or not callable(create_render_pipeline):
+            return self._geometry_pipeline
+        shader_src = _geometry_wgsl_for_color(color)
+        shader = create_shader_module(code=shader_src)
+        color_target = {"format": self._surface_format, "blend": None, "write_mask": 0xF}
+        descriptor = self._geometry_pipeline_descriptor(color_target, shader)
+        pipeline = cast(object, create_render_pipeline(**descriptor))
+        self._geometry_pipeline_cache[color] = pipeline
+        return pipeline
+
+    def _packet_draw_rects(self, packet: _DrawPacket) -> tuple["_DrawRect", ...]:
+        raw_data = getattr(packet, "data", ())
+        payload: dict[str, object] = {}
+        if isinstance(raw_data, tuple):
+            for item in raw_data:
+                if isinstance(item, tuple) and len(item) == 2:
+                    payload[str(item[0])] = item[1]
+        srgb = payload.get("srgb_rgba", (1.0, 1.0, 1.0, 1.0))
+        color = _normalize_rgba(srgb)
+        kind = str(getattr(packet, "kind", ""))
+        if not kind:
+            return ()
+        if kind == "fill_window":
+            return (
+                _DrawRect(
+                    x=0.0,
+                    y=0.0,
+                    w=float(self._target_width),
+                    h=float(self._target_height),
+                    color=color,
+                ),
+            )
+        if kind == "rect":
+            if payload:
+                return (_rect_from_payload(payload, color=color),)
+            return (
+                _DrawRect(
+                    x=0.0,
+                    y=0.0,
+                    w=float(self._target_width),
+                    h=float(self._target_height),
+                    color=color,
+                ),
+            )
+        if kind == "grid":
+            return _grid_draw_rects(payload, color=color)
+        return ()
+
+    def _apply_draw_rect(self, render_pass: object, rect: "_DrawRect") -> None:
+        set_viewport = getattr(render_pass, "set_viewport", None)
+        set_scissor_rect = getattr(render_pass, "set_scissor_rect", None)
+        set_pipeline = getattr(render_pass, "set_pipeline", None)
+        draw = getattr(render_pass, "draw", None)
+        rx = max(0.0, min(float(self._target_width), float(rect.x)))
+        ry = max(0.0, min(float(self._target_height), float(rect.y)))
+        rw = max(1.0, min(float(self._target_width) - rx, float(rect.w)))
+        rh = max(1.0, min(float(self._target_height) - ry, float(rect.h)))
+        if callable(set_viewport):
+            set_viewport(rx, ry, rw, rh, 0.0, 1.0)
+        if callable(set_scissor_rect):
+            set_scissor_rect(int(rx), int(ry), int(max(1, round(rw))), int(max(1, round(rh))))
+        pipeline = self._pipeline_for_color(rect.color)
+        if callable(set_pipeline) and pipeline is not None:
+            set_pipeline(pipeline)
+        if callable(draw):
+            draw(3, 1, 0, 0)
 
 
 def _resolve_texture_usage(wgpu_mod: object) -> int:
