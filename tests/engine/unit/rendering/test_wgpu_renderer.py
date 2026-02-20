@@ -4,9 +4,12 @@ import sys
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
 
+import pytest
+
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.window import WindowResizeEvent
-from engine.rendering.wgpu_renderer import _WgpuBackend, WgpuRenderer
+import engine.rendering.wgpu_renderer as wgpu_renderer
+from engine.rendering.wgpu_renderer import _WgpuBackend, WgpuInitError, WgpuRenderer
 
 
 @dataclass(slots=True)
@@ -393,3 +396,35 @@ def test_wgpu_backend_present_mode_fallback_chain(monkeypatch) -> None:
     backend = _WgpuBackend()
 
     assert backend._present_mode == "immediate"  # noqa: SLF001
+
+
+def test_wgpu_backend_uses_system_font_fallback(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    monkeypatch.setattr(
+        wgpu_renderer,
+        "_resolve_system_font_path",
+        lambda: r"C:\Windows\Fonts\arial.ttf",
+    )
+    backend = _WgpuBackend()
+
+    assert backend._font_path.endswith("arial.ttf")  # noqa: SLF001
+
+
+def test_wgpu_backend_fails_when_system_font_discovery_fails(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+
+    def _raise_font_error() -> str:
+        raise WgpuInitError(
+            "system font discovery failed",
+            details={
+                "selected_backend": "unknown",
+                "adapter_info": {},
+                "font_candidates_checked": (),
+            },
+        )
+
+    monkeypatch.setattr(wgpu_renderer, "_resolve_system_font_path", _raise_font_error)
+
+    with pytest.raises(WgpuInitError, match="wgpu backend initialization failed") as exc_info:
+        _WgpuBackend()
+    assert "font_candidates_checked" in exc_info.value.details

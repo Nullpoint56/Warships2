@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -487,6 +488,7 @@ class _WgpuBackend:
     _present_mode: str = field(init=False, default="fifo")
     _selected_backend: str = field(init=False, default="unknown")
     _adapter_info: dict[str, object] = field(init=False, default_factory=dict)
+    _font_path: str = field(init=False, default="")
 
     def __post_init__(self) -> None:
         try:
@@ -506,6 +508,7 @@ class _WgpuBackend:
             self._adapter, self._selected_backend = self._request_adapter()
             self._adapter_info = self._extract_adapter_info(self._adapter)
             self._device = self._request_device(self._adapter)
+            self._font_path = _resolve_system_font_path()
         except Exception as exc:
             details: dict[str, object] = {
                 "selected_backend": self._selected_backend,
@@ -868,6 +871,89 @@ def _resolve_backend_priority() -> tuple[str, ...]:
         if item.strip()
     )
     return values or ("vulkan", "metal", "dx12")
+
+
+def _resolve_system_font_path() -> str:
+    checked: list[str] = []
+    for candidate in _iter_system_font_candidates():
+        normalized = os.path.normpath(candidate)
+        checked.append(normalized)
+        if os.path.isfile(normalized):
+            return normalized
+    raise WgpuInitError(
+        "system font discovery failed",
+        details={
+            "selected_backend": "unknown",
+            "adapter_info": {},
+            "font_candidates_checked": tuple(checked[:64]),
+        },
+    )
+
+
+def _iter_system_font_candidates() -> tuple[str, ...]:
+    candidates: list[str] = []
+    env_value = os.getenv("ENGINE_WGPU_FONT_PATHS", "").strip()
+    if env_value:
+        for raw in env_value.split(os.pathsep):
+            item = raw.strip()
+            if item:
+                candidates.append(item)
+    candidates.extend(_platform_font_file_candidates())
+    for directory in _platform_font_directories():
+        if not os.path.isdir(directory):
+            continue
+        try:
+            entries = sorted(os.scandir(directory), key=lambda entry: entry.name.lower())
+        except Exception:
+            continue
+        for entry in entries:
+            if not entry.is_file():
+                continue
+            name = entry.name.lower()
+            if name.endswith((".ttf", ".otf", ".ttc")):
+                candidates.append(entry.path)
+    return tuple(candidates)
+
+
+def _platform_font_file_candidates() -> tuple[str, ...]:
+    if os.name == "nt":
+        return (
+            r"C:\Windows\Fonts\segoeui.ttf",
+            r"C:\Windows\Fonts\arial.ttf",
+            r"C:\Windows\Fonts\tahoma.ttf",
+            r"C:\Windows\Fonts\calibri.ttf",
+        )
+    if os.name == "posix":
+        if sys.platform == "darwin":
+            return (
+                "/System/Library/Fonts/SFNS.ttf",
+                "/System/Library/Fonts/Supplemental/Arial.ttf",
+                "/Library/Fonts/Arial.ttf",
+            )
+        return (
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "/usr/share/fonts/TTF/DejaVuSans.ttf",
+        )
+    return ()
+
+
+def _platform_font_directories() -> tuple[str, ...]:
+    if os.name == "nt":
+        return (r"C:\Windows\Fonts",)
+    if os.name == "posix":
+        if sys.platform == "darwin":
+            return (
+                "/System/Library/Fonts",
+                "/System/Library/Fonts/Supplemental",
+                "/Library/Fonts",
+            )
+        return (
+            "/usr/share/fonts",
+            "/usr/local/share/fonts",
+            os.path.expanduser("~/.fonts"),
+        )
+    return ()
 
 
 def _ortho_projection(*, width: float, height: float) -> tuple[float, ...]:
