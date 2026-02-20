@@ -65,6 +65,9 @@ class PygfxFrontendWindow:
         for event in events:
             if isinstance(event, WindowResizeEvent):
                 self._renderer.note_frame_reason("window:resize")
+                apply_window_resize = getattr(self._renderer, "apply_window_resize", None)
+                if callable(apply_window_resize):
+                    apply_window_resize(event)
                 if hub is not None and hasattr(hub, "emit_fast"):
                     hub.emit_fast(
                         category="window",

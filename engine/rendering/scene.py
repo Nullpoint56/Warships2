@@ -30,6 +30,7 @@ from engine.rendering.scene_viewport import (
     viewport_transform,
 )
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
+from engine.api.window import WindowResizeEvent
 from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 from engine.runtime.debug_config import load_debug_config
 
@@ -1535,6 +1536,26 @@ class SceneRenderer:
         canvas = self._require_canvas()
         if hasattr(canvas, "request_draw"):
             canvas.request_draw()
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        """Apply normalized window resize in physical pixels with explicit DPI."""
+        applied = self._apply_canvas_size(float(event.physical_width), float(event.physical_height))
+        if not applied:
+            return
+        hub = self._diagnostics_hub
+        if hub is not None:
+            hub.emit_fast(
+                category="render",
+                name="render.resize_window_event",
+                tick=max(0, self._viewport_revision),
+                value={
+                    "logical_width": float(event.logical_width),
+                    "logical_height": float(event.logical_height),
+                    "physical_width": int(event.physical_width),
+                    "physical_height": int(event.physical_height),
+                    "dpi_scale": float(event.dpi_scale),
+                },
+            )
 
     def set_diagnostics_hub(self, hub: DiagnosticHub | None) -> None:
         """Attach optional engine diagnostics hub for render/resize events."""

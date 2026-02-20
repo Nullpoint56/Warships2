@@ -384,3 +384,57 @@ Migrate the engine to comply with all three policy documents with minimal disrup
 - Preserve backward compatibility only through the migration window.
 - Keep each phase PR-sized and independently testable.
 - Prefer additive interfaces first, then deprecate and remove old paths after parity.
+
+---
+
+## Final Non-Audio Policy Closure (2026-02-20)
+
+This section records the final closure pass against:
+- `docs/architecture/input_policies.md`
+- `docs/architecture/rendering_policies.md`
+- `docs/architecture/window_and_panel_policies.md`
+
+### Items Closed In This Pass
+
+1. Removed raw-event compatibility entrypoints from host runtime:
+   - deleted `EngineHost.handle_pointer_event(...)`
+   - deleted `EngineHost.handle_key_event(...)`
+   - deleted `EngineHost.handle_wheel_event(...)`
+   - simulation path now accepts only immutable `InputSnapshot` via `handle_input_snapshot(...)`
+   - code: `engine/runtime/host.py`
+
+2. Removed canvas-bound input backend path from input subsystem:
+   - deleted `InputController.bind(...)`
+   - deleted direct canvas event handlers (`_on_pointer_*`, `_on_key_*`, `_on_char`, `_on_wheel`)
+   - input ingestion now comes from normalized window-polled events only (`consume_window_input_events(...)`)
+   - code: `engine/input/input_controller.py`
+
+3. Enforced explicit window -> renderer resize contract:
+   - frontend now forwards normalized `WindowResizeEvent` to renderer
+   - renderer now applies resize from explicit logical/physical/DPI payload through `apply_window_resize(...)`
+   - code: `engine/runtime/pygfx_frontend.py`, `engine/rendering/scene.py`
+
+4. Updated policy-guard tests to match final contracts:
+   - input tests now validate window-event ingestion only (no canvas binding path)
+   - host tests now validate snapshot-only input handling
+   - debug API fake modules no longer rely on removed raw hooks
+   - code: `tests/engine/unit/input/test_input_controller.py`, `tests/engine/unit/runtime/test_host.py`, `tests/engine/unit/api/test_debug_api.py`
+
+### Verification Evidence
+
+1. Static typing:
+   - `mypy engine warships` passes.
+
+2. Contract and regression tests:
+   - `python -m pytest -q tests/engine/unit/input/test_input_controller.py tests/engine/unit/runtime/test_host.py tests/engine/unit/runtime/test_pygfx_frontend.py tests/engine/unit/api/test_debug_api.py`
+   - result: `39 passed`.
+
+3. Rendering/window regressions:
+   - `python -m pytest -q tests/engine/unit/rendering/test_scene_graphics.py tests/engine/integration/test_resize_diagnostics_pipeline.py tests/engine/integration/test_diagnostics_disabled_parity.py`
+   - result: `25 passed`.
+
+### Policy Status (Non-Audio)
+
+1. Input policy: `Compliant`
+2. Rendering policy: `Compliant`
+3. Window/panel policy: `Compliant`

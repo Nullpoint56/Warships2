@@ -175,15 +175,6 @@ def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:
     assert data["text"] == ("base",)
 
 
-def test_engine_host_forwards_input_events() -> None:
-    module = FakeModule()
-    host = EngineHost(module=module)
-    assert host.handle_pointer_event(object()) is False
-    assert host.handle_key_event(object()) is False
-    assert host.handle_wheel_event(object()) is False
-    assert len(module.snapshots) == 3
-
-
 def test_engine_host_handles_input_snapshot() -> None:
     module = FakeModule()
     host = EngineHost(module=module)

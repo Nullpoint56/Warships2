@@ -12,7 +12,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
-from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_events import KeyEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.render_snapshot import IDENTITY_MAT4, RenderCommand, RenderPassSnapshot, RenderSnapshot
@@ -194,45 +194,6 @@ class EngineHost(HostControl):
             return
         self._started = True
         self._module.on_start(self)
-
-    def handle_pointer_event(self, event: PointerEvent) -> bool:
-        synthetic = InputSnapshot(
-            frame_index=self._frame_index,
-            pointer_events=(
-                PointerEvent(
-                    event_type=str(getattr(event, "event_type", "pointer_move")),
-                    x=float(getattr(event, "x", 0.0)),
-                    y=float(getattr(event, "y", 0.0)),
-                    button=int(getattr(event, "button", 0)),
-                ),
-            ),
-        )
-        return self.handle_input_snapshot(synthetic)
-
-    def handle_key_event(self, event: KeyEvent) -> bool:
-        synthetic = InputSnapshot(
-            frame_index=self._frame_index,
-            key_events=(
-                KeyEvent(
-                    event_type=str(getattr(event, "event_type", "key_down")),
-                    value=str(getattr(event, "value", "")),
-                ),
-            ),
-        )
-        return self.handle_input_snapshot(synthetic)
-
-    def handle_wheel_event(self, event: WheelEvent) -> bool:
-        synthetic = InputSnapshot(
-            frame_index=self._frame_index,
-            wheel_events=(
-                WheelEvent(
-                    x=float(getattr(event, "x", 0.0)),
-                    y=float(getattr(event, "y", 0.0)),
-                    dy=float(getattr(event, "dy", 0.0)),
-                ),
-            ),
-        )
-        return self.handle_input_snapshot(synthetic)
 
     def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         self._emit_input_snapshot_diagnostics(snapshot)

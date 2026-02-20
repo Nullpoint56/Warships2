@@ -21,18 +21,6 @@ class _FakeModule:
     def on_start(self, host) -> None:
         _ = host
 
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        return False
-
     def on_frame(self, context) -> None:
         _ = context
 
