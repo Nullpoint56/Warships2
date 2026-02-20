@@ -182,6 +182,90 @@ def visible_slice[T](items: Sequence[T], scroll: int, visible_count: int) -> lis
     return list(items[clamped_scroll : clamped_scroll + normalized_visible])
 
 
+def truncate_text(text: str, max_len: int) -> str:
+    """Truncate label text to max length using ellipsis when possible."""
+    if len(text) <= max_len:
+        return text
+    if max_len <= 3:
+        return text[:max_len]
+    return text[: max_len - 3] + "..."
+
+
+def fit_text_to_rect(
+    text: str,
+    *,
+    rect_w: float,
+    rect_h: float,
+    base_font_size: float,
+    min_font_size: float = 8.0,
+    pad_x: float = 10.0,
+    pad_y: float = 6.0,
+) -> tuple[str, float]:
+    """Fit label text inside a rectangle with deterministic engine text metrics."""
+    normalized = str(text)
+    if not normalized:
+        return "", float(base_font_size)
+    avail_w = max(1.0, float(rect_w) - (2.0 * float(pad_x)))
+    avail_h = max(1.0, float(rect_h) - (2.0 * float(pad_y)))
+    min_pixel = max(1, int(round(float(min_font_size) / 8.0)))
+    preferred_pixel = max(min_pixel, int(round(float(base_font_size) / 8.0)))
+    max_pixel_by_height = max(1, int(avail_h // 7.0))
+    pixel = min(preferred_pixel, max_pixel_by_height)
+    while pixel >= min_pixel:
+        max_chars = int(((avail_w / float(pixel)) + 1.0) // 6.0)
+        if max_chars >= len(normalized):
+            return normalized, float(pixel * 8)
+        if max_chars > 0:
+            return truncate_text(normalized, max_chars), float(pixel * 8)
+        pixel -= 1
+    return truncate_text(normalized, 1), float(min_pixel * 8)
+
+
+def clamp_child_rect_to_parent(
+    child: Rect,
+    parent: Rect,
+    *,
+    pad_x: float = 0.0,
+    pad_y: float = 0.0,
+) -> Rect:
+    """Clamp child rectangle to fit inside parent content box."""
+    content_x = float(parent.x) + max(0.0, float(pad_x))
+    content_y = float(parent.y) + max(0.0, float(pad_y))
+    content_w = max(0.0, float(parent.w) - (2.0 * max(0.0, float(pad_x))))
+    content_h = max(0.0, float(parent.h) - (2.0 * max(0.0, float(pad_y))))
+    child_w = min(max(0.0, float(child.w)), content_w)
+    child_h = min(max(0.0, float(child.h)), content_h)
+    max_x = content_x + content_w - child_w
+    max_y = content_y + content_h - child_h
+    child_x = min(max(float(child.x), content_x), max_x)
+    child_y = min(max(float(child.y), content_y), max_y)
+    return Rect(child_x, child_y, child_w, child_h)
+
+
+def parent_rect_from_children(
+    children: Sequence[Rect],
+    *,
+    pad_x: float = 0.0,
+    pad_y: float = 0.0,
+    min_w: float = 0.0,
+    min_h: float = 0.0,
+) -> Rect:
+    """Compute parent bounds that fit all child rects plus optional padding."""
+    if not children:
+        return Rect(0.0, 0.0, max(0.0, float(min_w)), max(0.0, float(min_h)))
+    left = min(float(child.x) for child in children)
+    top = min(float(child.y) for child in children)
+    right = max(float(child.x) + float(child.w) for child in children)
+    bottom = max(float(child.y) + float(child.h) for child in children)
+    px = max(0.0, float(pad_x))
+    py = max(0.0, float(pad_y))
+    x = left - px
+    y = top - py
+    w = max(float(min_w), (right - left) + (2.0 * px))
+    h = max(float(min_h), (bottom - top) + (2.0 * py))
+    return Rect(x, y, w, h)
+
+
 def can_scroll_list_down(scroll: int, visible_count: int, total_count: int) -> bool:
     """Return whether there are items below the current viewport."""
     normalized_visible = max(0, visible_count)
@@ -439,8 +523,10 @@ __all__ = [
     "apply_wheel_scroll",
     "can_scroll_list_down",
     "can_scroll_with_wheel",
+    "clamp_child_rect_to_parent",
     "clamp_scroll",
     "close_prompt",
+    "fit_text_to_rect",
     "handle_prompt_button",
     "handle_prompt_char",
     "handle_prompt_key",
@@ -451,5 +537,7 @@ __all__ = [
     "route_modal_pointer_event",
     "route_non_modal_key_event",
     "sync_prompt",
+    "parent_rect_from_children",
+    "truncate_text",
     "visible_slice",
 ]

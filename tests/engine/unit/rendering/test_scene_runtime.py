@@ -96,6 +96,8 @@ def _install_fake_rendercanvas_glfw(monkeypatch: pytest.MonkeyPatch, glfw_obj: _
 
 
 def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("ENGINE_UI_ASPECT_MODE", raising=False)
+    assert not resolve_preserve_aspect()
     monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "contain")
     assert resolve_preserve_aspect()
     monkeypatch.setenv("ENGINE_UI_ASPECT_MODE", "stretch")

@@ -650,6 +650,136 @@ def _grid_draw_rects(
     return tuple(rects)
 
 
+def _text_draw_rects(
+    payload: dict[str, object], *, color: tuple[float, float, float, float]
+) -> tuple[_DrawRect, ...]:
+    text_raw = payload.get("text", "")
+    if not isinstance(text_raw, str):
+        return ()
+    text = text_raw.strip("\n")
+    if not text:
+        return ()
+    x = _payload_float(payload, "x", 0.0)
+    y = _payload_float(payload, "y", 0.0)
+    font_size = max(6.0, _payload_float(payload, "font_size", 18.0))
+    anchor_raw = payload.get("anchor", "top-left")
+    anchor = str(anchor_raw).strip().lower() if isinstance(anchor_raw, str) else "top-left"
+    pixel = float(max(1, int(round(font_size / 8.0))))
+    glyph_w = 5.0 * pixel
+    glyph_h = 7.0 * pixel
+    advance = 6.0 * pixel
+    text_w = max(glyph_w, (len(text) * advance) - pixel)
+    text_h = glyph_h
+    origin_x, origin_y = _anchor_to_origin(anchor, x, y, text_w, text_h)
+    origin_x = float(round(origin_x))
+    origin_y = float(round(origin_y))
+    rects: list[_DrawRect] = []
+    cursor_x = origin_x
+    for ch in text:
+        glyph_rows = _BITMAP_FONT_5X7.get(ch)
+        if glyph_rows is None:
+            glyph_rows = _BITMAP_FONT_5X7.get(ch.upper(), _BITMAP_FONT_5X7["?"])
+        for row_idx, row_bits in enumerate(glyph_rows):
+            py = origin_y + (float(row_idx) * pixel)
+            col_idx = 0
+            while col_idx < len(row_bits):
+                if row_bits[col_idx] != "1":
+                    col_idx += 1
+                    continue
+                run_start = col_idx
+                while col_idx < len(row_bits) and row_bits[col_idx] == "1":
+                    col_idx += 1
+                run_len = col_idx - run_start
+                px = cursor_x + (float(run_start) * pixel)
+                rects.append(_DrawRect(x=px, y=py, w=float(run_len) * pixel, h=pixel, color=color))
+        cursor_x += advance
+    return tuple(rects)
+
+
+def _anchor_to_origin(anchor: str, x: float, y: float, width: float, height: float) -> tuple[float, float]:
+    horizontal = "left"
+    vertical = "top"
+    if "-" in anchor:
+        parts = [part for part in anchor.split("-") if part]
+        if len(parts) >= 2:
+            vertical = parts[0]
+            horizontal = parts[1]
+    elif anchor in {"top", "middle", "bottom"}:
+        vertical = anchor
+    elif anchor in {"left", "center", "right"}:
+        horizontal = anchor
+    ox = float(x)
+    oy = float(y)
+    if horizontal in {"center", "middle"}:
+        ox -= width * 0.5
+    elif horizontal == "right":
+        ox -= width
+    if vertical == "middle":
+        oy -= height * 0.5
+    elif vertical == "bottom":
+        oy -= height
+    return ox, oy
+
+
+_BITMAP_FONT_5X7: dict[str, tuple[str, ...]] = {
+    " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
+    "!": ("00100", "00100", "00100", "00100", "00100", "00000", "00100"),
+    "'": ("00100", "00100", "00000", "00000", "00000", "00000", "00000"),
+    "(": ("00010", "00100", "01000", "01000", "01000", "00100", "00010"),
+    ")": ("01000", "00100", "00010", "00010", "00010", "00100", "01000"),
+    "+": ("00000", "00100", "00100", "11111", "00100", "00100", "00000"),
+    ",": ("00000", "00000", "00000", "00000", "00110", "00100", "01000"),
+    "-": ("00000", "00000", "00000", "11111", "00000", "00000", "00000"),
+    ".": ("00000", "00000", "00000", "00000", "00000", "00110", "00110"),
+    "/": ("00001", "00010", "00100", "01000", "10000", "00000", "00000"),
+    ":": ("00000", "00110", "00110", "00000", "00110", "00110", "00000"),
+    "<": ("00010", "00100", "01000", "10000", "01000", "00100", "00010"),
+    "=": ("00000", "11111", "00000", "11111", "00000", "00000", "00000"),
+    ">": ("01000", "00100", "00010", "00001", "00010", "00100", "01000"),
+    "?": ("01110", "10001", "00001", "00010", "00100", "00000", "00100"),
+    "[": ("01110", "01000", "01000", "01000", "01000", "01000", "01110"),
+    "]": ("01110", "00010", "00010", "00010", "00010", "00010", "01110"),
+    "_": ("00000", "00000", "00000", "00000", "00000", "00000", "11111"),
+    "#": ("01010", "11111", "01010", "01010", "11111", "01010", "01010"),
+    "0": ("01110", "10001", "10011", "10101", "11001", "10001", "01110"),
+    "1": ("00100", "01100", "00100", "00100", "00100", "00100", "01110"),
+    "2": ("01110", "10001", "00001", "00010", "00100", "01000", "11111"),
+    "3": ("11110", "00001", "00001", "00110", "00001", "00001", "11110"),
+    "4": ("00010", "00110", "01010", "10010", "11111", "00010", "00010"),
+    "5": ("11111", "10000", "10000", "11110", "00001", "00001", "11110"),
+    "6": ("01110", "10000", "10000", "11110", "10001", "10001", "01110"),
+    "7": ("11111", "00001", "00010", "00100", "01000", "01000", "01000"),
+    "8": ("01110", "10001", "10001", "01110", "10001", "10001", "01110"),
+    "9": ("01110", "10001", "10001", "01111", "00001", "00001", "01110"),
+    "A": ("01110", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "B": ("11110", "10001", "10001", "11110", "10001", "10001", "11110"),
+    "C": ("01110", "10001", "10000", "10000", "10000", "10001", "01110"),
+    "D": ("11100", "10010", "10001", "10001", "10001", "10010", "11100"),
+    "E": ("11111", "10000", "10000", "11110", "10000", "10000", "11111"),
+    "F": ("11111", "10000", "10000", "11110", "10000", "10000", "10000"),
+    "G": ("01110", "10001", "10000", "10000", "10011", "10001", "01110"),
+    "H": ("10001", "10001", "10001", "11111", "10001", "10001", "10001"),
+    "I": ("01110", "00100", "00100", "00100", "00100", "00100", "01110"),
+    "J": ("00001", "00001", "00001", "00001", "10001", "10001", "01110"),
+    "K": ("10001", "10010", "10100", "11000", "10100", "10010", "10001"),
+    "L": ("10000", "10000", "10000", "10000", "10000", "10000", "11111"),
+    "M": ("10001", "11011", "10101", "10101", "10001", "10001", "10001"),
+    "N": ("10001", "10001", "11001", "10101", "10011", "10001", "10001"),
+    "O": ("01110", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "P": ("11110", "10001", "10001", "11110", "10000", "10000", "10000"),
+    "Q": ("01110", "10001", "10001", "10001", "10101", "10010", "01101"),
+    "R": ("11110", "10001", "10001", "11110", "10100", "10010", "10001"),
+    "S": ("01111", "10000", "10000", "01110", "00001", "00001", "11110"),
+    "T": ("11111", "00100", "00100", "00100", "00100", "00100", "00100"),
+    "U": ("10001", "10001", "10001", "10001", "10001", "10001", "01110"),
+    "V": ("10001", "10001", "10001", "10001", "10001", "01010", "00100"),
+    "W": ("10001", "10001", "10001", "10101", "10101", "10101", "01010"),
+    "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
+    "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
+    "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
+}
+
+
 def _geometry_wgsl_for_color(color: tuple[float, float, float, float]) -> str:
     r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
     return f"""
@@ -784,24 +914,31 @@ class _WgpuBackend:
         target_view = self._frame_color_view or self._frame_texture_view
         if target_view is None:
             return
+        draw_rects: list[_DrawRect] = []
         for packet in packets:
-            for draw_rect in self._packet_draw_rects(packet):
-                color_attachments = [
-                    {
-                        "view": target_view,
-                        "clear_value": draw_rect.color,
-                        "load_op": "clear" if self._clear_pending else "load",
-                        "store_op": "store",
-                    }
-                ]
-                self._clear_pending = False
-                render_pass = begin_render_pass(color_attachments=color_attachments)
-                try:
-                    self._apply_draw_rect(render_pass, draw_rect)
-                finally:
-                    end = getattr(render_pass, "end", None)
-                    if callable(end):
-                        end()
+            draw_rects.extend(self._packet_draw_rects(packet))
+        if not draw_rects:
+            return
+        color_attachments = [
+            {
+                "view": target_view,
+                "clear_value": (0.0, 0.0, 0.0, 1.0),
+                "load_op": "clear" if self._clear_pending else "load",
+                "store_op": "store",
+            }
+        ]
+        self._clear_pending = False
+        render_pass = begin_render_pass(color_attachments=color_attachments)
+        try:
+            active_pipeline: object | None = None
+            for draw_rect in draw_rects:
+                active_pipeline = self._apply_draw_rect(
+                    render_pass, draw_rect, active_pipeline=active_pipeline
+                )
+        finally:
+            end = getattr(render_pass, "end", None)
+            if callable(end):
+                end()
 
     def present(self) -> None:
         encoder = self._command_encoder
@@ -1185,6 +1322,10 @@ class _WgpuBackend:
             return tuple(
                 self._map_design_rect(rect) for rect in _grid_draw_rects(payload, color=color)
             )
+        if kind == "text":
+            return tuple(
+                self._map_design_rect(rect) for rect in _text_draw_rects(payload, color=color)
+            )
         return ()
 
     def _map_design_rect(self, rect: "_DrawRect") -> "_DrawRect":
@@ -1203,7 +1344,13 @@ class _WgpuBackend:
             color=rect.color,
         )
 
-    def _apply_draw_rect(self, render_pass: object, rect: "_DrawRect") -> None:
+    def _apply_draw_rect(
+        self,
+        render_pass: object,
+        rect: "_DrawRect",
+        *,
+        active_pipeline: object | None = None,
+    ) -> object | None:
         set_viewport = getattr(render_pass, "set_viewport", None)
         set_scissor_rect = getattr(render_pass, "set_scissor_rect", None)
         set_pipeline = getattr(render_pass, "set_pipeline", None)
@@ -1217,10 +1364,11 @@ class _WgpuBackend:
         if callable(set_scissor_rect):
             set_scissor_rect(int(rx), int(ry), int(max(1, round(rw))), int(max(1, round(rh))))
         pipeline = self._pipeline_for_color(rect.color)
-        if callable(set_pipeline) and pipeline is not None:
+        if callable(set_pipeline) and pipeline is not None and pipeline is not active_pipeline:
             set_pipeline(pipeline)
         if callable(draw):
             draw(3, 1, 0, 0)
+        return pipeline if pipeline is not None else active_pipeline
 
 
 def _resolve_texture_usage(wgpu_mod: object) -> int:
@@ -1278,6 +1426,7 @@ def _iter_system_font_candidates() -> tuple[str, ...]:
             item = raw.strip()
             if item:
                 candidates.append(item)
+        return tuple(candidates)
     candidates.extend(_platform_font_file_candidates())
     for directory in _platform_font_directories():
         if not os.path.isdir(directory):

@@ -218,6 +218,23 @@ def test_window_port_event_polling_and_controls(monkeypatch: pytest.MonkeyPatch)
     assert canvas.request_draw_calls > 0
 
 
+def test_window_port_accepts_resize_width_height_shape(monkeypatch: pytest.MonkeyPatch) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    canvas = _Canvas()
+    window = RenderCanvasWindow(canvas=canvas)
+
+    canvas.emit("resize", width=800.0, height=600.0, pixel_ratio=1.25)
+    events = window.poll_events()
+
+    assert len(events) == 1
+    assert isinstance(events[0], WindowResizeEvent)
+    assert events[0].logical_width == 800.0
+    assert events[0].logical_height == 600.0
+    assert events[0].physical_width == 1000
+    assert events[0].physical_height == 750
+
+
 def test_window_port_accepts_object_style_input_events(monkeypatch: pytest.MonkeyPatch) -> None:
     glfw = _FakeGlfw()
     _install_fake_rendercanvas_glfw(monkeypatch, glfw)

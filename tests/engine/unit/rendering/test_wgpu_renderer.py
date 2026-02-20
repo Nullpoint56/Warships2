@@ -324,6 +324,53 @@ def test_grid_draw_rects_span_declared_bounds_without_extra_division() -> None:
         assert rect.y + rect.h <= 100.0001
 
 
+def test_text_draw_rects_generates_readable_glyph_quads() -> None:
+    rects = wgpu_renderer._text_draw_rects(
+        {"text": "Menu", "x": 100.0, "y": 50.0, "font_size": 16.0, "anchor": "middle-center"},
+        color=(1.0, 1.0, 1.0, 1.0),
+    )
+
+    assert rects
+    min_x = min(rect.x for rect in rects)
+    max_x = max(rect.x + rect.w for rect in rects)
+    min_y = min(rect.y for rect in rects)
+    max_y = max(rect.y + rect.h for rect in rects)
+    assert min_x < 100.0 < max_x
+    assert min_y < 50.0 < max_y
+
+
+def test_text_draw_rects_merges_pixel_runs_for_fewer_quads() -> None:
+    rects = wgpu_renderer._text_draw_rects(
+        {"text": "W", "x": 0.0, "y": 0.0, "font_size": 24.0, "anchor": "top-left"},
+        color=(1.0, 1.0, 1.0, 1.0),
+    )
+
+    assert 0 < len(rects) < 35
+    assert all(rect.w >= 3.0 for rect in rects)
+
+
+def test_system_font_candidates_env_is_explicit_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_WGPU_FONT_PATHS", "X:\\missing1.ttf;X:\\missing2.ttf")
+
+    candidates = wgpu_renderer._iter_system_font_candidates()
+
+    assert candidates == ("X:\\missing1.ttf", "X:\\missing2.ttf")
+
+
+def test_wgpu_backend_batches_many_rects_into_one_render_pass(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend.begin_frame()
+    packets = tuple(SimpleNamespace(kind="rect") for _ in range(16))
+
+    backend.draw_packets("overlay", packets)
+
+    encoder = backend._command_encoder  # noqa: SLF001
+    assert encoder is not None
+    assert len(encoder.render_passes) == 1
+    backend.end_frame()
+
+
 class _FakeEncoder:
     def __init__(self) -> None:
         self.render_passes: list[_FakeRenderPass] = []

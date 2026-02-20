@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
+from engine.api.ui_primitives import fit_text_to_rect
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP
 from warships.game.ui.views.common import draw_preset_preview, truncate
@@ -49,12 +50,18 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
             renderer.add_rect(
                 f"newgame:diff:opt:bg:{name}", option.x, option.y, option.w, option.h, color, z=0.95
             )
+            option_text, option_font_size = fit_text_to_rect(
+                name,
+                rect_w=option.w,
+                rect_h=option.h,
+                base_font_size=16.0,
+            )
             renderer.add_text(
                 key=f"newgame:diff:opt:text:{name}",
-                text=name,
+                text=option_text,
                 x=option.x + 10.0,
                 y=option.y + option.h / 2.0,
-                font_size=16.0,
+                font_size=option_font_size,
                 color="#e2e8f0",
                 anchor="middle-left",
                 z=0.96,
@@ -98,12 +105,18 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         "#7c3aed",
         z=0.9,
     )
+    random_text, random_font_size = fit_text_to_rect(
+        "Generate Random Fleet",
+        rect_w=random_btn.w,
+        rect_h=random_btn.h,
+        base_font_size=14.0,
+    )
     renderer.add_text(
         key="newgame:random:text",
-        text="Generate Random Fleet",
+        text=random_text,
         x=random_btn.x + random_btn.w / 2.0,
         y=random_btn.y + random_btn.h / 2.0,
-        font_size=14.0,
+        font_size=random_font_size,
         anchor="middle-center",
         z=0.92,
     )

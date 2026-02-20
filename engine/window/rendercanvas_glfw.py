@@ -207,9 +207,19 @@ class RenderCanvasWindow(WindowPort):
 
     def _on_resize(self, event: object) -> None:
         size = _event_value(event, "size")
-        if not (isinstance(size, (tuple, list)) and len(size) >= 2):
-            return
-        lw, lh = size[0], size[1]
+        lw: object | None = None
+        lh: object | None = None
+        if isinstance(size, (tuple, list)) and len(size) >= 2:
+            lw, lh = size[0], size[1]
+        else:
+            lw = _event_value(event, "width")
+            lh = _event_value(event, "height")
+            if not isinstance(lw, (int, float)) or not isinstance(lh, (int, float)):
+                logical_size = _event_value(event, "logical_size")
+                if isinstance(logical_size, (tuple, list)) and len(logical_size) >= 2:
+                    lw, lh = logical_size[0], logical_size[1]
+                else:
+                    return
         if not isinstance(lw, (int, float)) or not isinstance(lh, (int, float)):
             return
         ratio_raw = _event_value(event, "pixel_ratio", 1.0)

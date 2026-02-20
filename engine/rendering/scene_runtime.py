@@ -50,7 +50,7 @@ def resolve_render_loop_config() -> RenderLoopConfig:
 
 def resolve_preserve_aspect() -> bool:
     """Read aspect mode from env and normalize into preserve_aspect flag."""
-    aspect_mode = os.getenv("ENGINE_UI_ASPECT_MODE", "contain").strip().lower()
+    aspect_mode = os.getenv("ENGINE_UI_ASPECT_MODE", "stretch").strip().lower()
     return aspect_mode in {"contain", "preserve", "fixed"}
 
 

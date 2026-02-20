@@ -13,7 +13,7 @@ from engine.api.render_snapshot import (
     mat4_translation,
 )
 from engine.api.render import RenderAPI as Render2D
-from engine.api.ui_primitives import Button, GridLayout
+from engine.api.ui_primitives import Button, GridLayout, fit_text_to_rect
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.framework.widgets import (
@@ -110,13 +110,19 @@ class GameView:
                 z=z,
             )
             label = button_label(button.id)
-            labels.append(label)
+            fitted_label, fitted_font_size = fit_text_to_rect(
+                label,
+                rect_w=button.w,
+                rect_h=button.h,
+                base_font_size=17.0,
+            )
+            labels.append(fitted_label)
             self._renderer.add_text(
                 key=f"button:text:{button.id}",
-                text=label,
+                text=fitted_label,
                 x=button.x + button.w / 2.0,
                 y=button.y + button.h / 2.0,
-                font_size=17.0,
+                font_size=fitted_font_size,
                 color="#e5e7eb",
                 anchor="middle-center",
                 z=10.5 if button.id.startswith("prompt_") else 3.0,
