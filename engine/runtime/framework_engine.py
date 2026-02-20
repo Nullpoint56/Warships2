@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import logging
+import os
+
 from engine.api.app_port import EngineAppPort, InteractionPlanView
 from engine.api.commands import create_command_map
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
@@ -27,6 +30,13 @@ class EngineUIFramework:
         self._renderer = renderer
         self._layout = layout
         self._modal_state = ModalInputState()
+        self._trace_input = os.getenv("ENGINE_DEBUG_INPUT_TRACE", "0").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        self._trace_log = logging.getLogger("engine.inputtrace")
 
     def sync_ui_state(self) -> None:
         """Sync framework runtime state from app UI snapshot."""
@@ -35,6 +45,16 @@ class EngineUIFramework:
     def handle_pointer_event(self, event: PointerEvent) -> bool:
         """Route pointer event to app actions."""
         x, y = self._renderer.to_design_space(event.x, event.y)
+        if self._trace_input:
+            self._trace_log.info(
+                "pointer_event type=%s raw=(%.2f,%.2f) design=(%.2f,%.2f) button=%d",
+                event.event_type,
+                float(event.x),
+                float(event.y),
+                float(x),
+                float(y),
+                int(event.button),
+            )
         if event.event_type == "pointer_move":
             return self._app.on_pointer_move(x=x, y=y)
         if event.event_type == "pointer_up":
@@ -54,15 +74,26 @@ class EngineUIFramework:
         interactions = self._app.interaction_plan()
         if event.button == 1:
             button_id = resolve_pointer_button(interactions, x, y)
+            if self._trace_input:
+                self._trace_log.info("pointer_down resolve_button=%s", button_id)
             if button_id is not None:
                 return self._app.on_button(button_id)
             if interactions.cell_click_surface is not None:
                 grid_cell = self._layout.screen_to_cell(interactions.cell_click_surface, x, y)
+                if self._trace_input:
+                    self._trace_log.info(
+                        "pointer_down cell_surface=%s cell=%s",
+                        interactions.cell_click_surface,
+                        grid_cell,
+                    )
                 if grid_cell is not None:
                     return self._app.on_cell_click(
                         interactions.cell_click_surface, grid_cell.row, grid_cell.col
                     )
-        return self._app.on_pointer_down(x=x, y=y, button=event.button)
+        handled = self._app.on_pointer_down(x=x, y=y, button=event.button)
+        if self._trace_input:
+            self._trace_log.info("pointer_down fallback_handled=%s", bool(handled))
+        return handled
 
     def handle_key_event(self, event: KeyEvent) -> bool:
         """Route key/char event to app actions."""
@@ -105,6 +136,15 @@ class EngineUIFramework:
     def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         """Route one immutable input snapshot through framework handlers."""
         changed = False
+        if self._trace_input:
+            self._trace_log.info(
+                "input_snapshot frame=%d ptr_pressed=%s ptr_released=%s key_pressed=%s wheel=%.3f",
+                int(snapshot.frame_index),
+                sorted(int(button) for button in snapshot.mouse.just_pressed_buttons),
+                sorted(int(button) for button in snapshot.mouse.just_released_buttons),
+                sorted(str(key) for key in snapshot.keyboard.just_pressed_keys),
+                float(snapshot.mouse.wheel_delta),
+            )
         mx = float(snapshot.mouse.x)
         my = float(snapshot.mouse.y)
         if snapshot.mouse.delta_x != 0.0 or snapshot.mouse.delta_y != 0.0:

@@ -98,6 +98,7 @@ class _Canvas:
         self.set_size_calls: list[tuple[int, int]] = []
         self.titles: list[str] = []
         self.closed = 0
+        self.request_draw_calls = 0
 
     def add_event_handler(self, handler, event_type: str) -> None:
         self.handlers.setdefault(event_type, []).append(handler)
@@ -111,10 +112,44 @@ class _Canvas:
     def close(self) -> None:
         self.closed += 1
 
+    def request_draw(self, *args) -> None:
+        _ = args
+        self.request_draw_calls += 1
+
     def emit(self, event_type: str, **payload) -> None:
         event = {"event_type": event_type, **payload}
         for handler in self.handlers.get(event_type, []):
             handler(event)
+
+    def emit_obj(self, event_type: str, **payload) -> None:
+        event = SimpleNamespace(event_type=event_type, **payload)
+        for handler in self.handlers.get(event_type, []):
+            handler(event)
+
+
+class _StrictCanvas(_Canvas):
+    _valid_event_types = {
+        "animate",
+        "before_draw",
+        "char",
+        "close",
+        "double_click",
+        "key_down",
+        "key_up",
+        "pointer_down",
+        "pointer_enter",
+        "pointer_leave",
+        "pointer_move",
+        "pointer_up",
+        "resize",
+        "wheel",
+        "*",
+    }
+
+    def add_event_handler(self, handler, event_type: str) -> None:
+        if event_type not in self._valid_event_types:
+            raise ValueError(f"invalid event type: {event_type}")
+        super().add_event_handler(handler, event_type)
 
 
 def test_apply_startup_window_mode_fullscreen(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,6 +215,55 @@ def test_window_port_event_polling_and_controls(monkeypatch: pytest.MonkeyPatch)
     assert isinstance(input_events[1], KeyEvent)
     assert isinstance(input_events[2], WheelEvent)
     assert window.poll_input_events() == ()
+    assert canvas.request_draw_calls > 0
+
+
+def test_window_port_accepts_object_style_input_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    canvas = _Canvas()
+    window = RenderCanvasWindow(canvas=canvas)
+
+    canvas.emit_obj("pointer_down", x=10.0, y=20.0, button=1)
+    canvas.emit_obj("key_down", key="Enter")
+    canvas.emit_obj("wheel", x=10.0, y=20.0, dy=-1.0)
+
+    input_events = window.poll_input_events()
+    assert isinstance(input_events[0], PointerEvent)
+    assert isinstance(input_events[1], KeyEvent)
+    assert isinstance(input_events[2], WheelEvent)
+
+
+def test_window_port_accepts_mouse_alias_pointer_events(monkeypatch: pytest.MonkeyPatch) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    canvas = _Canvas()
+    window = RenderCanvasWindow(canvas=canvas)
+
+    canvas.emit("mouse_down", x=10.0, y=20.0, button=1)
+    canvas.emit("mouse_move", x=11.0, y=21.0, button=1)
+    canvas.emit("mouse_up", x=12.0, y=22.0, button=1)
+
+    input_events = window.poll_input_events()
+    assert len(input_events) == 3
+    assert all(isinstance(item, PointerEvent) for item in input_events)
+
+
+def test_window_port_keeps_binding_after_invalid_event_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    canvas = _StrictCanvas()
+    window = RenderCanvasWindow(canvas=canvas)
+
+    canvas.emit("pointer_down", x=10.0, y=20.0, button=1)
+    canvas.emit("key_down", key="A")
+
+    input_events = window.poll_input_events()
+    assert len(input_events) == 2
+    assert isinstance(input_events[0], PointerEvent)
+    assert isinstance(input_events[1], KeyEvent)
 
 
 def test_create_rendercanvas_window_factory() -> None:

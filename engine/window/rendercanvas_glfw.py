@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
+import logging
+import os
 from typing import Any
 
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
@@ -121,8 +123,13 @@ class RenderCanvasWindow(WindowPort):
     _events: deque[WindowEvent] = field(default_factory=deque)
     _input_events: deque[PointerEvent | KeyEvent | WheelEvent] = field(default_factory=deque)
     _rc_auto: Any | None = field(default=None, repr=False)
+    _debug_events: bool = field(default=False, repr=False)
 
     def __post_init__(self) -> None:
+        self._debug_events = (
+            os.getenv("ENGINE_DEBUG_WINDOW_EVENTS", "0").strip().lower()
+            in {"1", "true", "yes", "on"}
+        )
         if self._rc_auto is None:
             try:
                 import rendercanvas.auto as rc_auto
@@ -181,31 +188,31 @@ class RenderCanvasWindow(WindowPort):
         add_handler = getattr(self.canvas, "add_event_handler", None)
         if not callable(add_handler):
             return
-        try:
-            add_handler(self._on_resize, "resize")
-            add_handler(self._on_close, "close")
-            add_handler(self._on_minimize, "minimize")
-            add_handler(self._on_focus, "focus")
-            add_handler(self._on_pointer_down, "pointer_down")
-            add_handler(self._on_pointer_move, "pointer_move")
-            add_handler(self._on_pointer_up, "pointer_up")
-            add_handler(self._on_key_down, "key_down")
-            add_handler(self._on_key_up, "key_up")
-            add_handler(self._on_char, "char")
-            add_handler(self._on_wheel, "wheel")
-        except Exception:
-            return
+        self._try_add_event_handler(add_handler, self._on_resize, "resize")
+        self._try_add_event_handler(add_handler, self._on_close, "close")
+        self._try_add_event_handler(add_handler, self._on_minimize, "minimize")
+        self._try_add_event_handler(add_handler, self._on_focus, "focus")
+        self._try_add_event_handler(add_handler, self._on_pointer_down, "pointer_down")
+        self._try_add_event_handler(add_handler, self._on_pointer_move, "pointer_move")
+        self._try_add_event_handler(add_handler, self._on_pointer_up, "pointer_up")
+        self._try_add_event_handler(add_handler, self._on_pointer_down, "mouse_down")
+        self._try_add_event_handler(add_handler, self._on_pointer_move, "mouse_move")
+        self._try_add_event_handler(add_handler, self._on_pointer_up, "mouse_up")
+        self._try_add_event_handler(add_handler, self._on_key_down, "key_down")
+        self._try_add_event_handler(add_handler, self._on_key_up, "key_up")
+        self._try_add_event_handler(add_handler, self._on_char, "char")
+        self._try_add_event_handler(add_handler, self._on_wheel, "wheel")
+        if self._debug_events:
+            self._try_add_event_handler(add_handler, self._on_any_event, "*")
 
     def _on_resize(self, event: object) -> None:
-        if not isinstance(event, dict):
-            return
-        size = event.get("size")
+        size = _event_value(event, "size")
         if not (isinstance(size, (tuple, list)) and len(size) >= 2):
             return
         lw, lh = size[0], size[1]
         if not isinstance(lw, (int, float)) or not isinstance(lh, (int, float)):
             return
-        ratio_raw = event.get("pixel_ratio", 1.0)
+        ratio_raw = _event_value(event, "pixel_ratio", 1.0)
         dpi_scale = float(ratio_raw) if isinstance(ratio_raw, (int, float)) and ratio_raw > 0 else 1.0
         self._events.append(
             WindowResizeEvent(
@@ -216,59 +223,88 @@ class RenderCanvasWindow(WindowPort):
                 dpi_scale=dpi_scale,
             )
         )
+        self._request_redraw()
 
     def _on_focus(self, event: object) -> None:
-        if not isinstance(event, dict):
-            return
-        focused = event.get("focused")
+        focused = _event_value(event, "focused")
         if isinstance(focused, bool):
             self._events.append(WindowFocusEvent(focused=focused))
+            self._request_redraw()
 
     def _on_minimize(self, event: object) -> None:
-        if not isinstance(event, dict):
-            return
-        minimized = event.get("minimized")
+        minimized = _event_value(event, "minimized")
         if isinstance(minimized, bool):
             self._events.append(WindowMinimizeEvent(minimized=minimized))
+            self._request_redraw()
 
     def _on_close(self, event: object) -> None:
         _ = event
         self._events.append(WindowCloseEvent())
+        self._request_redraw()
 
     def _on_pointer_down(self, event: object) -> None:
         parsed = _parse_pointer_event(event, expected_type="pointer_down")
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_pointer_move(self, event: object) -> None:
         parsed = _parse_pointer_event(event, expected_type="pointer_move")
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_pointer_up(self, event: object) -> None:
         parsed = _parse_pointer_event(event, expected_type="pointer_up")
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_key_down(self, event: object) -> None:
         parsed = _parse_key_event(event, expected_type="key_down")
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_key_up(self, event: object) -> None:
         parsed = _parse_key_event(event, expected_type="key_up")
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_char(self, event: object) -> None:
         parsed = _parse_char_event(event)
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
 
     def _on_wheel(self, event: object) -> None:
         parsed = _parse_wheel_event(event)
         if parsed is not None:
             self._input_events.append(parsed)
+            self._request_redraw()
+
+    def _request_redraw(self) -> None:
+        request_draw = getattr(self.canvas, "request_draw", None)
+        if callable(request_draw):
+            try:
+                request_draw()
+            except TypeError:
+                return
+
+    def _try_add_event_handler(self, add_handler: Any, handler: Any, event_type: str) -> None:
+        try:
+            add_handler(handler, event_type)
+        except Exception:
+            return
+
+    def _on_any_event(self, event: object) -> None:
+        if not self._debug_events:
+            return
+        event_type = str(_event_value(event, "event_type", ""))
+        if event_type == "before_draw":
+            return
+        _LOG.debug("window_event type=%s payload=%r", event_type, event)
 
 
 def create_rendercanvas_window(
@@ -309,50 +345,45 @@ def create_rendercanvas_window(
 
 
 def _parse_pointer_event(event: object, *, expected_type: str) -> PointerEvent | None:
-    if not isinstance(event, dict):
+    raw_type = str(_event_value(event, "event_type", "")).strip().lower()
+    if not _is_pointer_type_match(raw_type, expected_type):
         return None
-    if str(event.get("event_type", "")) != expected_type:
-        return None
-    x = event.get("x")
-    y = event.get("y")
-    button = event.get("button", 0)
+    x = _event_value(event, "x")
+    y = _event_value(event, "y")
+    button = _event_value(event, "button", 0)
     if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
         return None
     if not isinstance(button, int):
         button = 0
+    if expected_type in {"pointer_down", "pointer_up"} and int(button) == 0:
+        button = 1
     return PointerEvent(expected_type, float(x), float(y), int(button))
 
 
 def _parse_key_event(event: object, *, expected_type: str) -> KeyEvent | None:
-    if not isinstance(event, dict):
+    if str(_event_value(event, "event_type", "")) != expected_type:
         return None
-    if str(event.get("event_type", "")) != expected_type:
-        return None
-    key = event.get("key")
+    key = _event_value(event, "key")
     if not isinstance(key, str):
         return None
     return KeyEvent(expected_type, key)
 
 
 def _parse_char_event(event: object) -> KeyEvent | None:
-    if not isinstance(event, dict):
+    if str(_event_value(event, "event_type", "")) != "char":
         return None
-    if str(event.get("event_type", "")) != "char":
-        return None
-    value = event.get("data")
+    value = _event_value(event, "data")
     if not isinstance(value, str):
         return None
     return KeyEvent("char", value)
 
 
 def _parse_wheel_event(event: object) -> WheelEvent | None:
-    if not isinstance(event, dict):
+    if str(_event_value(event, "event_type", "")) != "wheel":
         return None
-    if str(event.get("event_type", "")) != "wheel":
-        return None
-    x = event.get("x")
-    y = event.get("y")
-    dy = event.get("dy")
+    x = _event_value(event, "x")
+    y = _event_value(event, "y")
+    dy = _event_value(event, "dy")
     if (
         not isinstance(x, (int, float))
         or not isinstance(y, (int, float))
@@ -360,3 +391,22 @@ def _parse_wheel_event(event: object) -> WheelEvent | None:
     ):
         return None
     return WheelEvent(float(x), float(y), float(dy))
+
+
+def _event_value(event: object, key: str, default: object | None = None) -> object | None:
+    if isinstance(event, dict):
+        return event.get(key, default)
+    return getattr(event, key, default)
+
+
+def _is_pointer_type_match(raw_type: str, expected_type: str) -> bool:
+    aliases: dict[str, tuple[str, ...]] = {
+        "pointer_down": ("pointer_down", "mouse_down"),
+        "pointer_move": ("pointer_move", "mouse_move"),
+        "pointer_up": ("pointer_up", "mouse_up"),
+    }
+    allowed = aliases.get(expected_type, (expected_type,))
+    return raw_type in allowed
+
+
+_LOG = logging.getLogger("engine.window")

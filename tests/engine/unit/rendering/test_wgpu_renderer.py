@@ -310,6 +310,20 @@ def test_wgpu_renderer_emits_resize_diagnostics_with_dpi_and_dims() -> None:
     assert "render.surface_reconfigure" in hub.events
 
 
+def test_grid_draw_rects_span_declared_bounds_without_extra_division() -> None:
+    rects = wgpu_renderer._grid_draw_rects(
+        {"x": 10.0, "y": 20.0, "width": 100.0, "height": 80.0, "lines": 11},
+        color=(1.0, 1.0, 1.0, 1.0),
+    )
+
+    assert len(rects) == 22
+    for rect in rects:
+        assert rect.x >= 10.0
+        assert rect.y >= 20.0
+        assert rect.x + rect.w <= 110.0001
+        assert rect.y + rect.h <= 100.0001
+
+
 class _FakeEncoder:
     def __init__(self) -> None:
         self.render_passes: list[_FakeRenderPass] = []

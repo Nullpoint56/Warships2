@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, Protocol, cast
 
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.window import SurfaceHandle, WindowResizeEvent
+from engine.rendering.scene_runtime import resolve_preserve_aspect
+from engine.rendering.scene_viewport import to_design_space as viewport_to_design_space
+from engine.rendering.scene_viewport import viewport_transform
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
@@ -107,9 +110,17 @@ class WgpuRenderer:
     _logical_height: float = field(init=False, default=720.0)
     _dpi_scale: float = field(init=False, default=1.0)
     _projection: tuple[float, ...] = field(init=False, default=())
+    _design_width: int = field(init=False, default=1200)
+    _design_height: int = field(init=False, default=720)
+    _preserve_aspect: bool = field(init=False, default=False)
+    _canvas: object | None = field(init=False, default=None)
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
+        self._design_width = int(self.width)
+        self._design_height = int(self.height)
+        self._preserve_aspect = resolve_preserve_aspect()
+        self._canvas = self.surface.provider if self.surface is not None else None
         factory = self._backend_factory or _create_wgpu_backend
         self._backend = factory(self.surface)
         self._projection = _ortho_projection(width=float(self.width), height=float(self.height))
@@ -243,10 +254,40 @@ class WgpuRenderer:
         self._submit_command(command)
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
-        return (float(x), float(y))
+        window_w = int(max(1.0, round(float(self._logical_width))))
+        window_h = int(max(1.0, round(float(self._logical_height))))
+        dx, dy = viewport_to_design_space(
+            x=float(x),
+            y=float(y),
+            width=window_w,
+            height=window_h,
+            design_width=self._design_width,
+            design_height=self._design_height,
+            preserve_aspect=bool(self._preserve_aspect),
+        )
+        return (float(dx), float(dy))
 
     def invalidate(self) -> None:
-        return
+        self._assert_owner_thread()
+        if self._closed:
+            return
+        request_draw = getattr(self._canvas, "request_draw", None)
+        if callable(request_draw):
+            draw_callback = self._draw_callback
+            if draw_callback is not None:
+                try:
+                    request_draw(draw_callback)
+                except TypeError:
+                    pass
+            try:
+                request_draw()
+                return
+            except TypeError:
+                pass
+            except Exception:
+                pass
+        if self._draw_callback is not None:
+            self._draw_callback()
 
     def run(self, draw_callback: Callable[[], None]) -> None:
         self._assert_owner_thread()
@@ -578,17 +619,19 @@ def _grid_draw_rects(
     y = _payload_float(payload, "y", 0.0)
     width = max(1.0, _payload_float(payload, "width", 1.0))
     height = max(1.0, _payload_float(payload, "height", 1.0))
-    lines = max(1, _payload_int(payload, "lines", 1))
-    divisions = max(1, lines)
+    lines = max(2, _payload_int(payload, "lines", 2))
+    divisions = max(1, lines - 1)
     thickness = max(1.0, min(width, height) / 300.0)
+    max_vx = x + width - thickness
+    max_hy = y + height - thickness
     rects: list[_DrawRect] = []
-    for i in range(divisions + 1):
+    for i in range(lines):
         t = float(i) / float(divisions)
-        vx = x + (width * t)
-        hy = y + (height * t)
+        vx = min(max(x, x + (width * t) - (thickness * 0.5)), max_vx)
+        hy = min(max(y, y + (height * t) - (thickness * 0.5)), max_hy)
         rects.append(
             _DrawRect(
-                x=vx - (thickness * 0.5),
+                x=vx,
                 y=y,
                 w=thickness,
                 h=height,
@@ -598,7 +641,7 @@ def _grid_draw_rects(
         rects.append(
             _DrawRect(
                 x=x,
-                y=hy - (thickness * 0.5),
+                y=hy,
                 w=width,
                 h=thickness,
                 color=color,
@@ -671,8 +714,12 @@ class _WgpuBackend:
     _geometry_pipeline_cache: dict[tuple[float, float, float, float], object] = field(
         init=False, default_factory=dict
     )
+    _design_width: int = field(init=False, default=1200)
+    _design_height: int = field(init=False, default=720)
+    _preserve_aspect: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
+        self._preserve_aspect = resolve_preserve_aspect()
         try:
             import wgpu
         except Exception as exc:
@@ -1124,7 +1171,7 @@ class _WgpuBackend:
             )
         if kind == "rect":
             if payload:
-                return (_rect_from_payload(payload, color=color),)
+                return (self._map_design_rect(_rect_from_payload(payload, color=color)),)
             return (
                 _DrawRect(
                     x=0.0,
@@ -1135,8 +1182,26 @@ class _WgpuBackend:
                 ),
             )
         if kind == "grid":
-            return _grid_draw_rects(payload, color=color)
+            return tuple(
+                self._map_design_rect(rect) for rect in _grid_draw_rects(payload, color=color)
+            )
         return ()
+
+    def _map_design_rect(self, rect: "_DrawRect") -> "_DrawRect":
+        sx, sy, ox, oy = viewport_transform(
+            width=max(1, int(self._target_width)),
+            height=max(1, int(self._target_height)),
+            design_width=max(1, int(self._design_width)),
+            design_height=max(1, int(self._design_height)),
+            preserve_aspect=bool(self._preserve_aspect),
+        )
+        return _DrawRect(
+            x=(float(rect.x) * sx) + ox,
+            y=(float(rect.y) * sy) + oy,
+            w=max(1.0, float(rect.w) * sx),
+            h=max(1.0, float(rect.h) * sy),
+            color=rect.color,
+        )
 
     def _apply_draw_rect(self, render_pass: object, rect: "_DrawRect") -> None:
         set_viewport = getattr(render_pass, "set_viewport", None)
