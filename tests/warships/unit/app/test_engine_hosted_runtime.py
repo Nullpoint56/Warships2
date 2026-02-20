@@ -16,6 +16,6 @@ def test_run_engine_hosted_app_builds_controller_and_invokes_runtime(monkeypatch
         assert host_config.window_mode in {"windowed", "maximized", "fullscreen", "borderless"}
         _ = module_factory
 
-    monkeypatch.setattr(runtime_mod, "run_pygfx_hosted_runtime", _fake_run)
+    monkeypatch.setattr(runtime_mod, "run_hosted_runtime", _fake_run)
     runtime_mod.run_engine_hosted_app()
     assert called["run"] == 1

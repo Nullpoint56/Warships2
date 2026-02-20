@@ -1,8 +1,9 @@
-"""Engine runtime bootstrap for pygfx frontend."""
+"""Engine runtime window frontend."""
 
 from __future__ import annotations
 
 from engine.api.input_snapshot import InputSnapshot
+from engine.api.render import RenderAPI
 from engine.api.window import (
     WindowCloseEvent,
     WindowFocusEvent,
@@ -11,16 +12,15 @@ from engine.api.window import (
     WindowResizeEvent,
 )
 from engine.input.input_controller import InputController
-from engine.rendering.scene import SceneRenderer
 from engine.runtime.host import EngineHost
 
 
-class PygfxFrontendWindow:
-    """Frontend adapter over the pygfx canvas/runtime."""
+class HostedWindowFrontend:
+    """Frontend adapter over window/event loop and renderer APIs."""
 
     def __init__(
         self,
-        renderer: SceneRenderer,
+        renderer: RenderAPI,
         window: WindowPort,
         input_controller: InputController,
         host: EngineHost,
@@ -44,10 +44,15 @@ class PygfxFrontendWindow:
 
     def run(self) -> None:
         self._renderer.run(self._draw_frame)
+        canvas = getattr(self._window, "canvas", None)
+        request_draw = getattr(canvas, "request_draw", None)
+        if callable(request_draw):
+            request_draw(self._draw_frame)
+            request_draw()
         self._window.run_loop()
 
     def _draw_frame(self) -> None:
-        self._renderer.note_frame_reason("draw")
+        self._note_frame_reason("draw")
         self._process_window_events()
         snapshot = self._build_input_snapshot()
         self._dispatch_input_snapshot(snapshot)
@@ -64,7 +69,7 @@ class PygfxFrontendWindow:
         tick = int(self._host.current_frame_index())
         for event in events:
             if isinstance(event, WindowResizeEvent):
-                self._renderer.note_frame_reason("window:resize")
+                self._note_frame_reason("window:resize")
                 apply_window_resize = getattr(self._renderer, "apply_window_resize", None)
                 if callable(apply_window_resize):
                     apply_window_resize(event)
@@ -119,32 +124,38 @@ class PygfxFrontendWindow:
     def _dispatch_input_snapshot(self, snapshot: InputSnapshot) -> None:
         changed = self._host.handle_input_snapshot(snapshot)
         if snapshot.pointer_events:
-            self._renderer.note_frame_reason("input:pointer")
+            self._note_frame_reason("input:pointer")
         if snapshot.key_events:
-            self._renderer.note_frame_reason("input:key")
+            self._note_frame_reason("input:key")
         if snapshot.wheel_events:
-            self._renderer.note_frame_reason("input:wheel")
+            self._note_frame_reason("input:wheel")
         for pointer_event in snapshot.pointer_events:
             event_type = getattr(pointer_event, "event_type", "")
             if isinstance(event_type, str) and event_type.strip():
                 normalized_type = event_type.strip().lower().replace(" ", "_")
-                self._renderer.note_frame_reason(f"input:pointer:{normalized_type}")
+                self._note_frame_reason(f"input:pointer:{normalized_type}")
         if changed:
-            self._renderer.note_frame_reason("input:changed")
+            self._note_frame_reason("input:changed")
             self._renderer.invalidate()
 
+    def _note_frame_reason(self, reason: str) -> None:
+        note = getattr(self._renderer, "note_frame_reason", None)
+        if callable(note):
+            note(reason)
 
-def create_pygfx_window(
+
+def create_window_frontend(
     *,
-    renderer: SceneRenderer,
+    renderer: RenderAPI,
     window: WindowPort,
     input_controller: InputController,
     host: EngineHost,
-) -> PygfxFrontendWindow:
-    """Build pygfx frontend window from precomposed engine host/runtime services."""
-    return PygfxFrontendWindow(
+) -> HostedWindowFrontend:
+    """Build frontend window from precomposed engine host/runtime services."""
+    return HostedWindowFrontend(
         renderer=renderer,
         window=window,
         input_controller=input_controller,
         host=host,
     )
+

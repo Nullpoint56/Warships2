@@ -6,7 +6,7 @@ import os
 import random
 from pathlib import Path
 
-from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
+from engine.api.hosted_runtime import HostedRuntimeConfig, run_hosted_runtime
 from engine.api.render import RenderAPI
 from engine.api.ui_framework import create_ui_framework
 from engine.api.ui_primitives import GridLayout
@@ -24,7 +24,7 @@ def run_engine_hosted_app() -> None:
     controller = _build_controller()
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
     host_config = HostedRuntimeConfig(window_mode=os.getenv("ENGINE_WINDOW_MODE", "windowed"))
-    run_pygfx_hosted_runtime(
+    run_hosted_runtime(
         module_factory=lambda renderer, layout: _build_module(
             controller, renderer, layout, debug_ui
         ),

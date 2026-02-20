@@ -55,7 +55,7 @@ from engine.api.gameplay import (
     create_state_store,
     create_update_loop,
 )
-from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
+from engine.api.hosted_runtime import HostedRuntimeConfig, run_hosted_runtime
 from engine.api.input_snapshot import (
     ActionSnapshot,
     ControllerSnapshot,
@@ -227,7 +227,7 @@ __all__ = [
     "load_debug_session",
     "normalize_scores",
     "validate_replay_snapshot",
-    "run_pygfx_hosted_runtime",
+    "run_hosted_runtime",
     "create_module_graph",
     "create_runtime_context",
     "create_screen_stack",

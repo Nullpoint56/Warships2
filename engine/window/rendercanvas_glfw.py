@@ -132,7 +132,7 @@ class RenderCanvasWindow(WindowPort):
         self._bind_window_events()
 
     def create_surface(self) -> SurfaceHandle:
-        return SurfaceHandle(surface_id=f"{id(self.canvas)}", backend=self.backend)
+        return SurfaceHandle(surface_id=f"{id(self.canvas)}", backend=self.backend, provider=self.canvas)
 
     def poll_events(self) -> tuple[WindowEvent, ...]:
         drained = tuple(self._events)

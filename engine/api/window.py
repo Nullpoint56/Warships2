@@ -14,6 +14,7 @@ class SurfaceHandle:
 
     surface_id: str
     backend: str
+    provider: object | None = None
 
 
 @dataclass(frozen=True, slots=True)

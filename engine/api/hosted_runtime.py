@@ -19,13 +19,13 @@ class HostedRuntimeConfig:
     height: int = 800
 
 
-def run_pygfx_hosted_runtime(
+def run_hosted_runtime(
     *,
     module_factory: Callable[[RenderAPI, GridLayout], GameModule],
     host_config: HostedRuntimeConfig | None = None,
 ) -> None:
-    """Run pygfx-hosted runtime using default engine implementation."""
-    from engine.runtime.bootstrap import run_pygfx_hosted_runtime as _run
+    """Run hosted runtime using default engine implementation."""
+    from engine.runtime.bootstrap import run_hosted_runtime as _run
     from engine.runtime.host import EngineHostConfig
 
     config = host_config or HostedRuntimeConfig()

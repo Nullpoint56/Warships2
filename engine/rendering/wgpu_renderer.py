@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -438,14 +439,34 @@ class _WgpuBackend:
         gpu = getattr(self._wgpu, "gpu", None)
         if gpu is None:
             raise RuntimeError("wgpu.gpu entrypoint unavailable")
+        backend_order = _resolve_backend_priority()
         request_adapter_sync = getattr(gpu, "request_adapter_sync", None)
+        adapter = None
         if callable(request_adapter_sync):
-            adapter = request_adapter_sync(power_preference="high-performance")
+            for backend_name in backend_order:
+                try:
+                    adapter = request_adapter_sync(
+                        power_preference="high-performance",
+                        backend=backend_name,
+                    )
+                except TypeError:
+                    adapter = request_adapter_sync(power_preference="high-performance")
+                if adapter is not None:
+                    break
         else:
             request_adapter = getattr(gpu, "request_adapter", None)
             if not callable(request_adapter):
                 raise RuntimeError("wgpu adapter request API unavailable")
-            adapter = request_adapter(power_preference="high-performance")
+            for backend_name in backend_order:
+                try:
+                    adapter = request_adapter(
+                        power_preference="high-performance",
+                        backend=backend_name,
+                    )
+                except TypeError:
+                    adapter = request_adapter(power_preference="high-performance")
+                if adapter is not None:
+                    break
         if adapter is None:
             raise RuntimeError("wgpu adapter request returned None")
         return adapter
@@ -536,6 +557,18 @@ def _resolve_texture_usage(wgpu_mod: object) -> int:
     render_attachment = int(getattr(texture_usage, "RENDER_ATTACHMENT", 0x10))
     copy_src = int(getattr(texture_usage, "COPY_SRC", 0x04))
     return render_attachment | copy_src
+
+
+def _resolve_backend_priority() -> tuple[str, ...]:
+    raw = os.getenv("ENGINE_WGPU_BACKENDS", "").strip()
+    if not raw:
+        return ("vulkan", "metal", "dx12")
+    values = tuple(
+        item.strip().lower()
+        for item in raw.split(",")
+        if item.strip()
+    )
+    return values or ("vulkan", "metal", "dx12")
 
 
 _GEOMETRY_WGSL = """

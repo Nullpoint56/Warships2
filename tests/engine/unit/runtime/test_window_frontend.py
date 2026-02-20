@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.window import WindowCloseEvent, WindowResizeEvent
-import engine.runtime.pygfx_frontend as frontend_mod
+import engine.runtime.window_frontend as frontend_mod
 
 
 class _Renderer:
@@ -108,7 +108,7 @@ class _Host:
 def test_show_windowed_delegates_to_window_port() -> None:
     renderer = _Renderer()
     window_port = _Window()
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=window_port,
         input_controller=_Input(),
@@ -121,7 +121,7 @@ def test_show_windowed_delegates_to_window_port() -> None:
 def test_show_fullscreen_and_maximized_delegate_to_window_port() -> None:
     renderer = _Renderer()
     window_port = _Window()
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=window_port,
         input_controller=_Input(),
@@ -136,7 +136,7 @@ def test_draw_frame_closes_renderer_when_host_closed() -> None:
     renderer = _Renderer()
     host = _Host(close_after_frame=True)
     window_port = _Window()
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=window_port,
         input_controller=_Input(pointer=[object()]),
@@ -151,7 +151,7 @@ def test_draw_frame_closes_renderer_when_host_closed() -> None:
 
 def test_dispatch_input_snapshot_without_changes_does_not_invalidate() -> None:
     renderer = _Renderer()
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=_Window(),
         input_controller=_Input(pointer=[], key=[], wheel=[]),
@@ -164,7 +164,7 @@ def test_dispatch_input_snapshot_without_changes_does_not_invalidate() -> None:
 def test_dispatch_input_snapshot_records_pointer_event_type_reasons() -> None:
     renderer = _Renderer()
     pointer_event = SimpleNamespace(event_type="pointer_move")
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=_Window(),
         input_controller=_Input(pointer=[pointer_event]),
@@ -177,7 +177,7 @@ def test_dispatch_input_snapshot_records_pointer_event_type_reasons() -> None:
 def test_run_starts_renderer_then_window_loop() -> None:
     renderer = _Renderer()
     window_port = _Window()
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=window_port,
         input_controller=_Input(),
@@ -196,7 +196,7 @@ def test_draw_frame_processes_window_events_and_close_request() -> None:
         WindowResizeEvent(1280.0, 720.0, 1920, 1080, 1.5),
         WindowCloseEvent(),
     )
-    window = frontend_mod.PygfxFrontendWindow(
+    window = frontend_mod.HostedWindowFrontend(
         renderer=renderer,
         window=window_port,
         input_controller=_Input(),
