@@ -110,18 +110,15 @@ def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_render_loop_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ENGINE_RENDER_LOOP_MODE", raising=False)
     monkeypatch.delenv("ENGINE_RENDER_FPS_CAP", raising=False)
-    monkeypatch.delenv("ENGINE_RENDER_RESIZE_COOLDOWN_MS", raising=False)
     assert resolve_render_loop_config() == RenderLoopConfig()
 
 
 def test_resolve_render_loop_config_parsing_and_clamping(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ENGINE_RENDER_LOOP_MODE", "continuous_during_resize")
+    monkeypatch.setenv("ENGINE_RENDER_LOOP_MODE", "continuous")
     monkeypatch.setenv("ENGINE_RENDER_FPS_CAP", "-1.0")
-    monkeypatch.setenv("ENGINE_RENDER_RESIZE_COOLDOWN_MS", "-42")
     cfg = resolve_render_loop_config()
-    assert cfg.mode == "continuous_during_resize"
+    assert cfg.mode == "continuous"
     assert cfg.fps_cap == 0.0
-    assert cfg.resize_cooldown_ms == 0
 
 
 def test_resolve_render_loop_config_invalid_mode_falls_back(

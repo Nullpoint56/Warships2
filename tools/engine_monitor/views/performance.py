@@ -1,0 +1,205 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from tools.engine_obs_core.datasource.live_source import LiveSnapshot
+
+
+@dataclass(frozen=True)
+class PerformanceBreakdownModel:
+    sample_count: int
+    frame_mean_ms: float
+    render_mean_ms: float
+    host_estimated_mean_ms: float
+    render_share_pct: float
+    host_share_pct: float
+    bottleneck_lane: str
+    top_render_span_name: str
+    top_render_span_ms: float
+    render_build_ms: float
+    render_execute_ms: float
+    render_present_ms: float
+    render_total_ms: float
+    render_mem_delta_mb: float
+    render_execute_packet_count: int
+    render_execute_pass_count: int
+    render_execute_pass_packet_counts: tuple[tuple[str, int], ...]
+    render_execute_kind_packet_counts: tuple[tuple[str, int], ...]
+    top_system_name: str
+    top_system_ms: float
+    python_current_mb: float
+    process_rss_mb: float
+    render_stage_event_counts: tuple[tuple[str, int], ...]
+
+
+def build_performance_breakdown_model(
+    snapshot: LiveSnapshot, *, max_points: int = 180
+) -> PerformanceBreakdownModel:
+    points = snapshot.frame_points[-max(1, int(max_points)) :]
+    if not points:
+        return PerformanceBreakdownModel(
+            sample_count=0,
+            frame_mean_ms=0.0,
+            render_mean_ms=0.0,
+            host_estimated_mean_ms=0.0,
+            render_share_pct=0.0,
+            host_share_pct=0.0,
+            bottleneck_lane="unknown",
+            top_render_span_name="n/a",
+            top_render_span_ms=0.0,
+            render_build_ms=0.0,
+            render_execute_ms=0.0,
+            render_present_ms=0.0,
+            render_total_ms=0.0,
+            render_mem_delta_mb=0.0,
+            render_execute_packet_count=0,
+            render_execute_pass_count=0,
+            render_execute_pass_packet_counts=(),
+            render_execute_kind_packet_counts=(),
+            top_system_name="n/a",
+            top_system_ms=0.0,
+            python_current_mb=0.0,
+            process_rss_mb=0.0,
+            render_stage_event_counts=(),
+        )
+    frame_sum = 0.0
+    render_sum = 0.0
+    for point in points:
+        frame_sum += max(0.0, float(point.frame_ms))
+        render_sum += max(0.0, float(point.render_ms))
+    count = len(points)
+    frame_mean = frame_sum / count
+    render_mean = render_sum / count
+    host_mean = max(0.0, frame_mean - render_mean)
+    total = max(0.0001, frame_mean)
+    render_share = min(100.0, max(0.0, (render_mean / total) * 100.0))
+    host_share = min(100.0, max(0.0, (host_mean / total) * 100.0))
+    if render_share >= 65.0:
+        lane = "render"
+    elif host_share >= 65.0:
+        lane = "host/sim/input"
+    else:
+        lane = "mixed"
+
+    span_totals: dict[str, float] = {}
+    for span in snapshot.spans:
+        if str(span.category) != "render":
+            continue
+        name = str(span.name) or "render.unknown"
+        span_totals[name] = span_totals.get(name, 0.0) + max(0.0, float(span.duration_ms))
+    if span_totals:
+        top_span_name, top_span_ms = max(span_totals.items(), key=lambda item: item[1])
+    else:
+        top_span_name, top_span_ms = ("n/a", 0.0)
+
+    stage_counts: dict[str, int] = {}
+    for event in snapshot.events:
+        name = str(event.name)
+        if not name.startswith("render.stage."):
+            continue
+        stage = name.removeprefix("render.stage.")
+        stage_counts[stage] = stage_counts.get(stage, 0) + 1
+    sorted_stage_counts = tuple(
+        sorted(stage_counts.items(), key=lambda item: item[1], reverse=True)[:8]
+    )
+    render_profile = _latest_dict_event_value(snapshot, "render.profile_frame")
+    render_build_ms = _safe_float(render_profile.get("build_ms"), 0.0)
+    render_execute_ms = _safe_float(render_profile.get("execute_ms"), 0.0)
+    render_present_ms = _safe_float(render_profile.get("present_ms"), 0.0)
+    render_total_ms = _safe_float(render_profile.get("total_ms"), 0.0)
+    render_mem_delta_mb = _safe_float(render_profile.get("mem_delta_mb"), 0.0)
+    render_execute_packet_count = _safe_int(render_profile.get("execute_packet_count"), 0)
+    render_execute_pass_count = _safe_int(render_profile.get("execute_pass_count"), 0)
+    render_execute_pass_packet_counts = _safe_sorted_counts(
+        render_profile.get("execute_pass_packet_counts")
+    )
+    render_execute_kind_packet_counts = _safe_sorted_counts(
+        render_profile.get("execute_kind_packet_counts")
+    )
+    frame_profile = _latest_dict_event_value(snapshot, "perf.frame_profile")
+    top_system_name = "n/a"
+    top_system_ms = 0.0
+    python_current_mb = 0.0
+    process_rss_mb = 0.0
+    systems = frame_profile.get("systems")
+    if isinstance(systems, dict):
+        top = systems.get("top_system")
+        if isinstance(top, dict):
+            top_system_name = str(top.get("name", "n/a"))
+            top_system_ms = _safe_float(top.get("ms"), 0.0)
+    memory = frame_profile.get("memory")
+    if isinstance(memory, dict):
+        python_current_mb = _safe_float(memory.get("python_current_mb"), 0.0)
+        process_rss_mb = _safe_float(memory.get("process_rss_mb"), 0.0)
+    if top_span_name == "n/a":
+        block_candidates = (
+            ("render.build", render_build_ms),
+            ("render.execute", render_execute_ms),
+            ("render.present", render_present_ms),
+        )
+        top_block_name, top_block_ms = max(block_candidates, key=lambda item: item[1])
+        if top_block_ms > 0.0:
+            top_span_name = top_block_name
+            top_span_ms = float(top_block_ms)
+
+    return PerformanceBreakdownModel(
+        sample_count=count,
+        frame_mean_ms=frame_mean,
+        render_mean_ms=render_mean,
+        host_estimated_mean_ms=host_mean,
+        render_share_pct=render_share,
+        host_share_pct=host_share,
+        bottleneck_lane=lane,
+        top_render_span_name=top_span_name,
+        top_render_span_ms=float(top_span_ms),
+        render_build_ms=render_build_ms,
+        render_execute_ms=render_execute_ms,
+        render_present_ms=render_present_ms,
+        render_total_ms=render_total_ms,
+        render_mem_delta_mb=render_mem_delta_mb,
+        render_execute_packet_count=render_execute_packet_count,
+        render_execute_pass_count=render_execute_pass_count,
+        render_execute_pass_packet_counts=render_execute_pass_packet_counts,
+        render_execute_kind_packet_counts=render_execute_kind_packet_counts,
+        top_system_name=top_system_name,
+        top_system_ms=top_system_ms,
+        python_current_mb=python_current_mb,
+        process_rss_mb=process_rss_mb,
+        render_stage_event_counts=sorted_stage_counts,
+    )
+
+
+def _latest_dict_event_value(snapshot: LiveSnapshot, name: str) -> dict[str, object]:
+    for event in reversed(snapshot.events):
+        if str(event.name) != name:
+            continue
+        value = event.value
+        if isinstance(value, dict):
+            return value
+        return {}
+    return {}
+
+
+def _safe_float(value: object, default: float) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return float(default)
+
+
+def _safe_int(value: object, default: int) -> int:
+    if isinstance(value, bool):
+        return int(default)
+    if isinstance(value, int):
+        return int(value)
+    if isinstance(value, float):
+        return int(value)
+    return int(default)
+
+
+def _safe_sorted_counts(value: object) -> tuple[tuple[str, int], ...]:
+    if not isinstance(value, dict):
+        return ()
+    parsed: list[tuple[str, int]] = []
+    for key, raw_count in value.items():
+        parsed.append((str(key), max(0, _safe_int(raw_count, 0))))
+    return tuple(sorted(parsed, key=lambda item: item[1], reverse=True))

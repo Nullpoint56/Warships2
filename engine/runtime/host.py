@@ -114,8 +114,10 @@ class EngineHost(HostControl):
             hub=self._diagnostics_hub,
         )
         self._render_snapshot_exchange: DoubleBufferedSnapshotExchange[RenderSnapshot] = (
-            DoubleBufferedSnapshotExchange(_clone_fn=_sanitize_render_snapshot)
+            DoubleBufferedSnapshotExchange()
         )
+        self._last_snapshot_passes_identity: int = 0
+        self._last_sanitized_passes: tuple[RenderPassSnapshot, ...] | None = None
         self._diagnostics_http: DiagnosticsHttpServer | None = None
         self._try_start_diagnostics_http()
 
@@ -353,19 +355,16 @@ class EngineHost(HostControl):
             and self._debug_overlay_visible
             and self._render_api is not None
         ):
-            diagnostics_summary = None
-            get_diag = getattr(self._render_api, "ui_diagnostics_summary", None)
-            if callable(get_diag):
-                diagnostics_summary = get_diag()
             overlay_snapshot = _build_overlay_snapshot(
                 frame_index=self._frame_index,
                 overlay=self._debug_overlay,
                 snapshot=self._metrics_collector.snapshot(),
-                ui_diagnostics=diagnostics_summary,
+                ui_diagnostics=None,
             )
             module_render_snapshot = _merge_render_snapshots(module_render_snapshot, overlay_snapshot)
         if module_render_snapshot is not None:
-            self._render_snapshot_exchange.publish(module_render_snapshot)
+            sanitized_snapshot = self._sanitize_snapshot_cached(module_render_snapshot)
+            self._render_snapshot_exchange.publish(sanitized_snapshot)
         render_snapshot_payload = self._render_snapshot_exchange.consume_latest()
         if render_snapshot_payload is not None and self._render_api is not None:
             render_snapshot = getattr(self._render_api, "render_snapshot", None)
@@ -417,6 +416,21 @@ class EngineHost(HostControl):
         """Cancel a previously scheduled task."""
         self._scheduler.cancel(task_id)
 
+    def _sanitize_snapshot_cached(self, snapshot: RenderSnapshot) -> RenderSnapshot:
+        passes_identity = id(snapshot.passes)
+        if (
+            self._last_sanitized_passes is not None
+            and self._last_snapshot_passes_identity == passes_identity
+        ):
+            return RenderSnapshot(
+                frame_index=int(snapshot.frame_index),
+                passes=self._last_sanitized_passes,
+            )
+        sanitized = _sanitize_render_snapshot(snapshot)
+        self._last_snapshot_passes_identity = passes_identity
+        self._last_sanitized_passes = sanitized.passes
+        return sanitized
+
     def close(self) -> None:
         if self._closed:
             return
@@ -452,16 +466,18 @@ class EngineHost(HostControl):
                 versions[pkg] = version(pkg)
             except PackageNotFoundError:
                 versions[pkg] = "unknown"
-        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
         return {"engine_versions": versions, "game_name": game_name}
 
     def _try_start_diagnostics_http(self) -> None:
-        enabled_raw = os.getenv("ENGINE_DEBUG_OBS_HTTP", "1").strip().lower()
+        enabled_raw = os.getenv("ENGINE_DIAGNOSTICS_HTTP_ENABLED", "1").strip().lower()
         if enabled_raw in {"0", "false", "off", "no"}:
             return
-        bind_host = os.getenv("ENGINE_DEBUG_OBS_HTTP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        bind_host = (
+            os.getenv("ENGINE_DIAGNOSTICS_HTTP_HOST", "127.0.0.1").strip() or "127.0.0.1"
+        )
         try:
-            bind_port = int(os.getenv("ENGINE_DEBUG_OBS_HTTP_PORT", "8765"))
+            bind_port = int(os.getenv("ENGINE_DIAGNOSTICS_HTTP_PORT", "8765"))
         except ValueError:
             bind_port = 8765
         server = DiagnosticsHttpServer(host_obj=self, bind_host=bind_host, bind_port=bind_port)
@@ -482,7 +498,7 @@ class EngineHost(HostControl):
         if manifest.command_count <= 0:
             return
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
         out_dir = Path(self._diag_cfg.replay_export_dir)
         out_path = out_dir / f"{game_name}_replay_session_{stamp}.json"
         try:
@@ -498,7 +514,7 @@ class EngineHost(HostControl):
         if not spans:
             return
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        game_name = os.getenv("ENGINE_GAME_NAME", "game").strip() or "game"
+        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
         out_dir = Path(self._diag_cfg.profile_export_dir)
         out_path = out_dir / f"{game_name}_profiling_data_{stamp}.jsonl"
         out_dir.mkdir(parents=True, exist_ok=True)

@@ -33,7 +33,7 @@ def resolve_logs_dir() -> Path:
 
 
 def resolve_ui_dir() -> Path:
-    """Resolve UI trace directory under app-data root."""
+    """Resolve UI data directory under app-data root."""
     return resolve_app_data_root() / "ui"
 
 
@@ -97,19 +97,18 @@ def apply_runtime_path_defaults() -> dict[str, Path]:
     paths = ensure_app_data_dirs()
     log_dir = _normalize_runtime_path_env("WARSHIPS_LOG_DIR", paths["logs"])
     presets_dir = _normalize_runtime_path_env("WARSHIPS_PRESETS_DIR", paths["presets"])
-    trace_dump_dir = _normalize_runtime_path_env("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", paths["ui"])
     profiling_dir = _normalize_runtime_path_env(
-        "ENGINE_DIAG_PROFILE_EXPORT_DIR", paths["profiling"]
+        "ENGINE_DIAGNOSTICS_PROFILING_EXPORT_DIR", paths["profiling"]
     )
-    replay_dir = _normalize_runtime_path_env("ENGINE_DIAG_REPLAY_EXPORT_DIR", paths["replay"])
-    crash_dir = _normalize_runtime_path_env("ENGINE_DIAG_CRASH_DIR", paths["crash"])
-    if not os.getenv("ENGINE_GAME_NAME", "").strip():
+    replay_dir = _normalize_runtime_path_env("ENGINE_DIAGNOSTICS_REPLAY_EXPORT_DIR", paths["replay"])
+    crash_dir = _normalize_runtime_path_env("ENGINE_DIAGNOSTICS_CRASH_DIR", paths["crash"])
+    if not os.getenv("ENGINE_RUNTIME_GAME_NAME", "").strip():
         game_name = os.getenv("WARSHIPS_GAME_NAME", "warships").strip() or "warships"
-        os.environ["ENGINE_GAME_NAME"] = game_name
+        os.environ["ENGINE_RUNTIME_GAME_NAME"] = game_name
 
     log_dir.mkdir(parents=True, exist_ok=True)
     presets_dir.mkdir(parents=True, exist_ok=True)
-    trace_dump_dir.mkdir(parents=True, exist_ok=True)
+    paths["ui"].mkdir(parents=True, exist_ok=True)
     profiling_dir.mkdir(parents=True, exist_ok=True)
     replay_dir.mkdir(parents=True, exist_ok=True)
     crash_dir.mkdir(parents=True, exist_ok=True)
@@ -117,7 +116,7 @@ def apply_runtime_path_defaults() -> dict[str, Path]:
     return {
         "root": paths["root"],
         "logs": log_dir,
-        "ui": trace_dump_dir,
+        "ui": paths["ui"],
         "profiling": profiling_dir,
         "replay": replay_dir,
         "crash": crash_dir,

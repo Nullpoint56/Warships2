@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -62,6 +63,10 @@ class LiveObsSource(FileObsSource, ObsSource):
             max_frame_ms=0.0,
             resize_count=0,
         )
+        self._poll_count = 0
+        self._remote_snapshot_limit = _env_int("ENGINE_MONITOR_REMOTE_SNAPSHOT_LIMIT", 1200)
+        self._remote_profiling_limit = _env_int("ENGINE_MONITOR_REMOTE_PROFILING_LIMIT", 600)
+        self._remote_heavy_poll_every = _env_int("ENGINE_MONITOR_REMOTE_HEAVY_POLL_EVERY", 4)
 
     def poll(self, *, event_limit: int = 2_000, span_limit: int = 1_000) -> LiveSnapshot:
         host = self._host_provider() if callable(self._host_provider) else None
@@ -117,10 +122,19 @@ class LiveObsSource(FileObsSource, ObsSource):
         return self._last_snapshot
 
     def _poll_remote(self, *, event_limit: int, span_limit: int) -> LiveSnapshot | None:
+        self._poll_count += 1
+        has_cached_payload = bool(self._last_snapshot.events) and bool(self._last_snapshot.spans)
+        poll_heavy = (self._poll_count % max(1, self._remote_heavy_poll_every)) == 0
+        if not has_cached_payload:
+            poll_heavy = True
         try:
-            snapshot = self._fetch_json(f"{self._remote_url}/snapshot")
+            snapshot = self._fetch_json(
+                f"{self._remote_url}/snapshot?limit={max(100, min(50000, self._remote_snapshot_limit))}"
+            ) if poll_heavy else {"events": [e.__dict__ for e in self._last_snapshot.events]}
             metrics = self._fetch_json(f"{self._remote_url}/metrics")
-            profiling = self._fetch_json(f"{self._remote_url}/profiling")
+            profiling = self._fetch_json(
+                f"{self._remote_url}/profiling?limit={max(100, min(50000, self._remote_profiling_limit))}"
+            ) if poll_heavy else {"spans": [s.__dict__ for s in self._last_snapshot.spans]}
         except OSError, URLError, ValueError:
             return None
         events = [
@@ -163,7 +177,7 @@ class LiveObsSource(FileObsSource, ObsSource):
 
     @staticmethod
     def _fetch_json(url: str) -> dict[str, Any]:
-        with urlopen(url, timeout=0.2) as resp:  # noqa: S310
+        with urlopen(url, timeout=1.0) as resp:  # noqa: S310
             raw = resp.read().decode("utf-8")
         payload = json.loads(raw)
         if not isinstance(payload, dict):
@@ -226,3 +240,14 @@ class LiveObsSource(FileObsSource, ObsSource):
                 )
             )
         return out
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return int(default)
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = int(default)
+    return max(1, value)

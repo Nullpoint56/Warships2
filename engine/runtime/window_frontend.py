@@ -52,7 +52,6 @@ class HostedWindowFrontend:
         self._window.run_loop()
 
     def _draw_frame(self) -> None:
-        self._note_frame_reason("draw")
         self._process_window_events()
         snapshot = self._build_input_snapshot()
         self._dispatch_input_snapshot(snapshot)
@@ -69,7 +68,6 @@ class HostedWindowFrontend:
         tick = int(self._host.current_frame_index())
         for event in events:
             if isinstance(event, WindowResizeEvent):
-                self._note_frame_reason("window:resize")
                 apply_window_resize = getattr(self._renderer, "apply_window_resize", None)
                 if callable(apply_window_resize):
                     apply_window_resize(event)
@@ -123,25 +121,8 @@ class HostedWindowFrontend:
 
     def _dispatch_input_snapshot(self, snapshot: InputSnapshot) -> None:
         changed = self._host.handle_input_snapshot(snapshot)
-        if snapshot.pointer_events:
-            self._note_frame_reason("input:pointer")
-        if snapshot.key_events:
-            self._note_frame_reason("input:key")
-        if snapshot.wheel_events:
-            self._note_frame_reason("input:wheel")
-        for pointer_event in snapshot.pointer_events:
-            event_type = getattr(pointer_event, "event_type", "")
-            if isinstance(event_type, str) and event_type.strip():
-                normalized_type = event_type.strip().lower().replace(" ", "_")
-                self._note_frame_reason(f"input:pointer:{normalized_type}")
         if changed:
-            self._note_frame_reason("input:changed")
             self._renderer.invalidate()
-
-    def _note_frame_reason(self, reason: str) -> None:
-        note = getattr(self._renderer, "note_frame_reason", None)
-        if callable(note):
-            note(reason)
 
 
 def create_window_frontend(
@@ -158,4 +139,3 @@ def create_window_frontend(
         input_controller=input_controller,
         host=host,
     )
-

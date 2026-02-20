@@ -143,6 +143,9 @@ class WarshipsGameModule(GameModule):
         )
         self._graph = create_module_graph()
         self._graph.add_node(ModuleNode("gameplay_loop", _GameplayLoopModule(self._update_loop)))
+        self._last_debug_ui: bool = bool(debug_ui)
+        self._cached_render_snapshot: RenderSnapshot | None = None
+        self._render_dirty: bool = True
 
     def on_start(self, host: HostControl) -> None:
         self._host = host
@@ -161,7 +164,10 @@ class WarshipsGameModule(GameModule):
 
     def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         self._context.provide("input_snapshot", snapshot)
-        return self._framework.handle_input_snapshot(snapshot)
+        changed = self._framework.handle_input_snapshot(snapshot)
+        if changed:
+            self._render_dirty = True
+        return changed
 
     def build_render_snapshot(self) -> RenderSnapshot | None:
         frame_context = cast(HostFrameContext | None, self._context.get("frame_context"))
@@ -172,13 +178,23 @@ class WarshipsGameModule(GameModule):
         ui_state = frame_state.ui_state
         if ui_state is None:
             return None
+        debug_ui = cast(bool, self._context.require("debug_ui"))
+        cached = self._cached_render_snapshot
+        if cached is not None and not self._render_dirty and self._last_debug_ui == debug_ui:
+            return RenderSnapshot(
+                frame_index=int(frame_context.frame_index),
+                passes=cached.passes,
+            )
         view = cast(GameView, self._context.require("view"))
         snapshot, labels = view.build_snapshot(
             frame_index=frame_context.frame_index,
             ui=cast(AppUIState, ui_state),
-            debug_ui=cast(bool, self._context.require("debug_ui")),
+            debug_ui=debug_ui,
             debug_labels_state=frame_state.debug_labels,
         )
+        self._last_debug_ui = debug_ui
+        self._cached_render_snapshot = snapshot
+        self._render_dirty = False
         state_store.set(_FrameState(debug_labels=labels, ui_state=ui_state))
         return snapshot
 

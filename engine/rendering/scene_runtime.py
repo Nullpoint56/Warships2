@@ -19,7 +19,6 @@ class RenderLoopConfig:
 
     mode: str = "on_demand"
     fps_cap: float = 60.0
-    resize_cooldown_ms: int = 250
 
 
 def resolve_render_vsync() -> bool:
@@ -31,20 +30,15 @@ def resolve_render_vsync() -> bool:
 def resolve_render_loop_config() -> RenderLoopConfig:
     """Read render loop capability settings from environment."""
     mode = os.getenv("ENGINE_RENDER_LOOP_MODE", "on_demand").strip().lower()
-    if mode not in {"on_demand", "continuous", "continuous_during_resize"}:
+    if mode not in {"on_demand", "continuous"}:
         mode = "on_demand"
     try:
         fps_cap = float(os.getenv("ENGINE_RENDER_FPS_CAP", "60.0"))
     except ValueError:
         fps_cap = 60.0
-    try:
-        resize_cooldown_ms = int(os.getenv("ENGINE_RENDER_RESIZE_COOLDOWN_MS", "250"))
-    except ValueError:
-        resize_cooldown_ms = 250
     return RenderLoopConfig(
         mode=mode,
         fps_cap=max(0.0, fps_cap),
-        resize_cooldown_ms=max(0, resize_cooldown_ms),
     )
 
 

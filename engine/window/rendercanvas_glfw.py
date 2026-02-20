@@ -127,7 +127,7 @@ class RenderCanvasWindow(WindowPort):
 
     def __post_init__(self) -> None:
         self._debug_events = (
-            os.getenv("ENGINE_DEBUG_WINDOW_EVENTS", "0").strip().lower()
+            os.getenv("ENGINE_WINDOW_EVENTS_TRACE_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"}
         )
         if self._rc_auto is None:

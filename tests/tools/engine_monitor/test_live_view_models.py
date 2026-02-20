@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from tools.engine_monitor.views.health import build_health_view_model
 from tools.engine_monitor.views.hitches import build_hitch_rows
+from tools.engine_monitor.views.performance import build_performance_breakdown_model
 from tools.engine_monitor.views.render_resize import build_render_resize_model
 from tools.engine_monitor.views.timeline import build_timeline_points
 from tools.engine_obs_core.contracts import EventRecord, FramePoint, SpanRecord
@@ -53,6 +54,36 @@ def _sample_snapshot() -> LiveSnapshot:
             name="render.viewport_applied",
             level="info",
             value={"sx": 1.0},
+            metadata={},
+        ),
+        EventRecord(
+            ts_utc="2026-01-01T00:00:00.012+00:00",
+            tick=11,
+            category="render",
+            name="render.profile_frame",
+            level="info",
+            value={
+                "build_ms": 1.5,
+                "execute_ms": 8.0,
+                "present_ms": 0.2,
+                "total_ms": 9.8,
+                "execute_packet_count": 42,
+                "execute_pass_count": 3,
+                "execute_pass_packet_counts": {"main": 30, "overlay": 12},
+                "execute_kind_packet_counts": {"rect": 20, "text": 22},
+            },
+            metadata={},
+        ),
+        EventRecord(
+            ts_utc="2026-01-01T00:00:00.013+00:00",
+            tick=11,
+            category="perf",
+            name="perf.frame_profile",
+            level="info",
+            value={
+                "systems": {"top_system": {"name": "view_projection", "ms": 2.5}},
+                "memory": {"python_current_mb": 5.0, "process_rss_mb": 42.0},
+            },
             metadata={},
         ),
     ]
@@ -107,3 +138,17 @@ def test_hitch_and_render_resize_models() -> None:
     assert render_resize.resize_events == 1
     assert render_resize.viewport_updates == 1
     assert render_resize.last_resize_value != "n/a"
+
+
+def test_performance_breakdown_model() -> None:
+    snapshot = _sample_snapshot()
+    model = build_performance_breakdown_model(snapshot, max_points=60)
+    assert model.sample_count > 0
+    assert model.frame_mean_ms >= model.render_mean_ms
+    assert model.bottleneck_lane in {"render", "host/sim/input", "mixed", "unknown"}
+    assert model.top_render_span_name != "n/a"
+    assert model.render_execute_packet_count == 42
+    assert model.render_execute_pass_count == 3
+    assert model.render_execute_pass_packet_counts[0] == ("main", 30)
+    assert model.render_execute_kind_packet_counts[0] == ("text", 22)
+    assert model.top_system_name == "view_projection"

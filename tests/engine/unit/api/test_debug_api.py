@@ -42,7 +42,7 @@ class _FakeModule:
 
 
 def test_debug_api_returns_diagnostics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -54,7 +54,7 @@ def test_debug_api_returns_diagnostics_snapshot(monkeypatch) -> None:
 
 
 def test_debug_api_returns_metrics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -70,8 +70,8 @@ def test_debug_api_returns_metrics_snapshot(monkeypatch) -> None:
 
 
 def test_debug_api_returns_profiling_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -82,8 +82,8 @@ def test_debug_api_returns_profiling_snapshot(monkeypatch) -> None:
 
 
 def test_debug_api_exports_profiling_snapshot(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -93,7 +93,7 @@ def test_debug_api_exports_profiling_snapshot(monkeypatch, tmp_path: Path) -> No
 
 
 def test_debug_api_exports_crash_bundle(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_BUNDLE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -103,7 +103,7 @@ def test_debug_api_exports_crash_bundle(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_debug_api_replay_manifest_and_export(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     monkeypatch.setenv("WARSHIPS_RNG_SEED", "777")
     host = EngineHost(module=_FakeModule())
     host.frame()
@@ -118,7 +118,7 @@ def test_debug_api_replay_manifest_and_export(monkeypatch, tmp_path: Path) -> No
 
 
 def test_debug_api_replay_snapshot_and_validation(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -145,3 +145,4 @@ def test_debug_api_replay_snapshot_and_validation(monkeypatch) -> None:
     )
     assert result.schema_version == "diag.replay_validation.v1"
     assert result.passed is True
+

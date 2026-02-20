@@ -33,8 +33,14 @@ Bootstrap:
 
 Diagnostics-related:
 
-- `ENGINE_DEBUG_METRICS`: enable runtime metrics collection
-- `ENGINE_DEBUG_OVERLAY`: enable in-frame metrics overlay (`F3` toggle)
+- `ENGINE_METRICS_ENABLED`: enable runtime metrics collection
+- `ENGINE_UI_OVERLAY_ENABLED`: enable in-frame metrics overlay (`F3` toggle)
+- `ENGINE_PROFILING_ENABLED`: enable frame profiling payload emission
+- `ENGINE_PROFILING_SAMPLING_N`: frame profiling sampling interval
+- `ENGINE_INPUT_TRACE_ENABLED`: high-volume input event tracing
+- `ENGINE_DIAGNOSTICS_ENABLED`: diagnostics hub master toggle
+- `ENGINE_DIAGNOSTICS_PROFILING_MODE`: `off|light|timeline|timeline_sample`
+- `ENGINE_DIAGNOSTICS_HTTP_ENABLED`: diagnostics HTTP bridge toggle
 
 Headless and renderer initialization:
 
@@ -61,3 +67,4 @@ Default run logs:
 
 - `<repo>/warships/appdata/logs`
 - One file per run: `warships_run_<timestamp>.jsonl`
+

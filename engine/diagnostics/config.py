@@ -49,22 +49,22 @@ class DiagnosticsConfig:
 
 
 def load_diagnostics_config() -> DiagnosticsConfig:
-    mode = _str("ENGINE_DIAG_PROFILE_MODE", "off").lower()
+    mode = _str("ENGINE_DIAGNOSTICS_PROFILING_MODE", "off").lower()
     if mode not in {"off", "light", "timeline", "timeline_sample"}:
         mode = "off"
     return DiagnosticsConfig(
-        enabled=_flag("ENGINE_DIAG_ENABLED", True),
-        buffer_capacity=max(100, _int("ENGINE_DIAG_BUFFER_CAP", 10_000)),
-        crash_bundle_enabled=_flag("ENGINE_DIAG_CRASH_BUNDLE", True),
-        crash_bundle_dir=_str("ENGINE_DIAG_CRASH_DIR", "appdata/crash"),
-        crash_recent_events_limit=max(10, _int("ENGINE_DIAG_CRASH_RECENT_EVENTS", 400)),
+        enabled=_flag("ENGINE_DIAGNOSTICS_ENABLED", True),
+        buffer_capacity=max(100, _int("ENGINE_DIAGNOSTICS_BUFFER_CAP", 10_000)),
+        crash_bundle_enabled=_flag("ENGINE_DIAGNOSTICS_CRASH_ENABLED", True),
+        crash_bundle_dir=_str("ENGINE_DIAGNOSTICS_CRASH_DIR", "appdata/crash"),
+        crash_recent_events_limit=max(10, _int("ENGINE_DIAGNOSTICS_CRASH_RECENT_EVENTS", 400)),
         profile_mode=mode,
-        profile_sampling_n=max(1, _int("ENGINE_DIAG_PROFILE_SAMPLING_N", 1)),
-        profile_span_capacity=max(100, _int("ENGINE_DIAG_PROFILE_SPAN_CAP", 5_000)),
-        profile_export_dir=_str("ENGINE_DIAG_PROFILE_EXPORT_DIR", "appdata/profiling"),
-        replay_capture=_flag("ENGINE_DIAG_REPLAY_CAPTURE", False),
-        replay_export_dir=_str("ENGINE_DIAG_REPLAY_EXPORT_DIR", "appdata/replay"),
-        replay_hash_interval=max(1, _int("ENGINE_DIAG_REPLAY_HASH_INTERVAL", 60)),
+        profile_sampling_n=max(1, _int("ENGINE_DIAGNOSTICS_PROFILING_SAMPLING_N", 1)),
+        profile_span_capacity=max(100, _int("ENGINE_DIAGNOSTICS_PROFILING_SPAN_CAP", 5_000)),
+        profile_export_dir=_str("ENGINE_DIAGNOSTICS_PROFILING_EXPORT_DIR", "appdata/profiling"),
+        replay_capture=_flag("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", False),
+        replay_export_dir=_str("ENGINE_DIAGNOSTICS_REPLAY_EXPORT_DIR", "appdata/replay"),
+        replay_hash_interval=max(1, _int("ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL", 60)),
     )
 
 

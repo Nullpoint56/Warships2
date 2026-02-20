@@ -30,7 +30,7 @@ class EngineUIFramework:
         self._renderer = renderer
         self._layout = layout
         self._modal_state = ModalInputState()
-        self._trace_input = os.getenv("ENGINE_DEBUG_INPUT_TRACE", "0").strip().lower() in {
+        self._trace_input = os.getenv("ENGINE_INPUT_TRACE_ENABLED", "0").strip().lower() in {
             "1",
             "true",
             "yes",

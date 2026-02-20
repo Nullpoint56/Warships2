@@ -125,8 +125,10 @@ Ownership:
   - `ENGINE_WINDOW_MODE`
   - `ENGINE_UI_ASPECT_MODE`
   - `ENGINE_LOG_LEVEL`
-  - `ENGINE_DEBUG_METRICS`
-  - `ENGINE_DEBUG_OVERLAY`
+  - `ENGINE_METRICS_ENABLED`
+  - `ENGINE_UI_OVERLAY_ENABLED`
+  - `ENGINE_PROFILING_ENABLED`
+  - `ENGINE_DIAGNOSTICS_ENABLED`
 - App settings (`WARSHIPS_*` + app log format):
   - `WARSHIPS_DEBUG_INPUT`
   - `WARSHIPS_DEBUG_UI`
@@ -163,3 +165,4 @@ Implemented and active:
 - Neutral engine app-port interaction semantics
 - Neutral engine grid primitives (`GridLayout`)
 - Unified window-mode ownership in runtime bootstrap/host config
+

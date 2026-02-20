@@ -4,6 +4,7 @@ from time import perf_counter
 
 from tools.engine_monitor.views.health import build_health_view_model
 from tools.engine_monitor.views.hitches import build_hitch_rows
+from tools.engine_monitor.views.performance import build_performance_breakdown_model
 from tools.engine_monitor.views.render_resize import build_render_resize_model
 from tools.engine_monitor.views.timeline import build_timeline_points
 from tools.engine_obs_core.contracts import EventRecord, FramePoint, SpanRecord
@@ -76,10 +77,12 @@ def test_monitor_view_model_performance_budget() -> None:
     timeline = build_timeline_points(snapshot.events)
     hitches = build_hitch_rows(snapshot, threshold_ms=25.0)
     render_resize = build_render_resize_model(snapshot.events)
+    perf_breakdown = build_performance_breakdown_model(snapshot)
     elapsed = perf_counter() - start
 
     assert health.fps > 0.0
     assert len(timeline) > 0
     assert len(hitches) > 0
     assert render_resize.resize_events == 0
+    assert perf_breakdown.sample_count > 0
     assert elapsed < 0.75

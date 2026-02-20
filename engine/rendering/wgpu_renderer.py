@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from array import array
 import os
 import sys
 import threading
+import time
+import tracemalloc
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -79,6 +82,7 @@ class _DrawPacket:
 
 @dataclass(frozen=True, slots=True)
 class _DrawRect:
+    layer: int
     x: float
     y: float
     w: float
@@ -114,12 +118,24 @@ class WgpuRenderer:
     _design_height: int = field(init=False, default=720)
     _preserve_aspect: bool = field(init=False, default=False)
     _canvas: object | None = field(init=False, default=None)
+    _diag_stage_events_enabled: bool = field(init=False, default=True)
+    _diag_stage_sampling_n: int = field(init=False, default=1)
+    _diag_profile_sampling_n: int = field(init=False, default=1)
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
         self._design_width = int(self.width)
         self._design_height = int(self.height)
         self._preserve_aspect = resolve_preserve_aspect()
+        self._diag_stage_events_enabled = _env_flag(
+            "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED", True
+        )
+        self._diag_stage_sampling_n = _env_int(
+            "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N", 1, minimum=1
+        )
+        self._diag_profile_sampling_n = _env_int(
+            "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N", 1, minimum=1
+        )
         self._canvas = self.surface.provider if self.surface is not None else None
         factory = self._backend_factory or _create_wgpu_backend
         self._backend = factory(self.surface)
@@ -138,19 +154,39 @@ class WgpuRenderer:
         self._assert_owner_thread()
         if self._closed or not self._frame_active:
             return
+        frame_started = time.perf_counter()
+        mem_before = self._traced_memory_mb()
         if self._frame_dirty and not self._frame_presented:
+            build_started = time.perf_counter()
             composed = self._compose_frame_snapshot(RenderSnapshot(frame_index=self._frame_index, passes=()))
             batches = self._build_pass_batches(composed)
+            build_ms = (time.perf_counter() - build_started) * 1000.0
             self._emit_render_stage(
                 "build_batches",
                 value={"pass_count": int(len(batches))},
             )
-            self._execute_pass_batches(batches)
+            execute_started = time.perf_counter()
+            execute_summary = self._execute_pass_batches(batches)
+            execute_ms = (time.perf_counter() - execute_started) * 1000.0
             self._emit_render_stage("execute_passes")
+            present_started = time.perf_counter()
             self._backend.present()
+            present_ms = (time.perf_counter() - present_started) * 1000.0
             self._emit_render_stage("present")
             self._frame_presented = True
             self._frame_dirty = False
+            total_ms = (time.perf_counter() - frame_started) * 1000.0
+            self._emit_render_frame_ms(total_ms)
+            self._emit_render_profile_frame(
+                batch_count=len(batches),
+                build_ms=build_ms,
+                execute_ms=execute_ms,
+                present_ms=present_ms,
+                total_ms=total_ms,
+                mem_before_mb=mem_before,
+                mem_after_mb=self._traced_memory_mb(),
+                execute_summary=execute_summary,
+            )
         self._frame_active = False
         self._backend.end_frame()
         self._frame_index += 1
@@ -308,19 +344,39 @@ class WgpuRenderer:
         started_here = not self._frame_active
         if started_here:
             self.begin_frame()
+        frame_started = time.perf_counter()
+        mem_before = self._traced_memory_mb()
         try:
+            build_started = time.perf_counter()
             composed = self._compose_frame_snapshot(snapshot)
             batches = self._build_pass_batches(composed)
+            build_ms = (time.perf_counter() - build_started) * 1000.0
             self._emit_render_stage(
                 "build_batches",
                 value={"pass_count": int(len(batches))},
             )
-            self._execute_pass_batches(batches)
+            execute_started = time.perf_counter()
+            execute_summary = self._execute_pass_batches(batches)
+            execute_ms = (time.perf_counter() - execute_started) * 1000.0
             self._emit_render_stage("execute_passes")
+            present_started = time.perf_counter()
             self._backend.present()
+            present_ms = (time.perf_counter() - present_started) * 1000.0
             self._emit_render_stage("present")
             self._frame_presented = True
             self._frame_dirty = False
+            total_ms = (time.perf_counter() - frame_started) * 1000.0
+            self._emit_render_frame_ms(total_ms)
+            self._emit_render_profile_frame(
+                batch_count=len(batches),
+                build_ms=build_ms,
+                execute_ms=execute_ms,
+                present_ms=present_ms,
+                total_ms=total_ms,
+                mem_before_mb=mem_before,
+                mem_after_mb=self._traced_memory_mb(),
+                execute_summary=execute_summary,
+            )
         finally:
             if started_here:
                 self.end_frame()
@@ -389,18 +445,35 @@ class WgpuRenderer:
             batches.append(_RenderPassBatch(name=descriptor.canonical_name, commands=commands))
         return tuple(sorted(batches, key=lambda batch: _resolve_pass_descriptor(batch.name).priority))
 
-    def _execute_pass_batches(self, batches: tuple[_RenderPassBatch, ...]) -> None:
+    def _execute_pass_batches(self, batches: tuple[_RenderPassBatch, ...]) -> dict[str, object]:
+        execute_pass_packet_counts: dict[str, int] = {}
+        execute_kind_packet_counts: dict[str, int] = {}
+        execute_packet_count = 0
         for batch in batches:
             packets = tuple(_command_to_packet(command) for command in batch.commands)
+            packet_count = int(len(packets))
+            execute_packet_count += packet_count
+            execute_pass_packet_counts[batch.name] = (
+                int(execute_pass_packet_counts.get(batch.name, 0)) + packet_count
+            )
+            for packet in packets:
+                kind = str(getattr(packet, "kind", "")) or "unknown"
+                execute_kind_packet_counts[kind] = int(execute_kind_packet_counts.get(kind, 0)) + 1
             self._emit_render_stage(
                 "execute_pass.begin",
-                metadata={"pass_name": batch.name, "packet_count": len(packets)},
+                metadata={"pass_name": batch.name, "packet_count": packet_count},
             )
             self._backend.draw_packets(batch.name, packets)
             self._emit_render_stage(
                 "execute_pass.end",
-                metadata={"pass_name": batch.name, "packet_count": len(packets)},
+                metadata={"pass_name": batch.name, "packet_count": packet_count},
             )
+        return {
+            "execute_packet_count": int(execute_packet_count),
+            "execute_pass_count": int(len(batches)),
+            "execute_pass_packet_counts": dict(sorted(execute_pass_packet_counts.items())),
+            "execute_kind_packet_counts": dict(sorted(execute_kind_packet_counts.items())),
+        }
 
     def _emit_render_stage(
         self,
@@ -412,6 +485,10 @@ class WgpuRenderer:
         hub = self._diagnostics_hub
         if hub is None:
             return
+        if not self._diag_stage_events_enabled:
+            return
+        if self._diag_stage_sampling_n > 1 and (self._frame_index % self._diag_stage_sampling_n) != 0:
+            return
         hub.emit_fast(
             category="render",
             name=f"render.stage.{stage}",
@@ -419,6 +496,62 @@ class WgpuRenderer:
             value=value,
             metadata=metadata,
         )
+
+    def _emit_render_frame_ms(self, value_ms: float) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        hub.emit_fast(
+            category="render",
+            name="render.frame_ms",
+            tick=self._frame_index,
+            value=float(max(0.0, value_ms)),
+        )
+
+    def _emit_render_profile_frame(
+        self,
+        *,
+        batch_count: int,
+        build_ms: float,
+        execute_ms: float,
+        present_ms: float,
+        total_ms: float,
+        mem_before_mb: float | None,
+        mem_after_mb: float | None,
+        execute_summary: dict[str, object] | None = None,
+    ) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        if self._diag_profile_sampling_n > 1 and (self._frame_index % self._diag_profile_sampling_n) != 0:
+            return
+        mem_delta = None
+        if mem_before_mb is not None and mem_after_mb is not None:
+            mem_delta = float(mem_after_mb - mem_before_mb)
+        value: dict[str, object] = {
+            "batch_count": int(batch_count),
+            "build_ms": float(max(0.0, build_ms)),
+            "execute_ms": float(max(0.0, execute_ms)),
+            "present_ms": float(max(0.0, present_ms)),
+            "total_ms": float(max(0.0, total_ms)),
+        }
+        if mem_delta is not None:
+            value["mem_delta_mb"] = mem_delta
+        if execute_summary:
+            value.update(execute_summary)
+        hub.emit_fast(
+            category="render",
+            name="render.profile_frame",
+            tick=self._frame_index,
+            value=value,
+        )
+
+    @staticmethod
+    def _traced_memory_mb() -> float | None:
+        if not tracemalloc.is_tracing():
+            return None
+        current, _peak = tracemalloc.get_traced_memory()
+        return float(current) / (1024.0 * 1024.0)
 
     def _assert_owner_thread(self) -> None:
         if int(threading.get_ident()) != self._owner_thread_id:
@@ -604,6 +737,7 @@ def _payload_int(payload: dict[str, object], key: str, default: int) -> int:
 
 def _rect_from_payload(payload: dict[str, object], *, color: tuple[float, float, float, float]) -> _DrawRect:
     return _DrawRect(
+        layer=0,
         x=_payload_float(payload, "x", 0.0),
         y=_payload_float(payload, "y", 0.0),
         w=max(1.0, _payload_float(payload, "w", _payload_float(payload, "width", 1.0))),
@@ -631,6 +765,7 @@ def _grid_draw_rects(
         hy = min(max(y, y + (height * t) - (thickness * 0.5)), max_hy)
         rects.append(
             _DrawRect(
+                layer=0,
                 x=vx,
                 y=y,
                 w=thickness,
@@ -640,6 +775,7 @@ def _grid_draw_rects(
         )
         rects.append(
             _DrawRect(
+                layer=0,
                 x=x,
                 y=hy,
                 w=width,
@@ -691,7 +827,16 @@ def _text_draw_rects(
                     col_idx += 1
                 run_len = col_idx - run_start
                 px = cursor_x + (float(run_start) * pixel)
-                rects.append(_DrawRect(x=px, y=py, w=float(run_len) * pixel, h=pixel, color=color))
+                rects.append(
+                    _DrawRect(
+                        layer=0,
+                        x=px,
+                        y=py,
+                        w=float(run_len) * pixel,
+                        h=pixel,
+                        color=color,
+                    )
+                )
         cursor_x += advance
     return tuple(rects)
 
@@ -783,14 +928,13 @@ _BITMAP_FONT_5X7: dict[str, tuple[str, ...]] = {
 def _geometry_wgsl_for_color(color: tuple[float, float, float, float]) -> str:
     r, g, b, a = (float(color[0]), float(color[1]), float(color[2]), float(color[3]))
     return f"""
+struct VsIn {{
+    @location(0) pos: vec2<f32>,
+}};
+
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {{
-    var pos = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-    return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+fn vs_main(input: VsIn) -> @builtin(position) vec4<f32> {{
+    return vec4<f32>(input.pos, 0.0, 1.0);
 }}
 
 @fragment
@@ -924,8 +1068,15 @@ class _WgpuBackend:
         if target_view is None:
             return
         draw_rects: list[_DrawRect] = []
+        sx, sy, ox, oy = viewport_transform(
+            width=max(1, int(self._target_width)),
+            height=max(1, int(self._target_height)),
+            design_width=max(1, int(self._design_width)),
+            design_height=max(1, int(self._design_height)),
+            preserve_aspect=bool(self._preserve_aspect),
+        )
         for packet in packets:
-            draw_rects.extend(self._packet_draw_rects(packet))
+            draw_rects.extend(self._packet_draw_rects(packet, sx=sx, sy=sy, ox=ox, oy=oy))
         if not draw_rects:
             return
         color_attachments = [
@@ -939,11 +1090,7 @@ class _WgpuBackend:
         self._clear_pending = False
         render_pass = begin_render_pass(color_attachments=color_attachments)
         try:
-            active_pipeline: object | None = None
-            for draw_rect in draw_rects:
-                active_pipeline = self._apply_draw_rect(
-                    render_pass, draw_rect, active_pipeline=active_pipeline
-                )
+            self._draw_rect_batches(render_pass, tuple(draw_rects))
         finally:
             end = getattr(render_pass, "end", None)
             if callable(end):
@@ -1339,7 +1486,19 @@ class _WgpuBackend:
     def _geometry_pipeline_descriptor(self, color_target: object, shader: object) -> dict[str, object]:
         return {
             "layout": "auto",
-            "vertex": {"module": shader, "entry_point": "vs_main", "buffers": []},
+            "vertex": {
+                "module": shader,
+                "entry_point": "vs_main",
+                "buffers": [
+                    {
+                        "array_stride": 8,
+                        "step_mode": "vertex",
+                        "attributes": [
+                            {"shader_location": 0, "offset": 0, "format": "float32x2"},
+                        ],
+                    }
+                ],
+            },
             "fragment": {
                 "module": shader,
                 "entry_point": "fs_main",
@@ -1364,8 +1523,17 @@ class _WgpuBackend:
         self._geometry_pipeline_cache[color] = pipeline
         return pipeline
 
-    def _packet_draw_rects(self, packet: _DrawPacket) -> tuple["_DrawRect", ...]:
+    def _packet_draw_rects(
+        self,
+        packet: _DrawPacket,
+        *,
+        sx: float,
+        sy: float,
+        ox: float,
+        oy: float,
+    ) -> tuple["_DrawRect", ...]:
         raw_data = getattr(packet, "data", ())
+        layer = int(getattr(packet, "layer", 0))
         payload: dict[str, object] = {}
         if isinstance(raw_data, tuple):
             for item in raw_data:
@@ -1379,6 +1547,7 @@ class _WgpuBackend:
         if kind == "fill_window":
             return (
                 _DrawRect(
+                    layer=layer,
                     x=0.0,
                     y=0.0,
                     w=float(self._target_width),
@@ -1388,9 +1557,13 @@ class _WgpuBackend:
             )
         if kind == "rect":
             if payload:
-                return (self._map_design_rect(_rect_from_payload(payload, color=color)),)
+                mapped = self._map_design_rect(
+                    _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
+                )
+                return (self._with_layer(mapped, layer),)
             return (
                 _DrawRect(
+                    layer=layer,
                     x=0.0,
                     y=0.0,
                     w=float(self._target_width),
@@ -1400,29 +1573,171 @@ class _WgpuBackend:
             )
         if kind == "grid":
             return tuple(
-                self._map_design_rect(rect) for rect in _grid_draw_rects(payload, color=color)
+                self._with_layer(
+                    self._map_design_rect(rect, sx=sx, sy=sy, ox=ox, oy=oy), layer
+                )
+                for rect in _grid_draw_rects(payload, color=color)
             )
         if kind == "text":
             return tuple(
-                self._map_design_rect(rect) for rect in _text_draw_rects(payload, color=color)
+                self._with_layer(
+                    self._map_design_rect(rect, sx=sx, sy=sy, ox=ox, oy=oy), layer
+                )
+                for rect in _text_draw_rects(payload, color=color)
             )
         return ()
 
-    def _map_design_rect(self, rect: "_DrawRect") -> "_DrawRect":
-        sx, sy, ox, oy = viewport_transform(
-            width=max(1, int(self._target_width)),
-            height=max(1, int(self._target_height)),
-            design_width=max(1, int(self._design_width)),
-            design_height=max(1, int(self._design_height)),
-            preserve_aspect=bool(self._preserve_aspect),
-        )
+    def _map_design_rect(
+        self,
+        rect: "_DrawRect",
+        *,
+        sx: float,
+        sy: float,
+        ox: float,
+        oy: float,
+    ) -> "_DrawRect":
         return _DrawRect(
+            layer=int(rect.layer),
             x=(float(rect.x) * sx) + ox,
             y=(float(rect.y) * sy) + oy,
             w=max(1.0, float(rect.w) * sx),
             h=max(1.0, float(rect.h) * sy),
             color=rect.color,
         )
+
+    @staticmethod
+    def _with_layer(rect: "_DrawRect", layer: int) -> "_DrawRect":
+        return _DrawRect(
+            layer=int(layer),
+            x=float(rect.x),
+            y=float(rect.y),
+            w=float(rect.w),
+            h=float(rect.h),
+            color=rect.color,
+        )
+
+    def _draw_rect_batches(self, render_pass: object, draw_rects: tuple["_DrawRect", ...]) -> None:
+        set_pipeline = getattr(render_pass, "set_pipeline", None)
+        set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
+        draw = getattr(render_pass, "draw", None)
+        if not callable(set_pipeline) or not callable(set_vertex_buffer) or not callable(draw):
+            active_pipeline: object | None = None
+            for rect in draw_rects:
+                active_pipeline = self._apply_draw_rect(
+                    render_pass, rect, active_pipeline=active_pipeline
+                )
+            return
+        runs = self._iter_material_runs(draw_rects)
+        if not runs:
+            return
+        packed_vertices: list[float] = []
+        run_draws: list[tuple[tuple[float, float, float, float], int, int]] = []
+        first_vertex = 0
+        for _layer, color, color_rects in runs:
+            vertices = self._batch_vertices_for_rects(tuple(color_rects))
+            vertex_count = int(len(vertices) // 2)
+            if vertex_count <= 0:
+                continue
+            packed_vertices.extend(vertices)
+            run_draws.append((color, first_vertex, vertex_count))
+            first_vertex += vertex_count
+        vertex_buffer, total_vertex_count = self._create_vertex_buffer_from_positions(packed_vertices)
+        if vertex_buffer is None or total_vertex_count <= 0:
+            return
+        set_vertex_buffer(0, vertex_buffer)
+        for color, run_first_vertex, run_vertex_count in run_draws:
+            pipeline = self._pipeline_for_color(color)
+            if pipeline is None:
+                continue
+            set_pipeline(pipeline)
+            draw(run_vertex_count, 1, run_first_vertex, 0)
+
+    def _iter_material_runs(
+        self, draw_rects: tuple["_DrawRect", ...]
+    ) -> tuple[tuple[int, tuple[float, float, float, float], list[_DrawRect]], ...]:
+        if not draw_rects:
+            return ()
+        runs: list[tuple[int, tuple[float, float, float, float], list[_DrawRect]]] = []
+        current_layer = int(draw_rects[0].layer)
+        current_color = (
+            float(draw_rects[0].color[0]),
+            float(draw_rects[0].color[1]),
+            float(draw_rects[0].color[2]),
+            float(draw_rects[0].color[3]),
+        )
+        current_rects: list[_DrawRect] = [draw_rects[0]]
+        for rect in draw_rects[1:]:
+            layer = int(rect.layer)
+            color = (
+                float(rect.color[0]),
+                float(rect.color[1]),
+                float(rect.color[2]),
+                float(rect.color[3]),
+            )
+            if layer == current_layer and color == current_color:
+                current_rects.append(rect)
+                continue
+            runs.append((current_layer, current_color, current_rects))
+            current_layer = layer
+            current_color = color
+            current_rects = [rect]
+        runs.append((current_layer, current_color, current_rects))
+        return tuple(runs)
+
+    def _batch_vertices_for_rects(self, rects: tuple["_DrawRect", ...]) -> list[float]:
+        vertices: list[float] = []
+        for rect in rects:
+            vertices.extend(self._clip_vertices_for_rect(rect))
+        return vertices
+
+    def _clip_vertices_for_rect(self, rect: "_DrawRect") -> tuple[float, ...]:
+        width = max(1.0, float(self._target_width))
+        height = max(1.0, float(self._target_height))
+        rx = max(0.0, min(width, float(rect.x)))
+        ry = max(0.0, min(height, float(rect.y)))
+        rw = max(1.0, min(width - rx, float(rect.w)))
+        rh = max(1.0, min(height - ry, float(rect.h)))
+        x0 = (rx / width) * 2.0 - 1.0
+        x1 = ((rx + rw) / width) * 2.0 - 1.0
+        y0 = 1.0 - ((ry / height) * 2.0)
+        y1 = 1.0 - (((ry + rh) / height) * 2.0)
+        return (
+            x0,
+            y0,
+            x1,
+            y0,
+            x0,
+            y1,
+            x0,
+            y1,
+            x1,
+            y0,
+            x1,
+            y1,
+        )
+
+    def _create_vertex_buffer_from_positions(self, values: list[float]) -> tuple[object | None, int]:
+        if not values:
+            return None, 0
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if not callable(create_buffer):
+            return None, 0
+        payload = array("f", values)
+        raw = payload.tobytes()
+        usage = _resolve_buffer_usage(self._wgpu)
+        try:
+            buffer = create_buffer(size=len(raw), usage=usage, mapped_at_creation=False)
+        except Exception:
+            return None, 0
+        write_buffer = getattr(self._queue, "write_buffer", None)
+        if callable(write_buffer):
+            try:
+                write_buffer(buffer, 0, raw)
+            except Exception:
+                return None, 0
+        else:
+            return None, 0
+        return buffer, int(len(values) // 2)
 
     def _apply_draw_rect(
         self,
@@ -1431,23 +1746,20 @@ class _WgpuBackend:
         *,
         active_pipeline: object | None = None,
     ) -> object | None:
-        set_viewport = getattr(render_pass, "set_viewport", None)
-        set_scissor_rect = getattr(render_pass, "set_scissor_rect", None)
         set_pipeline = getattr(render_pass, "set_pipeline", None)
+        set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
         draw = getattr(render_pass, "draw", None)
-        rx = max(0.0, min(float(self._target_width), float(rect.x)))
-        ry = max(0.0, min(float(self._target_height), float(rect.y)))
-        rw = max(1.0, min(float(self._target_width) - rx, float(rect.w)))
-        rh = max(1.0, min(float(self._target_height) - ry, float(rect.h)))
-        if callable(set_viewport):
-            set_viewport(rx, ry, rw, rh, 0.0, 1.0)
-        if callable(set_scissor_rect):
-            set_scissor_rect(int(rx), int(ry), int(max(1, round(rw))), int(max(1, round(rh))))
+        if not callable(set_vertex_buffer) or not callable(draw):
+            return active_pipeline
         pipeline = self._pipeline_for_color(rect.color)
         if callable(set_pipeline) and pipeline is not None and pipeline is not active_pipeline:
             set_pipeline(pipeline)
-        if callable(draw):
-            draw(3, 1, 0, 0)
+        vertices = self._clip_vertices_for_rect(rect)
+        vertex_buffer, vertex_count = self._create_vertex_buffer_from_positions(list(vertices))
+        if vertex_buffer is None or vertex_count <= 0:
+            return pipeline if pipeline is not None else active_pipeline
+        set_vertex_buffer(0, vertex_buffer)
+        draw(vertex_count, 1, 0, 0)
         return pipeline if pipeline is not None else active_pipeline
 
 
@@ -1479,6 +1791,24 @@ def _resolve_backend_priority() -> tuple[str, ...]:
         if item.strip()
     )
     return values or ("vulkan", "metal", "dx12")
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
+    raw = os.getenv(name)
+    if raw is None:
+        return max(minimum, int(default))
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = int(default)
+    return max(minimum, value)
 
 
 def _resolve_system_font_path() -> str:
@@ -1589,14 +1919,13 @@ def _ortho_projection(*, width: float, height: float) -> tuple[float, ...]:
 
 
 _GEOMETRY_WGSL = """
+struct VsIn {
+    @location(0) pos: vec2<f32>,
+};
+
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
-    var pos = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-    return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+fn vs_main(input: VsIn) -> @builtin(position) vec4<f32> {
+    return vec4<f32>(input.pos, 0.0, 1.0);
 }
 
 @fragment

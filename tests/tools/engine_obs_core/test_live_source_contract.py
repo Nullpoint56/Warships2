@@ -131,7 +131,7 @@ def test_live_source_remote_poll(monkeypatch) -> None:
     source = LiveObsSource(Path("."), remote_url="http://127.0.0.1:8765")
 
     def fake_fetch(url: str):
-        if url.endswith("/snapshot"):
+        if "/snapshot" in url:
             return {
                 "events": [
                     {
@@ -154,7 +154,7 @@ def test_live_source_remote_poll(monkeypatch) -> None:
                     },
                 ]
             }
-        if url.endswith("/metrics"):
+        if "/metrics" in url:
             return {
                 "rolling_frame_ms": 20.0,
                 "rolling_fps": 50.0,
@@ -162,7 +162,7 @@ def test_live_source_remote_poll(monkeypatch) -> None:
                 "max_frame_ms": 24.0,
                 "resize_count": 3,
             }
-        if url.endswith("/profiling"):
+        if "/profiling" in url:
             return {
                 "spans": [
                     {

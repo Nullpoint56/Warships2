@@ -13,7 +13,6 @@ class _Renderer:
         self.invalidate_calls = 0
         self.run_callback = None
         self.closed = False
-        self.frame_reasons: list[str] = []
 
     def invalidate(self) -> None:
         self.invalidate_calls += 1
@@ -23,10 +22,6 @@ class _Renderer:
 
     def close(self) -> None:
         self.closed = True
-
-    def note_frame_reason(self, reason: str) -> None:
-        self.frame_reasons.append(reason)
-
 
 class _Window:
     def __init__(self) -> None:
@@ -159,19 +154,6 @@ def test_dispatch_input_snapshot_without_changes_does_not_invalidate() -> None:
     )
     window._dispatch_input_snapshot(window._build_input_snapshot())
     assert renderer.invalidate_calls == 0
-
-
-def test_dispatch_input_snapshot_records_pointer_event_type_reasons() -> None:
-    renderer = _Renderer()
-    pointer_event = SimpleNamespace(event_type="pointer_move")
-    window = frontend_mod.HostedWindowFrontend(
-        renderer=renderer,
-        window=_Window(),
-        input_controller=_Input(pointer=[pointer_event]),
-        host=_Host(close_after_frame=False),
-    )
-    window._dispatch_input_snapshot(window._build_input_snapshot())
-    assert "input:pointer:pointer_move" in renderer.frame_reasons
 
 
 def test_run_starts_renderer_then_window_loop() -> None:

@@ -188,7 +188,7 @@ def test_engine_host_handles_input_snapshot() -> None:
 
 
 def test_engine_host_replay_records_logical_actions_from_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     host = EngineHost(module=FakeModule())
     snapshot = InputSnapshot(
         frame_index=0,
@@ -207,7 +207,7 @@ def test_engine_host_replay_records_logical_actions_from_snapshot(monkeypatch) -
 
 
 def test_engine_host_snapshot_overlay_toggle_uses_logical_action(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "1")
     renderer = _FakeRenderer()
     host = EngineHost(module=FakeModule(), render_api=renderer)
     snapshot = InputSnapshot(
@@ -220,7 +220,7 @@ def test_engine_host_snapshot_overlay_toggle_uses_logical_action(monkeypatch) ->
 
 
 def test_engine_host_emits_input_diagnostics_for_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     host = EngineHost(module=FakeModule())
     snapshot = InputSnapshot(
         frame_index=0,
@@ -245,7 +245,7 @@ def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:
 
 
 def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     module = FakeModule()
     host = EngineHost(module=module)
 
@@ -259,8 +259,8 @@ def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
 
 
 def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "1")
     module = FakeModule()
     renderer = _FakeRenderer()
     host = EngineHost(module=module, render_api=renderer)
@@ -283,33 +283,10 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     assert any(":line:" in key for key in renderer.text_calls)
 
 
-def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
-    module = FakeModule()
-    renderer = _FakeRenderer()
-
-    def _summary() -> dict[str, int]:
-        return {"revision": 9, "resize_seq": 42, "anomaly_count": 2}
-
-    renderer.ui_diagnostics_summary = _summary  # type: ignore[attr-defined]
-    host = EngineHost(module=module, render_api=renderer)
-    host.handle_input_snapshot(
-        InputSnapshot(
-            frame_index=1,
-            actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
-            key_events=(KeyEvent(event_type="key_down", value="f3"),),
-        )
-    )
-    host.frame()
-
-    assert any(text.startswith("UI rev=9 resize=42 anomalies=2") for text in renderer.text_values)
-
-
 def test_engine_host_emits_profile_records_when_enabled(monkeypatch, caplog) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING_SAMPLING_N", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "1")
     caplog.set_level(logging.INFO, logger="engine.profiling")
 
     module = FakeModule()
@@ -326,7 +303,7 @@ def test_engine_host_emits_profile_records_when_enabled(monkeypatch, caplog) -> 
 
 
 def test_engine_host_emits_frame_events_to_diagnostics_hub(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     module = FakeModule()
     host = EngineHost(module=module)
 
@@ -351,8 +328,8 @@ class _HashingModule(FakeModule):
 
 
 def test_engine_host_writes_crash_bundle_on_frame_exception(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_BUNDLE", "1")
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_DIR", str(tmp_path))
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_DIR", str(tmp_path))
     host = EngineHost(module=_ExplodingModule())
 
     with pytest.raises(RuntimeError):
@@ -368,8 +345,8 @@ def test_engine_host_writes_crash_bundle_on_frame_exception(monkeypatch, tmp_pat
 
 
 def test_engine_host_emits_perf_events_when_diag_timeline_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=FakeModule())
 
     host.frame()
@@ -378,7 +355,7 @@ def test_engine_host_emits_perf_events_when_diag_timeline_enabled(monkeypatch) -
 
 
 def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     monkeypatch.setenv("WARSHIPS_RNG_SEED", "12345")
     host = EngineHost(module=FakeModule())
 
@@ -399,11 +376,12 @@ def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
 
 
 def test_engine_host_records_replay_state_hash_when_provider_available(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_HASH_INTERVAL", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL", "1")
     host = EngineHost(module=_HashingModule())
     host.frame()
     host.frame()
 
     hash_events = host.diagnostics_hub.snapshot(category="replay", name="replay.state_hash")
     assert hash_events
+
