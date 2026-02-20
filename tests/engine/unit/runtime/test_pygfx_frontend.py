@@ -39,6 +39,15 @@ class _Window:
     def set_windowed(self, width: int, height: int) -> None:
         self.calls.append(("set_windowed", (width, height)))
 
+    def run_loop(self) -> None:
+        self.calls.append(("run_loop", ()))
+
+    def stop_loop(self) -> None:
+        self.calls.append(("stop_loop", ()))
+
+    def close(self) -> None:
+        self.calls.append(("close", ()))
+
 
 class _Input:
     def __init__(self, pointer=None, key=None, wheel=None) -> None:
@@ -110,9 +119,10 @@ def test_show_fullscreen_and_maximized_delegate_to_window_port() -> None:
 def test_draw_frame_closes_renderer_when_host_closed() -> None:
     renderer = _Renderer()
     host = _Host(close_after_frame=True)
+    window_port = _Window()
     window = frontend_mod.PygfxFrontendWindow(
         renderer=renderer,
-        window=_Window(),
+        window=window_port,
         input_controller=_Input(pointer=[object()]),
         host=host,
     )
@@ -120,6 +130,7 @@ def test_draw_frame_closes_renderer_when_host_closed() -> None:
     assert host.frame_calls == 1
     assert renderer.closed
     assert renderer.invalidate_calls == 1
+    assert ("close", ()) in window_port.calls
 
 
 def test_drain_input_events_without_changes_does_not_invalidate() -> None:
@@ -146,3 +157,16 @@ def test_drain_input_events_records_pointer_event_type_reasons() -> None:
     window._drain_input_events()
     assert "input:pointer:pointer_move" in renderer.frame_reasons
 
+
+def test_run_starts_renderer_then_window_loop() -> None:
+    renderer = _Renderer()
+    window_port = _Window()
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer,
+        window=window_port,
+        input_controller=_Input(),
+        host=_Host(),
+    )
+    window.run()
+    assert renderer.run_callback is not None
+    assert window_port.calls[-1] == ("run_loop", ())

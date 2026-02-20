@@ -37,6 +37,7 @@ class PygfxFrontendWindow:
 
     def run(self) -> None:
         self._renderer.run(self._draw_frame)
+        self._window.run_loop()
 
     def _draw_frame(self) -> None:
         self._renderer.note_frame_reason("draw")
@@ -44,6 +45,7 @@ class PygfxFrontendWindow:
         self._host.frame()
         if self._host.is_closed():
             self._renderer.close()
+            self._window.close()
 
     def _drain_input_events(self) -> None:
         changed = False

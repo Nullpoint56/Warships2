@@ -70,6 +70,12 @@ class WindowPort(Protocol):
     def set_maximized(self) -> None:
         """Configure maximized mode."""
 
+    def run_loop(self) -> None:
+        """Run the OS/backend event loop."""
+
+    def stop_loop(self) -> None:
+        """Stop the OS/backend event loop when supported."""
+
     def close(self) -> None:
         """Close window and release backend resources."""
 
@@ -83,4 +89,3 @@ __all__ = [
     "WindowPort",
     "WindowResizeEvent",
 ]
-

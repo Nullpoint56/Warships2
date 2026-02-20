@@ -5,8 +5,8 @@ from engine.runtime.host import EngineHostConfig
 
 
 class FakeRenderer:
-    def __init__(self) -> None:
-        self.canvas = object()
+    def __init__(self, canvas=None) -> None:
+        self.canvas = object() if canvas is None else canvas
         self.invalidated = 0
 
     def invalidate(self) -> None:
@@ -71,7 +71,7 @@ def test_bootstrap_uses_window_mode_and_wires_runtime(monkeypatch) -> None:
     monkeypatch.setattr(
         bootstrap,
         "create_rendercanvas_window",
-        lambda canvas: FakeWindowLayer(canvas),
+        lambda **kwargs: FakeWindowLayer(canvas=object()),
     )
     monkeypatch.setattr(bootstrap, "InputController", FakeInputController)
     monkeypatch.setattr(bootstrap, "EngineHost", FakeHost)

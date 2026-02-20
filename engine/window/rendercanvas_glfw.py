@@ -118,8 +118,15 @@ class RenderCanvasWindow(WindowPort):
     canvas: Any
     backend: str = "rendercanvas.glfw"
     _events: deque[WindowEvent] = field(default_factory=deque)
+    _rc_auto: Any | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
+        if self._rc_auto is None:
+            try:
+                import rendercanvas.auto as rc_auto
+            except Exception:
+                rc_auto = None
+            self._rc_auto = rc_auto
         self._bind_window_events()
 
     def create_surface(self) -> SurfaceHandle:
@@ -148,9 +155,20 @@ class RenderCanvasWindow(WindowPort):
         apply_startup_window_mode(self.canvas, "maximized")
 
     def close(self) -> None:
+        self.stop_loop()
         closer = getattr(self.canvas, "close", None)
         if callable(closer):
             closer()
+
+    def run_loop(self) -> None:
+        if self._rc_auto is None:
+            return
+        run_backend_loop(self._rc_auto)
+
+    def stop_loop(self) -> None:
+        if self._rc_auto is None:
+            return
+        stop_backend_loop(self._rc_auto)
 
     def _bind_window_events(self) -> None:
         add_handler = getattr(self.canvas, "add_event_handler", None)
@@ -204,7 +222,38 @@ class RenderCanvasWindow(WindowPort):
         self._events.append(WindowCloseEvent())
 
 
-def create_rendercanvas_window(canvas: Any) -> RenderCanvasWindow:
-    """Create window adapter over an existing rendercanvas canvas."""
-    return RenderCanvasWindow(canvas=canvas)
-
+def create_rendercanvas_window(
+    canvas: Any | None = None,
+    *,
+    width: int = 1200,
+    height: int = 720,
+    title: str = "Engine Runtime",
+    update_mode: str = "ondemand",
+    min_fps: float = 0.0,
+    max_fps: float = 240.0,
+    vsync: bool = True,
+) -> RenderCanvasWindow:
+    """Create window adapter over an existing or newly created rendercanvas canvas."""
+    if canvas is not None:
+        return RenderCanvasWindow(canvas=canvas)
+    try:
+        import rendercanvas.auto as rc_auto
+    except Exception as exc:
+        raise RuntimeError(
+            "Render canvas backend unavailable. Install a desktop backend such as glfw or pyside6."
+        ) from exc
+    canvas_cls = getattr(rc_auto, "RenderCanvas", None)
+    if canvas_cls is None:
+        raise RuntimeError("rendercanvas.auto did not expose RenderCanvas.")
+    try:
+        canvas = canvas_cls(
+            size=(int(width), int(height)),
+            title=title,
+            update_mode=update_mode,
+            min_fps=float(min_fps),
+            max_fps=float(max_fps),
+            vsync=bool(vsync),
+        )
+    except TypeError:
+        canvas = canvas_cls(size=(int(width), int(height)), title=title)
+    return RenderCanvasWindow(canvas=canvas, _rc_auto=rc_auto)

@@ -115,7 +115,7 @@ class SceneRenderer:
     _active_rect_keys: set[str] = field(default_factory=set)
     _active_line_keys: set[str] = field(default_factory=set)
     _active_text_keys: set[str] = field(default_factory=set)
-    canvas: Any = field(init=False)
+    canvas: Any | None = None
     renderer: Any = field(init=False)
     scene: Any = field(init=False)
     camera: Any = field(init=False)
@@ -144,23 +144,13 @@ class SceneRenderer:
     _diagnostics_hub: DiagnosticHub | None = field(init=False, default=None)
     _last_resize_applied_ts: float | None = field(init=False, default=None)
     _last_resize_event_to_apply_ms: float | None = field(init=False, default=None)
+    _owns_canvas: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
         if gfx is None:
             raise RuntimeError(
                 f"pygfx dependency unavailable: {_gfx_import_error!r}. Install 'pygfx' and 'wgpu'."
             )
-        if rc_auto is None:
-            raise RuntimeError(
-                "Render canvas backend unavailable. "
-                "Install a desktop backend such as 'glfw' or 'pyside6'. "
-                f"Original error: {_canvas_import_error!r}"
-            )
-
-        canvas_cls = getattr(rc_auto, "RenderCanvas", None)
-        if canvas_cls is None:
-            raise RuntimeError("rendercanvas.auto did not expose RenderCanvas.")
-
         bootstrap_loop_cfg = resolve_render_loop_config()
         self._render_loop_mode = bootstrap_loop_cfg.mode
         self._render_fps_cap = bootstrap_loop_cfg.fps_cap
@@ -172,18 +162,34 @@ class SceneRenderer:
             "continuous" if self._render_loop_mode == "continuous" else "ondemand"
         )
         bootstrap_max_fps = self._render_fps_cap if self._render_fps_cap > 0.0 else 240.0
-        try:
-            self.canvas = canvas_cls(
-                size=(self.width, self.height),
-                title=self.title,
-                update_mode=bootstrap_update_mode,
-                min_fps=0.0,
-                max_fps=float(bootstrap_max_fps),
-                vsync=self._render_vsync,
-            )
-        except TypeError:
-            # Keep compatibility with simplified test/fallback canvas factories.
-            self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
+        if self.canvas is None:
+            if rc_auto is None:
+                raise RuntimeError(
+                    "Render canvas backend unavailable. "
+                    "Install a desktop backend such as 'glfw' or 'pyside6'. "
+                    f"Original error: {_canvas_import_error!r}"
+                )
+
+            canvas_cls = getattr(rc_auto, "RenderCanvas", None)
+            if canvas_cls is None:
+                raise RuntimeError("rendercanvas.auto did not expose RenderCanvas.")
+            try:
+                self.canvas = canvas_cls(
+                    size=(self.width, self.height),
+                    title=self.title,
+                    update_mode=bootstrap_update_mode,
+                    min_fps=0.0,
+                    max_fps=float(bootstrap_max_fps),
+                    vsync=self._render_vsync,
+                )
+            except TypeError:
+                # Keep compatibility with simplified test/fallback canvas factories.
+                self.canvas = canvas_cls(size=(self.width, self.height), title=self.title)
+            self._owns_canvas = True
+        else:
+            self._owns_canvas = False
+        if self.canvas is None:
+            raise RuntimeError("renderer canvas initialization failed")
         self.preserve_aspect = resolve_preserve_aspect()
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
@@ -1108,8 +1114,9 @@ class SceneRenderer:
     def set_title(self, title: str) -> None:
         """Set window title when supported by backend."""
         self.title = title
-        if hasattr(self.canvas, "set_title"):
-            self.canvas.set_title(title)
+        canvas = self._require_canvas()
+        if hasattr(canvas, "set_title"):
+            canvas.set_title(title)
 
     def invalidate(self) -> None:
         """Schedule one redraw."""
@@ -1118,8 +1125,9 @@ class SceneRenderer:
         diagnostics = self._ui_diagnostics
         if diagnostics is not None:
             diagnostics.note_frame_reason("invalidate")
-        if hasattr(self.canvas, "request_draw"):
-            self.canvas.request_draw()
+        canvas = self._require_canvas()
+        if hasattr(canvas, "request_draw"):
+            canvas.request_draw()
 
     def set_diagnostics_hub(self, hub: DiagnosticHub | None) -> None:
         """Attach optional engine diagnostics hub for render/resize events."""
@@ -1174,8 +1182,15 @@ class SceneRenderer:
     def _schedule_next_continuous_frame(self) -> None:
         if self._is_closed:
             return
-        if hasattr(self.canvas, "request_draw"):
-            self.canvas.request_draw()
+        canvas = self._require_canvas()
+        if hasattr(canvas, "request_draw"):
+            canvas.request_draw()
+
+    def _require_canvas(self) -> Any:
+        canvas = self.canvas
+        if canvas is None:
+            raise RuntimeError("renderer canvas unavailable")
+        return canvas
 
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Start draw loop."""
@@ -1316,15 +1331,19 @@ class SceneRenderer:
                 logger.exception("unhandled_exception_in_draw_loop")
                 self.close()
 
-        self.canvas.request_draw(_draw_frame)
+        canvas = self._require_canvas()
+        canvas.request_draw(_draw_frame)
         self.invalidate()
-        run_backend_loop(rc_auto)
+        if self._owns_canvas and rc_auto is not None:
+            run_backend_loop(rc_auto)
 
     def close(self) -> None:
         """Close canvas and stop backend loop when possible."""
         if self._is_closed:
             return
         self._is_closed = True
-        if hasattr(self.canvas, "close"):
-            self.canvas.close()
-        stop_backend_loop(rc_auto)
+        canvas = self._require_canvas()
+        if self._owns_canvas and hasattr(canvas, "close"):
+            canvas.close()
+        if self._owns_canvas and rc_auto is not None:
+            stop_backend_loop(rc_auto)
