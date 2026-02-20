@@ -108,7 +108,13 @@ class _FakeRenderer:
         self.canvas = canvas
         self.render_calls = 0
         self.pixel_ratio = 2.0
-        self.target = SimpleNamespace(_pixel_ratio=1.0)
+        self.surface_format = "bgra8unorm"
+        self.output_color_space = "linear"
+        self.target = SimpleNamespace(
+            _pixel_ratio=1.0,
+            surface_format="bgra8unorm",
+            output_color_space="linear",
+        )
 
     def render(self, scene, camera) -> None:
         _ = (scene, camera)
@@ -147,6 +153,16 @@ class _FakeHub:
     def emit_fast(self, *, category: str, name: str, **kwargs) -> None:
         _ = kwargs
         self.events.append((category, name))
+
+
+class _CapturingHub:
+    def __init__(self) -> None:
+        self.events: list[dict[str, object]] = []
+
+    def emit_fast(self, *, category: str, name: str, **kwargs) -> None:
+        payload = {"category": category, "name": name}
+        payload.update(kwargs)
+        self.events.append(payload)
 
 
 @pytest.mark.graphics
@@ -557,3 +573,122 @@ def test_scene_renderer_immediate_path_uses_common_batch_builder(
     renderer.end_frame()
 
     assert build_batches_calls >= 1
+
+
+@pytest.mark.graphics
+def test_scene_renderer_emits_color_policy_on_hub_attach(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    hub = _CapturingHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+
+    policy_events = [e for e in hub.events if e["name"] == "render.color_policy"]
+    assert policy_events
+    value = policy_events[-1].get("value", {})
+    assert isinstance(value, dict)
+    assert value.get("internal_color_space") == "linear"
+    assert value.get("presentation_color_space") == "srgb"
+    assert value.get("presentation_surface_is_srgb") is True
+    assert value.get("enforced") is True
+
+
+@pytest.mark.graphics
+def test_scene_renderer_enforces_srgb_on_renderer_targets(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    assert renderer.renderer.surface_format.endswith("srgb")
+    assert renderer.renderer.output_color_space == "srgb"
+    assert renderer.renderer.target.surface_format.endswith("srgb")
+    assert renderer.renderer.target.output_color_space == "srgb"
+    runtime = renderer._resolve_runtime_info()  # noqa: SLF001
+    color_policy = runtime.get("color_policy", {})
+    assert isinstance(color_policy, dict)
+    assert color_policy.get("enforced") is True
+
+
+@pytest.mark.graphics
+def test_scene_renderer_resize_reconfig_reuses_renderer_and_device(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    hub = _CapturingHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+    resize_handler = next(
+        handler for handler, event in renderer.canvas.handlers if event == "resize"
+    )
+    resize_handler({"width": 420.0, "height": 260.0})
+
+    reconfigure_events = [e for e in hub.events if e["name"] == "render.surface_reconfigure"]
+    assert reconfigure_events
+    value = reconfigure_events[-1].get("value", {})
+    assert isinstance(value, dict)
+    assert value.get("renderer_reused") is True
+    assert value.get("device_reused") is True
+
+
+@pytest.mark.graphics
+def test_scene_renderer_one_frame_in_flight_policy(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    hub = _CapturingHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+    renderer.present()
+
+    frame_events = [e for e in hub.events if e["name"] == "render.frame_in_flight"]
+    assert frame_events
+    value = frame_events[-1].get("value", {})
+    assert isinstance(value, dict)
+    assert value.get("max_frames_in_flight") == 1
+
+
+@pytest.mark.graphics
+def test_scene_renderer_render_path_does_not_use_asset_io(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    def _forbid_open(*args, **kwargs):
+        _ = (args, kwargs)
+        raise AssertionError("renderer should not perform asset IO in runtime path")
+
+    monkeypatch.setattr("builtins.open", _forbid_open)
+    snapshot = RenderSnapshot(
+        frame_index=3,
+        passes=(RenderPassSnapshot(name="ui", commands=(RenderCommand(kind="title"),)),),
+    )
+
+    renderer.render_snapshot(snapshot)

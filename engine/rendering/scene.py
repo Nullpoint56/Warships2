@@ -162,6 +162,11 @@ class SceneRenderer:
     _last_resize_applied_ts: float | None = field(init=False, default=None)
     _last_resize_event_to_apply_ms: float | None = field(init=False, default=None)
     _owns_canvas: bool = field(init=False, default=False)
+    _frames_in_flight: int = field(init=False, default=0)
+    _max_frames_in_flight: int = field(init=False, default=1)
+    _renderer_identity: int = field(init=False, default=0)
+    _device_identity: int | None = field(init=False, default=None)
+    _color_policy_applied_attrs: tuple[str, ...] = field(init=False, default=())
 
     def __post_init__(self) -> None:
         if gfx is None:
@@ -211,6 +216,9 @@ class SceneRenderer:
         self.renderer = gfx.WgpuRenderer(self.canvas)
         self.scene = gfx.Scene()
         self.camera = gfx.OrthographicCamera(self.width, self.height)
+        self._color_policy_applied_attrs = self._apply_color_space_policy()
+        self._renderer_identity = id(self.renderer)
+        self._device_identity = self._current_device_identity()
         self._configure_diagnostics()
         self._update_camera_projection()
         self._bind_resize_events()
@@ -373,6 +381,7 @@ class SceneRenderer:
         self.height = new_height
         self._viewport_revision += 1
         self._update_camera_projection()
+        self._emit_surface_reconfigure_event(reason="resize_apply")
         return True
 
     def _update_camera_projection(self) -> None:
@@ -551,6 +560,96 @@ class SceneRenderer:
             return value
         return str(value)
 
+    def _current_device_identity(self) -> int | None:
+        device = getattr(self.renderer, "device", None)
+        if device is None:
+            device = getattr(self.renderer, "_device", None)
+        return id(device) if device is not None else None
+
+    def _apply_color_space_policy(self) -> tuple[str, ...]:
+        applied: list[str] = []
+        desired_surface_format = "bgra8unorm-srgb"
+        desired_color_space = "srgb"
+        targets = (
+            ("renderer", self.renderer),
+            ("renderer.target", getattr(self.renderer, "target", None)),
+        )
+        for prefix, target in targets:
+            if target is None:
+                continue
+            for attr in ("surface_format", "preferred_format", "swapchain_format", "presentation_format"):
+                if not hasattr(target, attr):
+                    continue
+                try:
+                    setattr(target, attr, desired_surface_format)
+                    applied.append(f"{prefix}.{attr}")
+                except Exception:
+                    continue
+            for attr in ("color_space", "output_color_space", "presentation_color_space"):
+                if not hasattr(target, attr):
+                    continue
+                try:
+                    setattr(target, attr, desired_color_space)
+                    applied.append(f"{prefix}.{attr}")
+                except Exception:
+                    continue
+        return tuple(applied)
+
+    def _current_presentation_surface_format(self) -> str | None:
+        targets = (self.renderer, getattr(self.renderer, "target", None))
+        for target in targets:
+            if target is None:
+                continue
+            for attr in ("surface_format", "preferred_format", "swapchain_format", "presentation_format"):
+                value = getattr(target, attr, None)
+                if isinstance(value, str) and value.strip():
+                    return value.strip().lower()
+        return None
+
+    def _emit_surface_reconfigure_event(self, *, reason: str) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        current_renderer_identity = id(self.renderer)
+        current_device_identity = self._current_device_identity()
+        renderer_reused = current_renderer_identity == self._renderer_identity
+        device_reused = current_device_identity == self._device_identity
+        hub.emit_fast(
+            category="render",
+            name="render.surface_reconfigure",
+            tick=max(0, self._viewport_revision),
+            value={
+                "renderer_reused": bool(renderer_reused),
+                "device_reused": bool(device_reused),
+                "size": (int(self.width), int(self.height)),
+            },
+            metadata={"reason": reason},
+        )
+
+    def _emit_color_policy_event(self, *, reason: str) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        surface_format = self._current_presentation_surface_format()
+        presentation_is_srgb = (
+            isinstance(surface_format, str) and "srgb" in surface_format.lower()
+        )
+        hub.emit_fast(
+            category="render",
+            name="render.color_policy",
+            tick=max(0, self._viewport_revision),
+            value={
+                "internal_color_space": "linear",
+                "presentation_color_space": "srgb",
+                "gamma_correction_stage": "presentation",
+                "presentation_surface_format": surface_format,
+                "presentation_surface_is_srgb": bool(presentation_is_srgb),
+                "enforced": bool(presentation_is_srgb),
+                "applied_attributes": list(self._color_policy_applied_attrs),
+            },
+            metadata={"reason": reason},
+        )
+
     def _collect_backend_probe(self) -> dict[str, object]:
         probe: dict[str, object] = {}
         for attr in ("backend", "backend_type", "present_mode", "surface_format"):
@@ -600,6 +699,9 @@ class SceneRenderer:
         state: dict[str, object] = {
             "window_size": [int(self.width), int(self.height)],
             "viewport_revision": int(self._viewport_revision),
+            "frames_in_flight": int(self._frames_in_flight),
+            "max_frames_in_flight": int(self._max_frames_in_flight),
+            "presentation_surface_format": self._current_presentation_surface_format(),
         }
 
         logical_size = get_canvas_logical_size(self.canvas)
@@ -676,6 +778,10 @@ class SceneRenderer:
 
     def _resolve_runtime_info(self) -> dict[str, object]:
         renderer_type = f"{self.renderer.__class__.__module__}.{self.renderer.__class__.__name__}"
+        surface_format = self._current_presentation_surface_format()
+        presentation_is_srgb = (
+            isinstance(surface_format, str) and "srgb" in surface_format.lower()
+        )
         return {
             "canvas_type": f"{self.canvas.__class__.__module__}.{self.canvas.__class__.__name__}",
             "renderer_type": renderer_type,
@@ -700,6 +806,20 @@ class SceneRenderer:
                 "fps_cap": self._render_fps_cap,
                 "vsync": self._render_vsync,
                 "resize_cooldown_ms": int(self._render_resize_cooldown_s * 1000.0),
+            },
+            "color_policy": {
+                "internal_color_space": "linear",
+                "presentation_color_space": "srgb",
+                "gamma_correction_stage": "presentation",
+                "presentation_surface_format": surface_format,
+                "presentation_surface_is_srgb": bool(presentation_is_srgb),
+                "enforced": bool(presentation_is_srgb),
+                "applied_attributes": list(self._color_policy_applied_attrs),
+                "textures_srgb_policy": "flag_when_textured",
+            },
+            "frame_policy": {
+                "max_frames_in_flight": int(self._max_frames_in_flight),
+                "manual_gpu_fence_sync": False,
             },
         }
 
@@ -1421,6 +1541,16 @@ class SceneRenderer:
         self._diagnostics_hub = hub
         if hub is not None:
             self._emit_render_projection_events(reason="hub_attached")
+            self._emit_color_policy_event(reason="hub_attached")
+            hub.emit_fast(
+                category="render",
+                name="render.frame_in_flight_policy",
+                tick=max(0, self._viewport_revision),
+                value={
+                    "max_frames_in_flight": int(self._max_frames_in_flight),
+                    "manual_gpu_fence_sync": False,
+                },
+            )
 
     def note_frame_reason(self, reason: str) -> None:
         """Record a frame trigger reason for diagnostics."""
@@ -1493,73 +1623,99 @@ class SceneRenderer:
 
     def present(self, *, frame_start: float | None = None) -> None:
         """Present the current prepared scene to the backend surface."""
-        present_start = perf_counter()
-        self.renderer.render(self.scene, self.camera)
-        present_end = perf_counter()
-        frame_ms = (
-            (present_end - frame_start) * 1000.0
-            if isinstance(frame_start, (int, float))
-            else (present_end - present_start) * 1000.0
-        )
         hub = self._diagnostics_hub
-        if hub is not None:
-            draw_count = 0
-            try:
-                draw_count = int(len(getattr(self.scene, "children", ())))
-            except Exception:
-                draw_count = 0
-            hub.emit_fast(
-                category="render",
-                name="render.frame_ms",
-                tick=max(0, self._viewport_revision),
-                value=frame_ms,
-                metadata={
-                    "viewport_revision": self._viewport_revision,
-                    "size": (int(self.width), int(self.height)),
-                },
-            )
-            hub.emit_fast(
-                category="render",
-                name="render.present",
-                tick=max(0, self._viewport_revision),
-                value=frame_ms,
-                metadata={
-                    "draw_count": draw_count,
-                    "size": (int(self.width), int(self.height)),
-                },
-            )
-            hub.emit_fast(
-                category="render",
-                name="render.present_interval",
-                tick=max(0, self._viewport_revision),
-                value=frame_ms,
-                metadata={
-                    "vsync": bool(self._render_vsync),
-                    "fps_cap": float(self._render_fps_cap),
-                    "mode": self._render_loop_mode,
-                },
-            )
-            self._emit_render_stage(
-                stage="present",
-                value={"frame_ms": frame_ms},
-                metadata={"draw_count": draw_count},
-            )
-            apply_ts = self._last_resize_applied_ts
-            if apply_ts is not None:
-                apply_to_frame_ms = (present_end - apply_ts) * 1000.0
+        if self._frames_in_flight >= self._max_frames_in_flight:
+            if hub is not None:
                 hub.emit_fast(
                     category="render",
-                    name="render.resize_event",
+                    name="render.frames_in_flight_violation",
                     tick=max(0, self._viewport_revision),
-                    value={"width": int(self.width), "height": int(self.height)},
-                    metadata={
-                        "event_to_apply_ms": self._last_resize_event_to_apply_ms,
-                        "apply_to_frame_ms": apply_to_frame_ms,
-                        "viewport": self._viewport_transform(),
+                    level="warning",
+                    value={
+                        "frames_in_flight": int(self._frames_in_flight),
+                        "max_frames_in_flight": int(self._max_frames_in_flight),
                     },
                 )
-                self._last_resize_applied_ts = None
-                self._last_resize_event_to_apply_ms = None
+            return
+        self._frames_in_flight += 1
+        try:
+            present_start = perf_counter()
+            self.renderer.render(self.scene, self.camera)
+            present_end = perf_counter()
+            frame_ms = (
+                (present_end - frame_start) * 1000.0
+                if isinstance(frame_start, (int, float))
+                else (present_end - present_start) * 1000.0
+            )
+            if hub is not None:
+                draw_count = 0
+                try:
+                    draw_count = int(len(getattr(self.scene, "children", ())))
+                except Exception:
+                    draw_count = 0
+                hub.emit_fast(
+                    category="render",
+                    name="render.frame_ms",
+                    tick=max(0, self._viewport_revision),
+                    value=frame_ms,
+                    metadata={
+                        "viewport_revision": self._viewport_revision,
+                        "size": (int(self.width), int(self.height)),
+                    },
+                )
+                hub.emit_fast(
+                    category="render",
+                    name="render.present",
+                    tick=max(0, self._viewport_revision),
+                    value=frame_ms,
+                    metadata={
+                        "draw_count": draw_count,
+                        "size": (int(self.width), int(self.height)),
+                    },
+                )
+                hub.emit_fast(
+                    category="render",
+                    name="render.present_interval",
+                    tick=max(0, self._viewport_revision),
+                    value=frame_ms,
+                    metadata={
+                        "vsync": bool(self._render_vsync),
+                        "fps_cap": float(self._render_fps_cap),
+                        "mode": self._render_loop_mode,
+                    },
+                )
+                hub.emit_fast(
+                    category="render",
+                    name="render.frame_in_flight",
+                    tick=max(0, self._viewport_revision),
+                    value={
+                        "frames_in_flight": int(self._frames_in_flight),
+                        "max_frames_in_flight": int(self._max_frames_in_flight),
+                    },
+                )
+                self._emit_render_stage(
+                    stage="present",
+                    value={"frame_ms": frame_ms},
+                    metadata={"draw_count": draw_count},
+                )
+                apply_ts = self._last_resize_applied_ts
+                if apply_ts is not None:
+                    apply_to_frame_ms = (present_end - apply_ts) * 1000.0
+                    hub.emit_fast(
+                        category="render",
+                        name="render.resize_event",
+                        tick=max(0, self._viewport_revision),
+                        value={"width": int(self.width), "height": int(self.height)},
+                        metadata={
+                            "event_to_apply_ms": self._last_resize_event_to_apply_ms,
+                            "apply_to_frame_ms": apply_to_frame_ms,
+                            "viewport": self._viewport_transform(),
+                        },
+                    )
+                    self._last_resize_applied_ts = None
+                    self._last_resize_event_to_apply_ms = None
+        finally:
+            self._frames_in_flight = max(0, self._frames_in_flight - 1)
 
     def _continuous_frame_due(self, now: float) -> bool:
         if self._render_loop_mode == "continuous":

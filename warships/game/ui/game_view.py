@@ -5,7 +5,13 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 
-from engine.api.render_snapshot import IDENTITY_MAT4, RenderCommand, RenderPassSnapshot, RenderSnapshot
+from engine.api.render_snapshot import (
+    RenderCommand,
+    RenderPassSnapshot,
+    RenderSnapshot,
+    Vec3,
+    mat4_translation,
+)
 from engine.api.render import RenderAPI as Render2D
 from engine.api.ui_primitives import Button, GridLayout
 from warships.game.app.state_machine import AppState
@@ -159,7 +165,7 @@ class _SnapshotRecorder:
             RenderCommand(
                 kind="rect",
                 layer=int(round(z * 100.0)),
-                transform=IDENTITY_MAT4,
+                transform=mat4_translation(Vec3(x=float(x), y=float(y), z=float(z))),
                 data=(
                     ("key", key),
                     ("x", float(x)),
@@ -189,7 +195,7 @@ class _SnapshotRecorder:
             RenderCommand(
                 kind="grid",
                 layer=int(round(z * 100.0)),
-                transform=IDENTITY_MAT4,
+                transform=mat4_translation(Vec3(x=float(x), y=float(y), z=float(z))),
                 data=(
                     ("key", key),
                     ("x", float(x)),
@@ -220,7 +226,7 @@ class _SnapshotRecorder:
             RenderCommand(
                 kind="text",
                 layer=int(round(z * 100.0)),
-                transform=IDENTITY_MAT4,
+                transform=mat4_translation(Vec3(x=float(x), y=float(y), z=float(z))),
                 data=(
                     ("key", key),
                     ("text", str(text)),
@@ -240,7 +246,7 @@ class _SnapshotRecorder:
             RenderCommand(
                 kind="title",
                 layer=0,
-                transform=IDENTITY_MAT4,
+                transform=mat4_translation(Vec3(0.0, 0.0, 0.0)),
                 data=(("title", str(title)),),
             )
         )
@@ -250,7 +256,7 @@ class _SnapshotRecorder:
             RenderCommand(
                 kind="fill_window",
                 layer=int(round(z * 100.0)),
-                transform=IDENTITY_MAT4,
+                transform=mat4_translation(Vec3(0.0, 0.0, float(z))),
                 data=(
                     ("key", str(key)),
                     ("color", str(color)),

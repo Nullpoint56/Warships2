@@ -83,6 +83,54 @@ def create_render_snapshot(
     return RenderSnapshot(frame_index=frame_index, passes=passes)
 
 
+def mat4_translation(position: Vec3) -> Mat4:
+    """Create translation matrix from Vec3 position."""
+    return Mat4(
+        values=(
+            1.0,
+            0.0,
+            0.0,
+            position.x,
+            0.0,
+            1.0,
+            0.0,
+            position.y,
+            0.0,
+            0.0,
+            1.0,
+            position.z,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+    )
+
+
+def mat4_scale(scale: Vec3) -> Mat4:
+    """Create scale matrix from Vec3 scale vector."""
+    return Mat4(
+        values=(
+            scale.x,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            scale.y,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            scale.z,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            1.0,
+        )
+    )
+
+
 __all__ = [
     "IDENTITY_MAT4",
     "Mat4",
@@ -90,6 +138,7 @@ __all__ = [
     "RenderPassSnapshot",
     "RenderSnapshot",
     "Vec3",
+    "mat4_scale",
+    "mat4_translation",
     "create_render_snapshot",
 ]
-

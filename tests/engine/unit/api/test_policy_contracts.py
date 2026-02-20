@@ -9,7 +9,15 @@ from engine.api.input_snapshot import (
     KeyboardSnapshot,
     create_empty_input_snapshot,
 )
-from engine.api.render_snapshot import Mat4, RenderCommand, RenderPassSnapshot, create_render_snapshot
+from engine.api.render_snapshot import (
+    Mat4,
+    RenderCommand,
+    RenderPassSnapshot,
+    Vec3,
+    create_render_snapshot,
+    mat4_scale,
+    mat4_translation,
+)
 from engine.api.window import (
     SurfaceHandle,
     WindowCloseEvent,
@@ -48,6 +56,17 @@ def test_render_snapshot_structure() -> None:
     assert snapshot.passes[0].commands[0].kind == "rect"
 
 
+def test_render_snapshot_dimension_neutral_helpers() -> None:
+    translation = mat4_translation(Vec3(2.0, 3.0, 4.0))
+    scale = mat4_scale(Vec3(10.0, 11.0, 12.0))
+    assert translation.values[3] == 2.0
+    assert translation.values[7] == 3.0
+    assert translation.values[11] == 4.0
+    assert scale.values[0] == 10.0
+    assert scale.values[5] == 11.0
+    assert scale.values[10] == 12.0
+
+
 def test_window_contract_values_are_normalized_shape() -> None:
     surface = SurfaceHandle(surface_id="main", backend="glfw")
     assert surface.surface_id == "main"
@@ -67,4 +86,3 @@ def test_window_contract_values_are_normalized_shape() -> None:
     assert WindowFocusEvent(focused=True).focused is True
     assert WindowMinimizeEvent(minimized=False).minimized is False
     assert WindowCloseEvent().requested is True
-
