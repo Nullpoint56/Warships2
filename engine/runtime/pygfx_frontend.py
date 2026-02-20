@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from engine.api.window import WindowPort
 from engine.input.input_controller import InputController
 from engine.rendering.scene import SceneRenderer
-from engine.rendering.scene_runtime import apply_startup_window_mode
 from engine.runtime.host import EngineHost
 
 
@@ -14,23 +14,23 @@ class PygfxFrontendWindow:
     def __init__(
         self,
         renderer: SceneRenderer,
+        window: WindowPort,
         input_controller: InputController,
         host: EngineHost,
     ) -> None:
         self._renderer = renderer
+        self._window = window
         self._input = input_controller
         self._host = host
 
     def show_fullscreen(self) -> None:
-        apply_startup_window_mode(self._renderer.canvas, "fullscreen")
+        self._window.set_fullscreen()
 
     def show_maximized(self) -> None:
-        apply_startup_window_mode(self._renderer.canvas, "maximized")
+        self._window.set_maximized()
 
     def show_windowed(self, width: int, height: int) -> None:
-        set_size = getattr(self._renderer.canvas, "set_logical_size", None)
-        if callable(set_size):
-            set_size(width, height)
+        self._window.set_windowed(width, height)
 
     def sync_ui(self) -> None:
         self._renderer.invalidate()
@@ -77,8 +77,14 @@ class PygfxFrontendWindow:
 def create_pygfx_window(
     *,
     renderer: SceneRenderer,
+    window: WindowPort,
     input_controller: InputController,
     host: EngineHost,
 ) -> PygfxFrontendWindow:
     """Build pygfx frontend window from precomposed engine host/runtime services."""
-    return PygfxFrontendWindow(renderer=renderer, input_controller=input_controller, host=host)
+    return PygfxFrontendWindow(
+        renderer=renderer,
+        window=window,
+        input_controller=input_controller,
+        host=host,
+    )

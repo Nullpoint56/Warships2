@@ -6,6 +6,12 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from engine.window.rendercanvas_glfw import (
+    apply_startup_window_mode as _apply_startup_window_mode,
+    run_backend_loop as _run_backend_loop,
+    stop_backend_loop as _stop_backend_loop,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class RenderLoopConfig:
@@ -54,78 +60,8 @@ def resolve_window_mode() -> str:
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
-    """Set startup window mode for GLFW backend when available."""
-    try:
-        import rendercanvas.glfw as rc_glfw
-    except Exception:
-        return
-    window = getattr(canvas, "_window", None)
-    if window is None:
-        return
-    glfw = rc_glfw.glfw
-    mode = window_mode.strip().lower()
-
-    if mode == "maximized":
-        try:
-            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
-        except Exception:
-            pass
-        try:
-            glfw.maximize_window(window)
-        except Exception:
-            pass
-        return
-
-    monitor = glfw.get_primary_monitor()
-    if not monitor:
-        try:
-            glfw.maximize_window(window)
-        except Exception:
-            pass
-        return
-    if mode == "fullscreen":
-        try:
-            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
-        except Exception:
-            pass
-        video_mode = glfw.get_video_mode(monitor)
-        if video_mode is not None:
-            try:
-                glfw.set_window_monitor(
-                    window,
-                    monitor,
-                    0,
-                    0,
-                    int(video_mode.size.width),
-                    int(video_mode.size.height),
-                    int(video_mode.refresh_rate),
-                )
-                return
-            except Exception:
-                pass
-        return
-
-    if mode == "borderless":
-        try:
-            glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
-        except Exception:
-            pass
-        try:
-            x, y, w, h = glfw.get_monitor_workarea(monitor)
-            glfw.set_window_monitor(window, None, int(x), int(y), int(w), int(h), 0)
-            return
-        except Exception:
-            try:
-                glfw.maximize_window(window)
-            except Exception:
-                pass
-        return
-
-    # Default windowed path is handled by canvas size APIs; do not force monitor operations.
-    try:
-        glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
-    except Exception:
-        pass
+    """Compatibility wrapper to the window subsystem startup mode helper."""
+    _apply_startup_window_mode(canvas, window_mode)
 
 
 def get_canvas_logical_size(canvas: Any) -> tuple[float, float] | None:
@@ -146,20 +82,10 @@ def get_canvas_logical_size(canvas: Any) -> tuple[float, float] | None:
 
 
 def run_backend_loop(rc_auto: Any) -> None:
-    """Run rendercanvas loop entrypoint."""
-    loop = getattr(rc_auto, "loop", None)
-    if loop is not None and hasattr(loop, "run"):
-        loop.run()
-        return
-    run_func = getattr(rc_auto, "run", None)
-    if callable(run_func):
-        run_func()
-        return
-    raise RuntimeError("rendercanvas.auto did not expose a runnable loop.")
+    """Compatibility wrapper to the window subsystem backend loop runner."""
+    _run_backend_loop(rc_auto)
 
 
 def stop_backend_loop(rc_auto: Any) -> None:
-    """Stop rendercanvas loop when supported."""
-    loop = getattr(rc_auto, "loop", None)
-    if loop is not None and hasattr(loop, "stop"):
-        loop.stop()
+    """Compatibility wrapper to the window subsystem backend loop stopper."""
+    _stop_backend_loop(rc_auto)

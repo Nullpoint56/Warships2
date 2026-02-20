@@ -42,6 +42,11 @@ class FakeWindow:
         self.calls.append(("run", ()))
 
 
+class FakeWindowLayer:
+    def __init__(self, canvas) -> None:
+        self.canvas = canvas
+
+
 class FakeHost:
     last_instance = None
 
@@ -55,13 +60,19 @@ class FakeHost:
 def test_bootstrap_uses_window_mode_and_wires_runtime(monkeypatch) -> None:
     fake_window = FakeWindow()
 
-    def fake_create_window(*, renderer, input_controller, host):
+    def fake_create_window(*, renderer, window, input_controller, host):
         assert isinstance(renderer, FakeRenderer)
+        assert isinstance(window, FakeWindowLayer)
         assert isinstance(input_controller, FakeInputController)
         assert isinstance(host, FakeHost)
         return fake_window
 
     monkeypatch.setattr(bootstrap, "SceneRenderer", FakeRenderer)
+    monkeypatch.setattr(
+        bootstrap,
+        "create_rendercanvas_window",
+        lambda canvas: FakeWindowLayer(canvas),
+    )
     monkeypatch.setattr(bootstrap, "InputController", FakeInputController)
     monkeypatch.setattr(bootstrap, "EngineHost", FakeHost)
     monkeypatch.setattr(bootstrap, "create_pygfx_window", fake_create_window)

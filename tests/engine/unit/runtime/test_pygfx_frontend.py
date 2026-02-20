@@ -5,19 +5,13 @@ from types import SimpleNamespace
 import engine.runtime.pygfx_frontend as frontend_mod
 
 
-class _RendererWithSize:
+class _Renderer:
     def __init__(self) -> None:
         self.canvas = SimpleNamespace()
-        self.canvas_size_calls: list[tuple[int, int]] = []
         self.invalidate_calls = 0
         self.run_callback = None
         self.closed = False
         self.frame_reasons: list[str] = []
-
-        def _set_size(w: int, h: int) -> None:
-            self.canvas_size_calls.append((w, h))
-
-        self.canvas.set_logical_size = _set_size
 
     def invalidate(self) -> None:
         self.invalidate_calls += 1
@@ -32,10 +26,18 @@ class _RendererWithSize:
         self.frame_reasons.append(reason)
 
 
-class _RendererWithoutSize(_RendererWithSize):
+class _Window:
     def __init__(self) -> None:
-        super().__init__()
-        delattr(self.canvas, "set_logical_size")
+        self.calls: list[tuple[str, tuple[int, int] | tuple[()]]] = []
+
+    def set_fullscreen(self) -> None:
+        self.calls.append(("set_fullscreen", ()))
+
+    def set_maximized(self) -> None:
+        self.calls.append(("set_maximized", ()))
+
+    def set_windowed(self, width: int, height: int) -> None:
+        self.calls.append(("set_windowed", (width, height)))
 
 
 class _Input:
@@ -78,46 +80,39 @@ class _Host:
         return self.closed
 
 
-def test_show_windowed_sets_size_when_supported() -> None:
-    renderer = _RendererWithSize()
+def test_show_windowed_delegates_to_window_port() -> None:
+    renderer = _Renderer()
+    window_port = _Window()
     window = frontend_mod.PygfxFrontendWindow(
-        renderer=renderer, input_controller=_Input(), host=_Host()
+        renderer=renderer,
+        window=window_port,
+        input_controller=_Input(),
+        host=_Host(),
     )
     window.show_windowed(800, 600)
-    assert renderer.canvas_size_calls == [(800, 600)]
+    assert window_port.calls == [("set_windowed", (800, 600))]
 
 
-def test_show_windowed_noop_without_setter() -> None:
-    renderer = _RendererWithoutSize()
+def test_show_fullscreen_and_maximized_delegate_to_window_port() -> None:
+    renderer = _Renderer()
+    window_port = _Window()
     window = frontend_mod.PygfxFrontendWindow(
-        renderer=renderer, input_controller=_Input(), host=_Host()
-    )
-    window.show_windowed(800, 600)
-    assert renderer.canvas_size_calls == []
-
-
-def test_show_fullscreen_and_maximized_delegate_to_runtime(monkeypatch) -> None:
-    calls: list[str] = []
-
-    def _apply(canvas, mode: str) -> None:
-        _ = canvas
-        calls.append(mode)
-
-    monkeypatch.setattr(frontend_mod, "apply_startup_window_mode", _apply)
-    renderer = _RendererWithSize()
-    window = frontend_mod.PygfxFrontendWindow(
-        renderer=renderer, input_controller=_Input(), host=_Host()
+        renderer=renderer,
+        window=window_port,
+        input_controller=_Input(),
+        host=_Host(),
     )
     window.show_fullscreen()
     window.show_maximized()
-    assert calls == ["fullscreen", "maximized"]
+    assert window_port.calls == [("set_fullscreen", ()), ("set_maximized", ())]
 
 
 def test_draw_frame_closes_renderer_when_host_closed() -> None:
-    renderer = _RendererWithSize()
+    renderer = _Renderer()
     host = _Host(close_after_frame=True)
     window = frontend_mod.PygfxFrontendWindow(
         renderer=renderer,
+        window=_Window(),
         input_controller=_Input(pointer=[object()]),
         host=host,
     )
@@ -128,9 +123,10 @@ def test_draw_frame_closes_renderer_when_host_closed() -> None:
 
 
 def test_drain_input_events_without_changes_does_not_invalidate() -> None:
-    renderer = _RendererWithSize()
+    renderer = _Renderer()
     window = frontend_mod.PygfxFrontendWindow(
         renderer=renderer,
+        window=_Window(),
         input_controller=_Input(pointer=[None], key=[None], wheel=[None]),
         host=_Host(close_after_frame=False),
     )
@@ -139,12 +135,14 @@ def test_drain_input_events_without_changes_does_not_invalidate() -> None:
 
 
 def test_drain_input_events_records_pointer_event_type_reasons() -> None:
-    renderer = _RendererWithSize()
+    renderer = _Renderer()
     pointer_event = SimpleNamespace(event_type="pointer_move")
     window = frontend_mod.PygfxFrontendWindow(
         renderer=renderer,
+        window=_Window(),
         input_controller=_Input(pointer=[pointer_event]),
         host=_Host(close_after_frame=False),
     )
     window._drain_input_events()
     assert "input:pointer:pointer_move" in renderer.frame_reasons
+
