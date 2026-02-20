@@ -13,7 +13,7 @@ from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_primitives import GridLayout
 from engine.input.input_controller import InputController
 from engine.rendering.scene_runtime import resolve_render_loop_config, resolve_render_vsync
-from engine.rendering.wgpu_renderer import WgpuRenderer
+from engine.rendering.wgpu_renderer import WgpuInitError, WgpuRenderer
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.logging import setup_engine_logging
 from engine.runtime.window_frontend import create_window_frontend
@@ -53,8 +53,17 @@ def run_hosted_runtime(
     try:
         renderer = WgpuRenderer(surface=surface)
     except Exception as exc:
+        selected_backend = "unknown"
+        adapter_info: dict[str, object] = {}
+        if isinstance(exc, WgpuInitError):
+            selected_backend = str(exc.details.get("selected_backend", "unknown"))
+            raw_info = exc.details.get("adapter_info", {})
+            if isinstance(raw_info, dict):
+                adapter_info = {str(key): value for key, value in raw_info.items()}
         details = {
             "backend_priority": _resolve_wgpu_backend_priority(),
+            "selected_backend": selected_backend,
+            "adapter_info": adapter_info,
             "surface_id": str(surface.surface_id),
             "surface_backend": str(surface.backend),
             "surface_provider_type": (
@@ -66,7 +75,7 @@ def run_hosted_runtime(
             "platform": os.name,
             "exception_type": exc.__class__.__name__,
             "exception_message": str(exc),
-            "traceback": traceback.format_exc(),
+            "stack": traceback.format_exc(),
         }
         raise RuntimeError(f"wgpu_init_failed details={details!r}") from exc
     module = module_factory(renderer, layout)

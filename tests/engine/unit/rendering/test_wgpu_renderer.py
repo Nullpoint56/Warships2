@@ -41,6 +41,20 @@ class _FakeBackend:
     def reconfigure(self, event: WindowResizeEvent) -> None:
         self.resize_events.append(event)
 
+    def resize_telemetry(self) -> dict[str, object]:
+        return {
+            "renderer_reused": True,
+            "device_reused": True,
+            "adapter_reused": True,
+            "reconfigure_attempts": 1,
+            "reconfigure_failures": 0,
+            "present_mode": "fifo",
+            "surface_format": "bgra8unorm-srgb",
+            "width": 1600,
+            "height": 1200,
+            "dpi_scale": 2.0,
+        }
+
 
 @dataclass(slots=True)
 class _FakeHub:
@@ -178,6 +192,26 @@ def test_wgpu_renderer_can_forward_resize_and_title() -> None:
     assert backend.close_calls == 1
 
 
+def test_wgpu_renderer_emits_resize_diagnostics_with_dpi_and_dims() -> None:
+    backend = _FakeBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    hub = _FakeHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+    event = WindowResizeEvent(
+        logical_width=800.0,
+        logical_height=600.0,
+        physical_width=1600,
+        physical_height=1200,
+        dpi_scale=2.0,
+    )
+
+    renderer.apply_window_resize(event)
+
+    assert "render.resize_event" in hub.events
+    assert "render.viewport_applied" in hub.events
+    assert "render.surface_reconfigure" in hub.events
+
+
 class _FakeEncoder:
     def __init__(self) -> None:
         self.render_passes: list[_FakeRenderPass] = []
@@ -245,6 +279,10 @@ class _FakeDevice:
         return descriptor
 
     def create_texture(self, **kwargs):
+        size = kwargs.get("size")
+        if isinstance(size, tuple) and len(size) >= 2:
+            if int(size[0]) <= 0 or int(size[1]) <= 0:
+                raise RuntimeError("invalid texture size")
         self.textures.append(tuple(kwargs.items()))
         return _FakeTexture()
 
@@ -325,3 +363,33 @@ def test_wgpu_backend_uses_hybrid_upload_modes(monkeypatch) -> None:
     )
     assert backend._upload_mode_last == "ring_buffer"  # noqa: SLF001
 
+
+def test_wgpu_backend_resize_reconfigure_reuses_device_and_retries(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    baseline_device_id = id(backend._device)  # noqa: SLF001
+    event = WindowResizeEvent(
+        logical_width=640.0,
+        logical_height=480.0,
+        physical_width=1280,
+        physical_height=960,
+        dpi_scale=2.0,
+    )
+
+    backend.reconfigure(event)
+    telemetry = backend.resize_telemetry()
+
+    assert id(backend._device) == baseline_device_id  # noqa: SLF001
+    assert telemetry["device_reused"] is True
+    assert int(telemetry["reconfigure_attempts"]) >= 1
+    assert int(telemetry["reconfigure_failures"]) >= 0
+    assert float(telemetry["dpi_scale"]) == 2.0
+
+
+def test_wgpu_backend_present_mode_fallback_chain(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    monkeypatch.setenv("ENGINE_RENDER_VSYNC", "0")
+    monkeypatch.setenv("ENGINE_WGPU_PRESENT_MODES", "fifo,immediate")
+    backend = _WgpuBackend()
+
+    assert backend._present_mode == "immediate"  # noqa: SLF001

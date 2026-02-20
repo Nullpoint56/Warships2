@@ -114,6 +114,37 @@ def test_bootstrap_non_headless_raises_hard_error_when_wgpu_init_fails(monkeypat
         bootstrap.run_hosted_runtime(module_factory=lambda renderer, layout: object())
 
 
+def test_bootstrap_non_headless_failure_details_include_phase4_fields(monkeypatch) -> None:
+    monkeypatch.delenv("ENGINE_HEADLESS", raising=False)
+    monkeypatch.setattr(
+        bootstrap,
+        "create_rendercanvas_window",
+        lambda **kwargs: FakeWindowLayer(canvas=object()),
+    )
+
+    class _InitFailure(bootstrap.WgpuInitError):
+        pass
+
+    def _raise_renderer_init(*, surface):
+        _ = surface
+        raise _InitFailure(
+            "backend init failed",
+            details={"selected_backend": "vulkan", "adapter_info": {"vendor": "stub"}},
+        )
+
+    monkeypatch.setattr(bootstrap, "WgpuRenderer", _raise_renderer_init)
+
+    with pytest.raises(RuntimeError, match="wgpu_init_failed details=") as exc_info:
+        bootstrap.run_hosted_runtime(module_factory=lambda renderer, layout: object())
+
+    message = str(exc_info.value)
+    assert "'selected_backend': 'vulkan'" in message
+    assert "'adapter_info': {'vendor': 'stub'}" in message
+    assert "'attempted_surface_format': 'bgra8unorm-srgb'" in message
+    assert "'platform':" in message
+    assert "'stack':" in message
+
+
 def test_bootstrap_headless_skips_window_and_renderer(monkeypatch) -> None:
     monkeypatch.setenv("ENGINE_HEADLESS", "1")
     calls: list[str] = []

@@ -40,6 +40,17 @@ class _Backend(Protocol):
     def reconfigure(self, event: WindowResizeEvent) -> None:
         """Apply resize/surface reconfigure."""
 
+    def resize_telemetry(self) -> dict[str, object]:
+        """Return latest resize/reconfigure telemetry."""
+
+
+class WgpuInitError(RuntimeError):
+    """Renderer backend initialization failure with structured details."""
+
+    def __init__(self, message: str, *, details: dict[str, object]) -> None:
+        super().__init__(message)
+        self.details = details
+
 
 @dataclass(frozen=True, slots=True)
 class _PassDescriptor:
@@ -81,11 +92,17 @@ class WgpuRenderer:
     _frame_dirty: bool = field(init=False, default=False)
     _frame_presented: bool = field(init=False, default=False)
     _owner_thread_id: int = field(init=False, default=0)
+    _viewport_revision: int = field(init=False, default=0)
+    _logical_width: float = field(init=False, default=1200.0)
+    _logical_height: float = field(init=False, default=720.0)
+    _dpi_scale: float = field(init=False, default=1.0)
+    _projection: tuple[float, ...] = field(init=False, default=())
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
         factory = self._backend_factory or _create_wgpu_backend
         self._backend = factory(self.surface)
+        self._projection = _ortho_projection(width=float(self.width), height=float(self.height))
 
     def begin_frame(self) -> None:
         self._assert_owner_thread()
@@ -259,9 +276,16 @@ class WgpuRenderer:
 
     def apply_window_resize(self, event: WindowResizeEvent) -> None:
         self._assert_owner_thread()
+        self._logical_width = float(event.logical_width)
+        self._logical_height = float(event.logical_height)
+        self._dpi_scale = max(0.01, float(event.dpi_scale))
         self.width = max(1, int(event.physical_width))
         self.height = max(1, int(event.physical_height))
+        self._viewport_revision += 1
+        self._projection = _ortho_projection(width=float(self.width), height=float(self.height))
         self._backend.reconfigure(event)
+        telemetry = self._backend.resize_telemetry()
+        self._emit_resize_diagnostics(event, telemetry)
 
     def set_diagnostics_hub(self, hub: DiagnosticHub | None) -> None:
         self._diagnostics_hub = hub
@@ -351,6 +375,48 @@ class WgpuRenderer:
         if int(threading.get_ident()) != self._owner_thread_id:
             raise RuntimeError("WgpuRenderer must run on its owner thread")
 
+    def _emit_resize_diagnostics(
+        self,
+        event: WindowResizeEvent,
+        telemetry: dict[str, object],
+    ) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        tick = int(self._frame_index)
+        hub.emit_fast(
+            category="render",
+            name="render.resize_event",
+            tick=tick,
+            value={
+                "logical_width": float(event.logical_width),
+                "logical_height": float(event.logical_height),
+                "physical_width": int(event.physical_width),
+                "physical_height": int(event.physical_height),
+                "dpi_scale": float(event.dpi_scale),
+                "viewport_revision": int(self._viewport_revision),
+            },
+            metadata={"source": "window_event"},
+        )
+        hub.emit_fast(
+            category="render",
+            name="render.viewport_applied",
+            tick=tick,
+            value={
+                "width": int(self.width),
+                "height": int(self.height),
+                "revision": int(self._viewport_revision),
+                "projection": tuple(float(v) for v in self._projection),
+            },
+        )
+        hub.emit_fast(
+            category="render",
+            name="render.surface_reconfigure",
+            tick=tick,
+            value=telemetry,
+            metadata={"reason": "resize"},
+        )
+
 
 def _command_key(command: RenderCommand) -> str:
     payload = {str(key): value for key, value in command.data}
@@ -413,15 +479,45 @@ class _WgpuBackend:
     _upload_mode_last: str = field(init=False, default="none")
     _uploaded_packet_count: int = field(init=False, default=0)
     _stream_write_cursor: int = field(init=False, default=0)
+    _reconfigure_retry_limit: int = field(init=False, default=2)
+    _reconfigure_attempts_last: int = field(init=False, default=0)
+    _reconfigure_failures: int = field(init=False, default=0)
+    _device_identity: int = field(init=False, default=0)
+    _adapter_identity: int = field(init=False, default=0)
+    _present_mode: str = field(init=False, default="fifo")
+    _selected_backend: str = field(init=False, default="unknown")
+    _adapter_info: dict[str, object] = field(init=False, default_factory=dict)
 
     def __post_init__(self) -> None:
         try:
             import wgpu
         except Exception as exc:
-            raise RuntimeError(f"wgpu dependency unavailable: {exc!r}") from exc
+            raise WgpuInitError(
+                "wgpu dependency unavailable",
+                details={
+                    "selected_backend": "unknown",
+                    "adapter_info": {},
+                    "exception_type": exc.__class__.__name__,
+                    "exception_message": str(exc),
+                },
+            ) from exc
         self._wgpu = wgpu
-        self._adapter = self._request_adapter()
-        self._device = self._request_device(self._adapter)
+        try:
+            self._adapter, self._selected_backend = self._request_adapter()
+            self._adapter_info = self._extract_adapter_info(self._adapter)
+            self._device = self._request_device(self._adapter)
+        except Exception as exc:
+            details: dict[str, object] = {
+                "selected_backend": self._selected_backend,
+                "adapter_info": dict(self._adapter_info),
+                "exception_type": exc.__class__.__name__,
+                "exception_message": str(exc),
+            }
+            if isinstance(exc, WgpuInitError):
+                details.update(exc.details)
+            raise WgpuInitError("wgpu backend initialization failed", details=details) from exc
+        self._adapter_identity = id(self._adapter)
+        self._device_identity = id(self._device)
         self._queue = getattr(self._device, "queue", None)
         if self._queue is None:
             raise RuntimeError("wgpu device queue unavailable")
@@ -504,18 +600,42 @@ class _WgpuBackend:
         self._surface_state["physical_width"] = self._target_width
         self._surface_state["physical_height"] = self._target_height
         self._surface_state["dpi_scale"] = float(event.dpi_scale)
-        self._rebuild_frame_targets()
+        self._rebuild_frame_targets_with_retry()
         return
 
-    def _request_adapter(self) -> object:
+    def resize_telemetry(self) -> dict[str, object]:
+        raw_dpi = self._surface_state.get("dpi_scale", 1.0)
+        if isinstance(raw_dpi, (int, float)):
+            dpi = float(raw_dpi)
+        else:
+            dpi = 1.0
+        return {
+            "renderer_reused": True,
+            "device_reused": True,
+            "adapter_reused": True,
+            "reconfigure_attempts": int(self._reconfigure_attempts_last),
+            "reconfigure_failures": int(self._reconfigure_failures),
+            "present_mode": str(self._present_mode),
+            "surface_format": str(self._surface_format),
+            "width": int(self._target_width),
+            "height": int(self._target_height),
+            "dpi_scale": dpi,
+        }
+
+    def _request_adapter(self) -> tuple[object, str]:
         gpu = getattr(self._wgpu, "gpu", None)
         if gpu is None:
-            raise RuntimeError("wgpu.gpu entrypoint unavailable")
+            raise WgpuInitError(
+                "wgpu.gpu entrypoint unavailable",
+                details={"selected_backend": "unknown", "adapter_info": {}},
+            )
         backend_order = _resolve_backend_priority()
         request_adapter_sync = getattr(gpu, "request_adapter_sync", None)
         adapter = None
+        selected_backend = "unknown"
         if callable(request_adapter_sync):
             for backend_name in backend_order:
+                selected_backend = str(backend_name)
                 try:
                     adapter = request_adapter_sync(
                         power_preference="high-performance",
@@ -528,8 +648,15 @@ class _WgpuBackend:
         else:
             request_adapter = getattr(gpu, "request_adapter", None)
             if not callable(request_adapter):
-                raise RuntimeError("wgpu adapter request API unavailable")
+                raise WgpuInitError(
+                    "wgpu adapter request API unavailable",
+                    details={
+                        "selected_backend": "unknown",
+                        "adapter_info": {},
+                    },
+                )
             for backend_name in backend_order:
+                selected_backend = str(backend_name)
                 try:
                     adapter = request_adapter(
                         power_preference="high-performance",
@@ -540,8 +667,15 @@ class _WgpuBackend:
                 if adapter is not None:
                     break
         if adapter is None:
-            raise RuntimeError("wgpu adapter request returned None")
-        return adapter
+            raise WgpuInitError(
+                "wgpu adapter request returned None",
+                details={
+                    "selected_backend": selected_backend,
+                    "attempted_backends": tuple(backend_order),
+                    "adapter_info": {},
+                },
+            )
+        return adapter, selected_backend
 
     @staticmethod
     def _request_device(adapter: object) -> object:
@@ -554,8 +688,18 @@ class _WgpuBackend:
                 raise RuntimeError("wgpu device request API unavailable")
             device = request_device(label="engine.wgpu.device")
         if device is None:
-            raise RuntimeError("wgpu device request returned None")
+            raise WgpuInitError(
+                "wgpu device request returned None",
+                details={"selected_backend": "unknown", "adapter_info": {}},
+            )
         return device
+
+    @staticmethod
+    def _extract_adapter_info(adapter: object) -> dict[str, object]:
+        info = getattr(adapter, "info", None)
+        if isinstance(info, dict):
+            return {str(key): value for key, value in info.items()}
+        return {}
 
     def _setup_surface_state(self) -> dict[str, object]:
         state: dict[str, object] = {
@@ -568,6 +712,8 @@ class _WgpuBackend:
         if self.surface is not None:
             state["surface_id"] = str(self.surface.surface_id)
             state["backend"] = str(self.surface.backend)
+        state["present_mode"] = self._resolve_present_mode()
+        self._present_mode = str(state["present_mode"])
         return state
 
     def _setup_pipelines(self) -> None:
@@ -620,6 +766,41 @@ class _WgpuBackend:
         )
         create_view = getattr(self._frame_texture, "create_view", None)
         self._frame_texture_view = create_view() if callable(create_view) else None
+
+    def _rebuild_frame_targets_with_retry(self) -> None:
+        self._reconfigure_attempts_last = 0
+        for attempt in range(1, self._reconfigure_retry_limit + 1):
+            self._reconfigure_attempts_last = attempt
+            try:
+                self._rebuild_frame_targets()
+                return
+            except Exception:
+                self._reconfigure_failures += 1
+                if attempt >= self._reconfigure_retry_limit:
+                    raise RuntimeError(
+                        "wgpu_surface_reconfigure_failed "
+                        f"attempts={self._reconfigure_attempts_last} "
+                        f"size=({self._target_width},{self._target_height}) "
+                        f"format={self._surface_format} "
+                        f"present_mode={self._present_mode}"
+                    ) from None
+
+    def _resolve_present_mode(self) -> str:
+        raw_supported = os.getenv("ENGINE_WGPU_PRESENT_MODES", "").strip().lower()
+        if raw_supported:
+            supported = tuple(item.strip() for item in raw_supported.split(",") if item.strip())
+        else:
+            supported = ("fifo", "mailbox", "immediate")
+        vsync_raw = os.getenv("ENGINE_RENDER_VSYNC", "1").strip().lower()
+        vsync = vsync_raw in {"1", "true", "yes", "on"}
+        if vsync:
+            preferred = ("fifo", "mailbox", "immediate")
+        else:
+            preferred = ("mailbox", "immediate", "fifo")
+        for mode in preferred:
+            if mode in supported:
+                return mode
+        return "fifo"
 
     def _stage_draw_packets(self, packets: tuple[_DrawPacket, ...]) -> None:
         packet_count = int(len(packets))
@@ -689,6 +870,29 @@ def _resolve_backend_priority() -> tuple[str, ...]:
     return values or ("vulkan", "metal", "dx12")
 
 
+def _ortho_projection(*, width: float, height: float) -> tuple[float, ...]:
+    w = max(1.0, float(width))
+    h = max(1.0, float(height))
+    return (
+        2.0 / w,
+        0.0,
+        0.0,
+        -1.0,
+        0.0,
+        -2.0 / h,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+    )
+
+
 _GEOMETRY_WGSL = """
 @vertex
 fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
@@ -725,4 +929,4 @@ fn fs_main() -> @location(0) vec4<f32> {
 """
 
 
-__all__ = ["WgpuRenderer"]
+__all__ = ["WgpuInitError", "WgpuRenderer"]
