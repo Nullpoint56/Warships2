@@ -18,7 +18,7 @@ def test_crash_bundle_writer_writes_structured_bundle(tmp_path: Path) -> None:
             exc,
             tick=7,
             diagnostics_hub=hub,
-            runtime_metadata={"engine_versions": {"pygfx": "x"}},
+            runtime_metadata={"engine_versions": {"wgpu": "x"}},
             profiling_snapshot={"schema": "frame_profile_v1"},
         )
 
@@ -40,7 +40,7 @@ def test_crash_bundle_writer_writes_manual_snapshot_bundle(tmp_path: Path) -> No
         tick=11,
         diagnostics_hub=hub,
         reason="manual_export",
-        runtime_metadata={"engine_versions": {"pygfx": "x"}},
+        runtime_metadata={"engine_versions": {"wgpu": "x"}},
     )
 
     assert bundle_path is not None

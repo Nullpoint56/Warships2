@@ -447,7 +447,7 @@ class EngineHost(HostControl):
     @staticmethod
     def _runtime_metadata() -> dict[str, object]:
         versions: dict[str, str] = {}
-        for pkg in ("pygfx", "wgpu", "rendercanvas"):
+        for pkg in ("wgpu", "rendercanvas"):
             try:
                 versions[pkg] = version(pkg)
             except PackageNotFoundError:
