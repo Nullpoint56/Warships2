@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
+from engine.api.render_snapshot import RenderSnapshot
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +50,15 @@ class GameModule(Protocol):
 
     def on_wheel_event(self, event: WheelEvent) -> bool:
         """Handle wheel event. Return whether state changed."""
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> None:
+        """Handle immutable per-frame input snapshot."""
+
+    def simulate(self, context: HostFrameContext) -> None:
+        """Advance simulation for one frame."""
+
+    def build_render_snapshot(self) -> RenderSnapshot | None:
+        """Build immutable render snapshot for renderer consumption."""
 
     def on_frame(self, context: HostFrameContext) -> None:
         """Render/update one frame."""

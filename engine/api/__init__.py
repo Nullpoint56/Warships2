@@ -56,6 +56,14 @@ from engine.api.gameplay import (
     create_update_loop,
 )
 from engine.api.hosted_runtime import HostedRuntimeConfig, run_pygfx_hosted_runtime
+from engine.api.input_snapshot import (
+    ActionSnapshot,
+    ControllerSnapshot,
+    InputSnapshot,
+    KeyboardSnapshot,
+    MouseSnapshot,
+    create_empty_input_snapshot,
+)
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.interaction_modes import (
     InteractionMode,
@@ -65,6 +73,15 @@ from engine.api.interaction_modes import (
 from engine.api.logging import EngineLoggingConfig, LoggerPort, configure_logging, get_logger
 from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule, create_module_graph
 from engine.api.render import RenderAPI
+from engine.api.render_snapshot import (
+    IDENTITY_MAT4,
+    Mat4,
+    RenderCommand,
+    RenderPassSnapshot,
+    RenderSnapshot,
+    Vec3,
+    create_render_snapshot,
+)
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
 from engine.api.ui_framework import UIFramework, create_ui_framework
 from engine.api.ui_primitives import (
@@ -98,6 +115,15 @@ from engine.api.ui_primitives import (
     visible_slice,
 )
 from engine.api.ui_projection import ButtonSpec, project_buttons
+from engine.api.window import (
+    SurfaceHandle,
+    WindowCloseEvent,
+    WindowEvent,
+    WindowFocusEvent,
+    WindowMinimizeEvent,
+    WindowPort,
+    WindowResizeEvent,
+)
 
 __all__ = [
     "ActionDispatcher",
@@ -124,18 +150,35 @@ __all__ = [
     "HostControl",
     "HostFrameContext",
     "HostedRuntimeConfig",
+    "InputSnapshot",
     "InteractionMode",
     "InteractionModeMachine",
+    "KeyboardSnapshot",
     "EngineLoggingConfig",
     "LoggerPort",
+    "Mat4",
     "ModuleGraph",
     "ModuleNode",
+    "MouseSnapshot",
     "PointerEvent",
     "KeyEvent",
+    "RenderCommand",
+    "RenderPassSnapshot",
+    "RenderSnapshot",
+    "SurfaceHandle",
+    "Vec3",
     "WheelEvent",
+    "WindowCloseEvent",
+    "WindowEvent",
+    "WindowFocusEvent",
+    "WindowMinimizeEvent",
+    "WindowPort",
+    "WindowResizeEvent",
+    "ActionSnapshot",
     "Button",
     "ButtonSpec",
     "CellCoord",
+    "ControllerSnapshot",
     "ModalInputState",
     "ModalKeyRoute",
     "ModalPointerRoute",
@@ -166,7 +209,9 @@ __all__ = [
     "create_functional_agent",
     "create_flow_machine",
     "create_flow_program",
+    "create_empty_input_snapshot",
     "create_interaction_mode_machine",
+    "create_render_snapshot",
     "configure_logging",
     "get_logger",
     "create_ui_framework",
@@ -191,6 +236,7 @@ __all__ = [
     "PrefixedActionHandler",
     "open_dialog",
     "project_buttons",
+    "IDENTITY_MAT4",
     "apply_wheel_scroll",
     "can_scroll_list_down",
     "can_scroll_with_wheel",

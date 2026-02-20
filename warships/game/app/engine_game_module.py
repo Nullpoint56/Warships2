@@ -18,7 +18,9 @@ from engine.api.gameplay import (
     create_update_loop,
 )
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
+from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_framework import UIFramework
 from warships.game.app.controller import GameController
 from warships.game.ui.game_view import GameView
@@ -168,6 +170,15 @@ class WarshipsGameModule(GameModule):
     def on_frame(self, context: HostFrameContext) -> None:
         self._context.provide("frame_context", context)
         self._graph.update_all(self._context)
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> None:
+        self._context.provide("input_snapshot", snapshot)
+
+    def simulate(self, context: HostFrameContext) -> None:
+        self.on_frame(context)
+
+    def build_render_snapshot(self) -> RenderSnapshot | None:
+        return None
 
     def should_close(self) -> bool:
         return False
