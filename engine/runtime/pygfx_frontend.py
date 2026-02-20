@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from engine.api.input_snapshot import InputSnapshot
-from engine.api.window import WindowPort
+from engine.api.window import (
+    WindowCloseEvent,
+    WindowFocusEvent,
+    WindowMinimizeEvent,
+    WindowPort,
+    WindowResizeEvent,
+)
 from engine.input.input_controller import InputController
 from engine.rendering.scene import SceneRenderer
 from engine.runtime.host import EngineHost
@@ -42,12 +48,64 @@ class PygfxFrontendWindow:
 
     def _draw_frame(self) -> None:
         self._renderer.note_frame_reason("draw")
+        self._process_window_events()
         snapshot = self._build_input_snapshot()
         self._dispatch_input_snapshot(snapshot)
         self._host.frame()
         if self._host.is_closed():
             self._renderer.close()
             self._window.close()
+
+    def _process_window_events(self) -> None:
+        events = self._window.poll_events()
+        if not events:
+            return
+        hub = getattr(self._host, "diagnostics_hub", None)
+        tick = int(self._host.current_frame_index())
+        for event in events:
+            if isinstance(event, WindowResizeEvent):
+                self._renderer.note_frame_reason("window:resize")
+                if hub is not None and hasattr(hub, "emit_fast"):
+                    hub.emit_fast(
+                        category="window",
+                        name="window.resize",
+                        tick=tick,
+                        value={
+                            "logical_width": float(event.logical_width),
+                            "logical_height": float(event.logical_height),
+                            "physical_width": int(event.physical_width),
+                            "physical_height": int(event.physical_height),
+                            "dpi_scale": float(event.dpi_scale),
+                        },
+                    )
+                continue
+            if isinstance(event, WindowFocusEvent):
+                if hub is not None and hasattr(hub, "emit_fast"):
+                    hub.emit_fast(
+                        category="window",
+                        name="window.focus",
+                        tick=tick,
+                        value={"focused": bool(event.focused)},
+                    )
+                continue
+            if isinstance(event, WindowMinimizeEvent):
+                if hub is not None and hasattr(hub, "emit_fast"):
+                    hub.emit_fast(
+                        category="window",
+                        name="window.minimize",
+                        tick=tick,
+                        value={"minimized": bool(event.minimized)},
+                    )
+                continue
+            if isinstance(event, WindowCloseEvent):
+                if hub is not None and hasattr(hub, "emit_fast"):
+                    hub.emit_fast(
+                        category="window",
+                        name="window.close_requested",
+                        tick=tick,
+                        value={"requested": bool(event.requested)},
+                    )
+                self._host.close()
 
     def _build_input_snapshot(self) -> InputSnapshot:
         window_raw_input = self._window.poll_input_events()

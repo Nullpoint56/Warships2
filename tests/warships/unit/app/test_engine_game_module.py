@@ -16,21 +16,6 @@ class _Framework:
     def sync_ui_state(self) -> None:
         self.synced += 1
 
-    def handle_pointer_event(self, event) -> bool:
-        _ = event
-        self.calls.append("pointer")
-        return True
-
-    def handle_key_event(self, event) -> bool:
-        _ = event
-        self.calls.append("key")
-        return True
-
-    def handle_wheel_event(self, event) -> bool:
-        _ = event
-        self.calls.append("wheel")
-        return True
-
     def handle_input_snapshot(self, snapshot) -> bool:
         _ = snapshot
         self.calls.append("snapshot")
@@ -90,9 +75,6 @@ def test_game_module_forwards_input_events() -> None:
     module = WarshipsGameModule(
         controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False
     )
-    assert module.on_pointer_event(object())
-    assert module.on_key_event(object())
-    assert module.on_wheel_event(object())
     assert module.on_input_snapshot(InputSnapshot(frame_index=0))
 
 
@@ -104,7 +86,7 @@ def test_game_module_frame_and_close_lifecycle() -> None:
         controller=_Controller(is_closing=True), framework=framework, view=view, debug_ui=False
     )
     module.on_start(host)
-    module.on_frame(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))
+    module.simulate(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))
     snapshot = module.build_render_snapshot()
     assert framework.synced == 1
     assert view.calls == 1

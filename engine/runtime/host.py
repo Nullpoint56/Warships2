@@ -31,6 +31,7 @@ from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
 from engine.runtime.profiling import FrameProfiler
 from engine.runtime.scheduler import Scheduler
+from engine.runtime.snapshot_exchange import DoubleBufferedSnapshotExchange
 from engine.runtime.time import FrameClock
 from engine.ui_runtime.debug_overlay import DebugOverlay
 
@@ -112,6 +113,9 @@ class EngineHost(HostControl):
             hash_interval=diag_cfg.replay_hash_interval,
             hub=self._diagnostics_hub,
         )
+        self._render_snapshot_exchange: DoubleBufferedSnapshotExchange[RenderSnapshot] = (
+            DoubleBufferedSnapshotExchange(_clone_fn=_sanitize_render_snapshot)
+        )
         self._diagnostics_http: DiagnosticsHttpServer | None = None
         self._try_start_diagnostics_http()
 
@@ -192,45 +196,43 @@ class EngineHost(HostControl):
         self._module.on_start(self)
 
     def handle_pointer_event(self, event: PointerEvent) -> bool:
-        self._replay_recorder.record_command(
-            tick=self._frame_index,
-            command_type="input.pointer",
-            payload={
-                "event_type": str(getattr(event, "event_type", "")),
-                "x": float(getattr(event, "x", 0.0)),
-                "y": float(getattr(event, "y", 0.0)),
-                "button": int(getattr(event, "button", 0)),
-            },
+        synthetic = InputSnapshot(
+            frame_index=self._frame_index,
+            pointer_events=(
+                PointerEvent(
+                    event_type=str(getattr(event, "event_type", "pointer_move")),
+                    x=float(getattr(event, "x", 0.0)),
+                    y=float(getattr(event, "y", 0.0)),
+                    button=int(getattr(event, "button", 0)),
+                ),
+            ),
         )
-        return self._module.on_pointer_event(event)
+        return self.handle_input_snapshot(synthetic)
 
     def handle_key_event(self, event: KeyEvent) -> bool:
-        self._replay_recorder.record_command(
-            tick=self._frame_index,
-            command_type="input.key",
-            payload={
-                "event_type": str(getattr(event, "event_type", "")),
-                "value": str(getattr(event, "value", "")),
-            },
+        synthetic = InputSnapshot(
+            frame_index=self._frame_index,
+            key_events=(
+                KeyEvent(
+                    event_type=str(getattr(event, "event_type", "key_down")),
+                    value=str(getattr(event, "value", "")),
+                ),
+            ),
         )
-        if self._debug_overlay is not None and self._is_overlay_toggle_event(event):
-            self._debug_overlay_visible = not self._debug_overlay_visible
-            if self._render_api is not None and hasattr(self._render_api, "invalidate"):
-                self._render_api.invalidate()
-            return True
-        return self._module.on_key_event(event)
+        return self.handle_input_snapshot(synthetic)
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
-        self._replay_recorder.record_command(
-            tick=self._frame_index,
-            command_type="input.wheel",
-            payload={
-                "x": float(getattr(event, "x", 0.0)),
-                "y": float(getattr(event, "y", 0.0)),
-                "dy": float(getattr(event, "dy", 0.0)),
-            },
+        synthetic = InputSnapshot(
+            frame_index=self._frame_index,
+            wheel_events=(
+                WheelEvent(
+                    x=float(getattr(event, "x", 0.0)),
+                    y=float(getattr(event, "y", 0.0)),
+                    dy=float(getattr(event, "dy", 0.0)),
+                ),
+            ),
         )
-        return self._module.on_wheel_event(event)
+        return self.handle_input_snapshot(synthetic)
 
     def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         self._emit_input_snapshot_diagnostics(snapshot)
@@ -401,10 +403,13 @@ class EngineHost(HostControl):
                 ui_diagnostics=diagnostics_summary,
             )
             module_render_snapshot = _merge_render_snapshots(module_render_snapshot, overlay_snapshot)
-        if module_render_snapshot is not None and self._render_api is not None:
+        if module_render_snapshot is not None:
+            self._render_snapshot_exchange.publish(module_render_snapshot)
+        render_snapshot_payload = self._render_snapshot_exchange.consume_latest()
+        if render_snapshot_payload is not None and self._render_api is not None:
             render_snapshot = getattr(self._render_api, "render_snapshot", None)
             if callable(render_snapshot):
-                render_snapshot(_sanitize_render_snapshot(module_render_snapshot))
+                render_snapshot(render_snapshot_payload)
         if _LOG.isEnabledFor(logging.DEBUG):
             metrics_snapshot = self._metrics_collector.snapshot()
             if metrics_snapshot.last_frame is not None:

@@ -16,9 +16,7 @@ from engine.runtime.metrics import MetricsSnapshot
 class FakeModule:
     def __init__(self) -> None:
         self.started = 0
-        self.pointer_events = 0
-        self.key_events = 0
-        self.wheel_events = 0
+        self.snapshots: list[InputSnapshot] = []
         self.frames: list[tuple[int, float, float]] = []
         self.shutdown_calls = 0
         self._should_close = False
@@ -27,28 +25,13 @@ class FakeModule:
         _ = host
         self.started += 1
 
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        self.pointer_events += 1
-        return True
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        self.key_events += 1
-        return True
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        self.wheel_events += 1
-        return True
-
     def on_frame(self, context) -> None:
         self.frames.append((context.frame_index, context.delta_seconds, context.elapsed_seconds))
         if context.frame_index >= 1:
             self._should_close = True
 
     def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
-        _ = snapshot
+        self.snapshots.append(snapshot)
         return False
 
     def simulate(self, context) -> None:
@@ -70,18 +53,6 @@ class _ScheduledCloseModule:
 
     def on_start(self, host) -> None:
         host.call_later(0.0, host.close)
-
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        return False
 
     def on_frame(self, context) -> None:
         _ = context
@@ -207,10 +178,10 @@ def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:
 def test_engine_host_forwards_input_events() -> None:
     module = FakeModule()
     host = EngineHost(module=module)
-    assert host.handle_pointer_event(object()) is True
-    assert host.handle_key_event(object()) is True
-    assert host.handle_wheel_event(object()) is True
-    assert (module.pointer_events, module.key_events, module.wheel_events) == (1, 1, 1)
+    assert host.handle_pointer_event(object()) is False
+    assert host.handle_key_event(object()) is False
+    assert host.handle_wheel_event(object()) is False
+    assert len(module.snapshots) == 3
 
 
 def test_engine_host_handles_input_snapshot() -> None:
@@ -222,8 +193,7 @@ def test_engine_host_handles_input_snapshot() -> None:
         key_events=(KeyEvent(event_type="key_down", value="a"),),
     )
     assert host.handle_input_snapshot(snapshot) is False
-    assert module.pointer_events == 0
-    assert module.key_events == 0
+    assert len(module.snapshots) == 1
 
 
 def test_engine_host_replay_records_logical_actions_from_snapshot(monkeypatch) -> None:
@@ -307,7 +277,13 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     host.frame()
     assert renderer.text_calls == []
 
-    handled = host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
+    handled = host.handle_input_snapshot(
+        InputSnapshot(
+            frame_index=1,
+            actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
+            key_events=(KeyEvent(event_type="key_down", value="f3"),),
+        )
+    )
     assert handled is True
     assert renderer.invalidates == 1
 
@@ -327,7 +303,13 @@ def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monk
 
     renderer.ui_diagnostics_summary = _summary  # type: ignore[attr-defined]
     host = EngineHost(module=module, render_api=renderer)
-    host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
+    host.handle_input_snapshot(
+        InputSnapshot(
+            frame_index=1,
+            actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
+            key_events=(KeyEvent(event_type="key_down", value="f3"),),
+        )
+    )
     host.frame()
 
     assert any(text.startswith("UI rev=9 resize=42 anomalies=2") for text in renderer.text_values)
@@ -409,7 +391,13 @@ def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
     monkeypatch.setenv("WARSHIPS_RNG_SEED", "12345")
     host = EngineHost(module=FakeModule())
 
-    host.handle_key_event(KeyEvent(event_type="key_down", value="a"))
+    host.handle_input_snapshot(
+        InputSnapshot(
+            frame_index=0,
+            actions=ActionSnapshot(just_started=frozenset({"action.confirm"})),
+            key_events=(KeyEvent(event_type="key_down", value="a"),),
+        )
+    )
     host.frame()
 
     manifest = host.diagnostics_replay_manifest

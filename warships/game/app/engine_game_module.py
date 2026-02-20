@@ -17,7 +17,6 @@ from engine.api.gameplay import (
     create_state_store,
     create_update_loop,
 )
-from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
 from engine.api.render_snapshot import RenderSnapshot
@@ -155,18 +154,6 @@ class WarshipsGameModule(GameModule):
                 self._events.set_metrics_collector(metrics_collector)
         self._close_subscription = self._events.subscribe(_CloseRequested, self._on_close_requested)
         self._graph.start_all(self._context)
-
-    def on_pointer_event(self, event: PointerEvent) -> bool:
-        return self._framework.handle_pointer_event(event)
-
-    def on_key_event(self, event: KeyEvent) -> bool:
-        return self._framework.handle_key_event(event)
-
-    def on_wheel_event(self, event: WheelEvent) -> bool:
-        return self._framework.handle_wheel_event(event)
-
-    def on_frame(self, context: HostFrameContext) -> None:
-        self.simulate(context)
 
     def simulate(self, context: HostFrameContext) -> None:
         self._context.provide("frame_context", context)

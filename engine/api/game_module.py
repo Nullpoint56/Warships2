@@ -6,7 +6,6 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render_snapshot import RenderSnapshot
 
@@ -42,15 +41,6 @@ class GameModule(Protocol):
     def on_start(self, host: HostControl) -> None:
         """Initialize game module and capture host control if needed."""
 
-    def on_pointer_event(self, event: PointerEvent) -> bool:
-        """Handle pointer event. Return whether state changed."""
-
-    def on_key_event(self, event: KeyEvent) -> bool:
-        """Handle key/char event. Return whether state changed."""
-
-    def on_wheel_event(self, event: WheelEvent) -> bool:
-        """Handle wheel event. Return whether state changed."""
-
     def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         """Handle immutable per-frame input snapshot. Return whether state changed."""
 
@@ -59,9 +49,6 @@ class GameModule(Protocol):
 
     def build_render_snapshot(self) -> RenderSnapshot | None:
         """Build immutable render snapshot for renderer consumption."""
-
-    def on_frame(self, context: HostFrameContext) -> None:
-        """Render/update one frame."""
 
     def should_close(self) -> bool:
         """Return whether host should stop."""

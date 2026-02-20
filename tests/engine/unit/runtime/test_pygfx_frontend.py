@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from engine.api.input_snapshot import InputSnapshot
+from engine.api.window import WindowCloseEvent, WindowResizeEvent
 import engine.runtime.pygfx_frontend as frontend_mod
 
 
@@ -31,6 +32,7 @@ class _Window:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[int, int] | tuple[()]]] = []
         self.input_events = ()
+        self.window_events = ()
 
     def set_fullscreen(self) -> None:
         self.calls.append(("set_fullscreen", ()))
@@ -52,6 +54,9 @@ class _Window:
 
     def poll_input_events(self):
         return self.input_events
+
+    def poll_events(self):
+        return self.window_events
 
 
 class _Input:
@@ -77,6 +82,10 @@ class _Host:
         self.close_after_frame = close_after_frame
         self.frame_calls = 0
         self.closed = False
+        self.diagnostics_hub = SimpleNamespace(events=[], emit_fast=self._emit_fast)
+
+    def _emit_fast(self, **kwargs) -> None:
+        self.diagnostics_hub.events.append(kwargs)
 
     def current_frame_index(self) -> int:
         return 0
@@ -91,6 +100,9 @@ class _Host:
 
     def is_closed(self) -> bool:
         return self.closed
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_show_windowed_delegates_to_window_port() -> None:
@@ -174,3 +186,26 @@ def test_run_starts_renderer_then_window_loop() -> None:
     window.run()
     assert renderer.run_callback is not None
     assert window_port.calls[-1] == ("run_loop", ())
+
+
+def test_draw_frame_processes_window_events_and_close_request() -> None:
+    renderer = _Renderer()
+    host = _Host(close_after_frame=False)
+    window_port = _Window()
+    window_port.window_events = (
+        WindowResizeEvent(1280.0, 720.0, 1920, 1080, 1.5),
+        WindowCloseEvent(),
+    )
+    window = frontend_mod.PygfxFrontendWindow(
+        renderer=renderer,
+        window=window_port,
+        input_controller=_Input(),
+        host=host,
+    )
+
+    window._draw_frame()
+
+    assert host.is_closed()
+    names = [str(item.get("name", "")) for item in host.diagnostics_hub.events]
+    assert "window.resize" in names
+    assert "window.close_requested" in names
