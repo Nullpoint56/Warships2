@@ -29,7 +29,7 @@ from engine.rendering.scene_viewport import (
     to_design_space,
     viewport_transform,
 )
-from engine.api.render_snapshot import RenderSnapshot
+from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 from engine.runtime.debug_config import load_debug_config
 
@@ -73,6 +73,22 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
+
+
+@dataclass(frozen=True, slots=True)
+class _RenderPassBatch:
+    """Prepared pass batch ready for deterministic execution."""
+
+    name: str
+    commands: tuple[RenderCommand, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _PassDescriptor:
+    """Canonical pass descriptor used for ordering and diagnostics."""
+
+    canonical_name: str
+    priority: int
 
 
 @dataclass(slots=True)
@@ -689,6 +705,8 @@ class SceneRenderer:
 
     def begin_frame(self) -> None:
         """Start a frame and reset active key trackers."""
+        if self._frame_active:
+            return
         self._frame_active = True
         self._frame_viewport = self._viewport_transform()
         self._frame_viewport_revision = self._viewport_revision
@@ -733,6 +751,8 @@ class SceneRenderer:
 
     def end_frame(self) -> None:
         """Hide dynamic retained nodes that were not touched this frame."""
+        if not self._frame_active:
+            return
         hidden_rect = [
             k
             for k in self._rect_nodes
@@ -793,7 +813,199 @@ class SceneRenderer:
         self.begin_frame()
         self.end_frame()
 
+    @staticmethod
+    def _resolve_pass_descriptor(pass_name: str) -> _PassDescriptor:
+        normalized = pass_name.strip().lower()
+        if normalized in {"world", "geometry"}:
+            return _PassDescriptor(canonical_name="world", priority=0)
+        if normalized in {"ui", "overlay"}:
+            return _PassDescriptor(canonical_name="ui", priority=100)
+        if normalized.startswith("post"):
+            return _PassDescriptor(canonical_name="post", priority=200)
+        return _PassDescriptor(canonical_name="custom", priority=50)
+
+    def _build_pass_batches(self, snapshot: RenderSnapshot) -> tuple[_RenderPassBatch, ...]:
+        indexed_passes = list(enumerate(snapshot.passes))
+        indexed_passes.sort(
+            key=lambda item: (
+                self._resolve_pass_descriptor(str(getattr(item[1], "name", ""))).priority,
+                str(getattr(item[1], "name", "")),
+                int(item[0]),
+            )
+        )
+        batches: list[_RenderPassBatch] = []
+        for _, render_pass in indexed_passes:
+            commands = tuple(
+                sorted(
+                    render_pass.commands,
+                    key=lambda command: (
+                        int(getattr(command, "layer", 0)),
+                        str(getattr(command, "kind", "")),
+                        str(getattr(command, "sort_key", "")),
+                    ),
+                )
+            )
+            batches.append(_RenderPassBatch(name=str(render_pass.name), commands=commands))
+        return tuple(batches)
+
+    def _execute_immediate_command(self, command: RenderCommand) -> None:
+        immediate_snapshot = RenderSnapshot(
+            frame_index=-1,
+            passes=(RenderPassSnapshot(name="immediate", commands=(command,)),),
+        )
+        batches = self._build_pass_batches(immediate_snapshot)
+        self._execute_pass_batches(batches)
+
+    def _emit_render_stage(
+        self,
+        *,
+        stage: str,
+        value: Any | None = None,
+        metadata: dict[str, object] | None = None,
+    ) -> None:
+        hub = self._diagnostics_hub
+        if hub is None:
+            return
+        hub.emit_fast(
+            category="render",
+            name=f"render.stage.{stage}",
+            tick=max(0, self._viewport_revision),
+            value=value,
+            metadata=metadata or {},
+        )
+
+    @staticmethod
+    def _as_float(value: object, default: float) -> float:
+        if isinstance(value, (int, float)):
+            return float(value)
+        return default
+
+    @staticmethod
+    def _as_int(value: object, default: int) -> int:
+        if isinstance(value, int):
+            return value
+        if isinstance(value, float):
+            return int(value)
+        return default
+
+    def _execute_pass_batches(self, batches: tuple[_RenderPassBatch, ...]) -> int:
+        executed_commands = 0
+        for pass_index, pass_batch in enumerate(batches):
+            self._emit_render_stage(
+                stage="execute_pass.begin",
+                metadata={
+                    "pass_name": pass_batch.name,
+                    "pass_index": pass_index,
+                    "command_count": len(pass_batch.commands),
+                },
+            )
+            for command in pass_batch.commands:
+                self._execute_render_command(command)
+                executed_commands += 1
+            self._emit_render_stage(
+                stage="execute_pass.end",
+                metadata={
+                    "pass_name": pass_batch.name,
+                    "pass_index": pass_index,
+                    "command_count": len(pass_batch.commands),
+                },
+            )
+        return executed_commands
+
+    def _execute_render_command(self, command: RenderCommand) -> None:
+        payload = {str(key): value for key, value in command.data}
+        kind = str(command.kind)
+        if kind == "fill_window":
+            key = payload.get("key")
+            color = payload.get("color")
+            z = self._as_float(payload.get("z"), -100.0)
+            if isinstance(key, str) and isinstance(color, str):
+                self._apply_fill_window(key, color, z)
+            return
+        if kind == "rect":
+            color = payload.get("color")
+            if not isinstance(color, str):
+                return
+            rect_key = payload.get("key")
+            self._apply_add_rect(
+                key=rect_key if isinstance(rect_key, str) else None,
+                x=self._as_float(payload.get("x"), 0.0),
+                y=self._as_float(payload.get("y"), 0.0),
+                w=self._as_float(payload.get("w"), 0.0),
+                h=self._as_float(payload.get("h"), 0.0),
+                color=color,
+                z=self._as_float(payload.get("z"), 0.0),
+                static=bool(payload.get("static", False)),
+            )
+            return
+        if kind == "grid":
+            key = payload.get("key")
+            color = payload.get("color")
+            if not isinstance(key, str) or not isinstance(color, str):
+                return
+            self._apply_add_grid(
+                key=key,
+                x=self._as_float(payload.get("x"), 0.0),
+                y=self._as_float(payload.get("y"), 0.0),
+                width=self._as_float(payload.get("width"), 0.0),
+                height=self._as_float(payload.get("height"), 0.0),
+                lines=self._as_int(payload.get("lines"), 0),
+                color=color,
+                z=self._as_float(payload.get("z"), 0.5),
+                static=bool(payload.get("static", False)),
+            )
+            return
+        if kind == "text":
+            text = payload.get("text")
+            if not isinstance(text, str):
+                return
+            text_key = payload.get("key")
+            self._apply_add_text(
+                key=text_key if isinstance(text_key, str) else None,
+                text=text,
+                x=self._as_float(payload.get("x"), 0.0),
+                y=self._as_float(payload.get("y"), 0.0),
+                font_size=self._as_float(payload.get("font_size"), 18.0),
+                color=str(payload.get("color", "#ffffff")),
+                anchor=str(payload.get("anchor", "top-left")),
+                z=self._as_float(payload.get("z"), 2.0),
+                static=bool(payload.get("static", False)),
+            )
+            return
+        if kind == "title":
+            title = payload.get("title")
+            if isinstance(title, str):
+                self._apply_set_title(title)
+
     def add_rect(
+        self,
+        key: str | None,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+    ) -> None:
+        """Add a filled rectangle via immediate batch path."""
+        command = RenderCommand(
+            kind="rect",
+            layer=int(round(float(z) * 100.0)),
+            data=(
+                ("key", key),
+                ("x", float(x)),
+                ("y", float(y)),
+                ("w", float(w)),
+                ("h", float(h)),
+                ("color", str(color)),
+                ("z", float(z)),
+                ("static", bool(static)),
+            ),
+        )
+        self._execute_immediate_command(command)
+
+    def _apply_add_rect(
         self,
         key: str | None,
         x: float,
@@ -906,6 +1118,36 @@ class SceneRenderer:
         z: float = 0.5,
         static: bool = False,
     ) -> None:
+        """Add a batched line-segment grid via immediate batch path."""
+        command = RenderCommand(
+            kind="grid",
+            layer=int(round(float(z) * 100.0)),
+            data=(
+                ("key", str(key)),
+                ("x", float(x)),
+                ("y", float(y)),
+                ("width", float(width)),
+                ("height", float(height)),
+                ("lines", int(lines)),
+                ("color", str(color)),
+                ("z", float(z)),
+                ("static", bool(static)),
+            ),
+        )
+        self._execute_immediate_command(command)
+
+    def _apply_add_grid(
+        self,
+        key: str,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        lines: int,
+        color: str,
+        z: float = 0.5,
+        static: bool = False,
+    ) -> None:
         """Add a batched line-segment grid."""
         sx, sy, ox, oy = self._active_viewport_transform()
         tx = x * sx + ox
@@ -965,6 +1207,36 @@ class SceneRenderer:
             )
 
     def add_text(
+        self,
+        key: str | None,
+        text: str,
+        x: float,
+        y: float,
+        font_size: float = 18.0,
+        color: str = "#ffffff",
+        anchor: str = "top-left",
+        z: float = 2.0,
+        static: bool = False,
+    ) -> None:
+        """Add screen-space text via immediate batch path."""
+        command = RenderCommand(
+            kind="text",
+            layer=int(round(float(z) * 100.0)),
+            data=(
+                ("key", key),
+                ("text", str(text)),
+                ("x", float(x)),
+                ("y", float(y)),
+                ("font_size", float(font_size)),
+                ("color", str(color)),
+                ("anchor", str(anchor)),
+                ("z", float(z)),
+                ("static", bool(static)),
+            ),
+        )
+        self._execute_immediate_command(command)
+
+    def _apply_add_text(
         self,
         key: str | None,
         text: str,
@@ -1040,6 +1312,15 @@ class SceneRenderer:
                 diagnostics.note_button_text(key.removeprefix("button:text:"), text_size=tsize)
 
     def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
+        """Fill the entire window via immediate batch path."""
+        command = RenderCommand(
+            kind="fill_window",
+            layer=int(round(float(z) * 100.0)),
+            data=(("key", str(key)), ("color", str(color)), ("z", float(z))),
+        )
+        self._execute_immediate_command(command)
+
+    def _apply_fill_window(self, key: str, color: str, z: float = -100.0) -> None:
         """Fill the entire window in window-space coordinates."""
         color_value = cast(Any, color)
         tw, th = self._active_window_size()
@@ -1113,6 +1394,11 @@ class SceneRenderer:
             )
 
     def set_title(self, title: str) -> None:
+        """Set window title when supported by backend via immediate batch path."""
+        command = RenderCommand(kind="title", layer=0, data=(("title", str(title)),))
+        self._execute_immediate_command(command)
+
+    def _apply_set_title(self, title: str) -> None:
         """Set window title when supported by backend."""
         self.title = title
         canvas = self._require_canvas()
@@ -1167,90 +1453,113 @@ class SceneRenderer:
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         """Render one immutable snapshot payload."""
-        def _as_float(value: object, default: float) -> float:
-            if isinstance(value, (int, float)):
-                return float(value)
-            return default
-
-        def _as_int(value: object, default: int) -> int:
-            if isinstance(value, int):
-                return value
-            if isinstance(value, float):
-                return int(value)
-            return default
-
-        self.begin_frame()
+        started_here = not self._frame_active
+        if started_here:
+            self.begin_frame()
+            self._emit_render_stage(
+                stage="begin_frame",
+                metadata={
+                    "viewport_revision": int(self._viewport_revision),
+                    "size": (int(self.width), int(self.height)),
+                },
+            )
         try:
-            for render_pass in snapshot.passes:
-                _ = render_pass
-                for command in render_pass.commands:
-                    payload = {str(k): v for k, v in command.data}
-                    kind = str(command.kind)
-                    if kind == "fill_window":
-                        key = payload.get("key")
-                        color = payload.get("color")
-                        z = _as_float(payload.get("z"), -100.0)
-                        if isinstance(key, str) and isinstance(color, str):
-                            self.fill_window(key, color, z)
-                        continue
-                    if kind == "rect":
-                        color = payload.get("color")
-                        if not isinstance(color, str):
-                            continue
-                        rect_key = payload.get("key")
-                        self.add_rect(
-                            key=rect_key if isinstance(rect_key, str) else None,
-                            x=_as_float(payload.get("x"), 0.0),
-                            y=_as_float(payload.get("y"), 0.0),
-                            w=_as_float(payload.get("w"), 0.0),
-                            h=_as_float(payload.get("h"), 0.0),
-                            color=color,
-                            z=_as_float(payload.get("z"), 0.0),
-                            static=bool(payload.get("static", False)),
-                        )
-                        continue
-                    if kind == "grid":
-                        key = payload.get("key")
-                        color = payload.get("color")
-                        if not isinstance(key, str) or not isinstance(color, str):
-                            continue
-                        self.add_grid(
-                            key=key,
-                            x=_as_float(payload.get("x"), 0.0),
-                            y=_as_float(payload.get("y"), 0.0),
-                            width=_as_float(payload.get("width"), 0.0),
-                            height=_as_float(payload.get("height"), 0.0),
-                            lines=_as_int(payload.get("lines"), 0),
-                            color=color,
-                            z=_as_float(payload.get("z"), 0.5),
-                            static=bool(payload.get("static", False)),
-                        )
-                        continue
-                    if kind == "text":
-                        text = payload.get("text")
-                        color = payload.get("color", "#ffffff")
-                        anchor = payload.get("anchor", "top-left")
-                        if not isinstance(text, str):
-                            continue
-                        text_key = payload.get("key")
-                        self.add_text(
-                            key=text_key if isinstance(text_key, str) else None,
-                            text=text,
-                            x=_as_float(payload.get("x"), 0.0),
-                            y=_as_float(payload.get("y"), 0.0),
-                            font_size=_as_float(payload.get("font_size"), 18.0),
-                            color=str(color),
-                            anchor=str(anchor),
-                            z=_as_float(payload.get("z"), 2.0),
-                            static=bool(payload.get("static", False)),
-                        )
-                        continue
-                    if kind == "title":
-                        title = payload.get("title")
-                        if isinstance(title, str):
-                            self.set_title(title)
+            batches = self._build_pass_batches(snapshot)
+            self._emit_render_stage(
+                stage="build_batches",
+                value={"pass_count": len(batches)},
+                metadata={
+                    "frame_index": int(getattr(snapshot, "frame_index", -1)),
+                    "pass_names": [batch.name for batch in batches],
+                },
+            )
+            executed_count = self._execute_pass_batches(batches)
+            self._emit_render_stage(
+                stage="execute_passes",
+                value={"command_count": executed_count},
+                metadata={"pass_count": len(batches)},
+            )
         finally:
-            self.end_frame()
+            if started_here:
+                self.present()
+                self.end_frame()
+                self._emit_render_stage(
+                    stage="end_frame",
+                    metadata={
+                        "viewport_revision": int(self._viewport_revision),
+                        "size": (int(self.width), int(self.height)),
+                    },
+                )
+
+    def present(self, *, frame_start: float | None = None) -> None:
+        """Present the current prepared scene to the backend surface."""
+        present_start = perf_counter()
+        self.renderer.render(self.scene, self.camera)
+        present_end = perf_counter()
+        frame_ms = (
+            (present_end - frame_start) * 1000.0
+            if isinstance(frame_start, (int, float))
+            else (present_end - present_start) * 1000.0
+        )
+        hub = self._diagnostics_hub
+        if hub is not None:
+            draw_count = 0
+            try:
+                draw_count = int(len(getattr(self.scene, "children", ())))
+            except Exception:
+                draw_count = 0
+            hub.emit_fast(
+                category="render",
+                name="render.frame_ms",
+                tick=max(0, self._viewport_revision),
+                value=frame_ms,
+                metadata={
+                    "viewport_revision": self._viewport_revision,
+                    "size": (int(self.width), int(self.height)),
+                },
+            )
+            hub.emit_fast(
+                category="render",
+                name="render.present",
+                tick=max(0, self._viewport_revision),
+                value=frame_ms,
+                metadata={
+                    "draw_count": draw_count,
+                    "size": (int(self.width), int(self.height)),
+                },
+            )
+            hub.emit_fast(
+                category="render",
+                name="render.present_interval",
+                tick=max(0, self._viewport_revision),
+                value=frame_ms,
+                metadata={
+                    "vsync": bool(self._render_vsync),
+                    "fps_cap": float(self._render_fps_cap),
+                    "mode": self._render_loop_mode,
+                },
+            )
+            self._emit_render_stage(
+                stage="present",
+                value={"frame_ms": frame_ms},
+                metadata={"draw_count": draw_count},
+            )
+            apply_ts = self._last_resize_applied_ts
+            if apply_ts is not None:
+                apply_to_frame_ms = (present_end - apply_ts) * 1000.0
+                hub.emit_fast(
+                    category="render",
+                    name="render.resize_event",
+                    tick=max(0, self._viewport_revision),
+                    value={"width": int(self.width), "height": int(self.height)},
+                    metadata={
+                        "event_to_apply_ms": self._last_resize_event_to_apply_ms,
+                        "apply_to_frame_ms": apply_to_frame_ms,
+                        "viewport": self._viewport_transform(),
+                    },
+                )
+                self._last_resize_applied_ts = None
+                self._last_resize_event_to_apply_ms = None
 
     def _continuous_frame_due(self, now: float) -> bool:
         if self._render_loop_mode == "continuous":
@@ -1330,66 +1639,26 @@ class SceneRenderer:
                     )
                 if self._draw_callback is None:
                     return
+                self.begin_frame()
+                self._emit_render_stage(
+                    stage="begin_frame",
+                    metadata={
+                        "viewport_revision": int(self._viewport_revision),
+                        "size": (int(self.width), int(self.height)),
+                    },
+                )
                 self._draw_callback()
                 if self._is_closed:
                     return
-                self.renderer.render(self.scene, self.camera)
-                frame_end = perf_counter()
-                hub = self._diagnostics_hub
-                if hub is not None:
-                    frame_ms = (frame_end - frame_start) * 1000.0
-                    draw_count = 0
-                    try:
-                        draw_count = int(len(getattr(self.scene, "children", ())))
-                    except Exception:
-                        draw_count = 0
-                    hub.emit_fast(
-                        category="render",
-                        name="render.frame_ms",
-                        tick=max(0, self._viewport_revision),
-                        value=frame_ms,
-                        metadata={
-                            "viewport_revision": self._viewport_revision,
-                            "size": (int(self.width), int(self.height)),
-                        },
-                    )
-                    hub.emit_fast(
-                        category="render",
-                        name="render.present",
-                        tick=max(0, self._viewport_revision),
-                        value=frame_ms,
-                        metadata={
-                            "draw_count": draw_count,
-                            "size": (int(self.width), int(self.height)),
-                        },
-                    )
-                    hub.emit_fast(
-                        category="render",
-                        name="render.present_interval",
-                        tick=max(0, self._viewport_revision),
-                        value=frame_ms,
-                        metadata={
-                            "vsync": bool(self._render_vsync),
-                            "fps_cap": float(self._render_fps_cap),
-                            "mode": self._render_loop_mode,
-                        },
-                    )
-                    apply_ts = self._last_resize_applied_ts
-                    if apply_ts is not None:
-                        apply_to_frame_ms = (frame_end - apply_ts) * 1000.0
-                        hub.emit_fast(
-                            category="render",
-                            name="render.resize_event",
-                            tick=max(0, self._viewport_revision),
-                            value={"width": int(self.width), "height": int(self.height)},
-                            metadata={
-                                "event_to_apply_ms": self._last_resize_event_to_apply_ms,
-                                "apply_to_frame_ms": apply_to_frame_ms,
-                                "viewport": self._viewport_transform(),
-                            },
-                        )
-                        self._last_resize_applied_ts = None
-                        self._last_resize_event_to_apply_ms = None
+                self.present(frame_start=frame_start)
+                self.end_frame()
+                self._emit_render_stage(
+                    stage="end_frame",
+                    metadata={
+                        "viewport_revision": int(self._viewport_revision),
+                        "size": (int(self.width), int(self.height)),
+                    },
+                )
                 if diagnostics is not None:
                     diagnostics.note_frame_state(
                         stage="draw_post",
@@ -1406,6 +1675,7 @@ class SceneRenderer:
                     self._mark_continuous_frame_scheduled(now)
                     self._schedule_next_continuous_frame()
             except Exception:  # pylint: disable=broad-exception-caught
+                self.end_frame()
                 hub = self._diagnostics_hub
                 if hub is not None:
                     hub.emit_fast(

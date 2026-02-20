@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 import engine.rendering.scene as scene_mod
+from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 
 
 @pytest.mark.graphics
@@ -137,6 +138,15 @@ class _FakeGfx:
     WgpuRenderer = _FakeRenderer
     Scene = _FakeScene
     OrthographicCamera = _FakeOrthoCamera
+
+
+class _FakeHub:
+    def __init__(self) -> None:
+        self.events: list[tuple[str, str]] = []
+
+    def emit_fast(self, *, category: str, name: str, **kwargs) -> None:
+        _ = kwargs
+        self.events.append((category, name))
 
 
 @pytest.mark.graphics
@@ -423,3 +433,127 @@ def test_scene_renderer_passes_vsync_setting_to_canvas(monkeypatch: pytest.Monke
     assert renderer.canvas._init_vsync is False  # noqa: SLF001 - test probe
     info = renderer._resolve_runtime_info()  # noqa: SLF001
     assert info["render_loop"]["vsync"] is False
+
+
+@pytest.mark.graphics
+def test_scene_renderer_render_snapshot_pipeline_stages_are_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    hub = _FakeHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+    snapshot = RenderSnapshot(
+        frame_index=1,
+        passes=(
+            RenderPassSnapshot(
+                name="ui",
+                commands=(RenderCommand(kind="title", data=(("title", "hello"),)),),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+
+    stage_events = [name for category, name in hub.events if category == "render"]
+    assert "render.stage.begin_frame" in stage_events
+    assert "render.stage.build_batches" in stage_events
+    assert "render.stage.execute_pass.begin" in stage_events
+    assert "render.stage.execute_pass.end" in stage_events
+    assert "render.stage.execute_passes" in stage_events
+    assert "render.stage.present" in stage_events
+    assert "render.stage.end_frame" in stage_events
+
+
+@pytest.mark.graphics
+def test_scene_renderer_render_snapshot_pass_execution_is_deterministic(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    executed: list[tuple[str, str]] = []
+
+    def _record_execute(self, command: RenderCommand) -> None:
+        _ = self
+        payload = {str(key): value for key, value in command.data}
+        executed.append((str(command.kind), str(payload.get("key", ""))))
+
+    monkeypatch.setattr(scene_mod.SceneRenderer, "_execute_render_command", _record_execute)
+    snapshot = RenderSnapshot(
+        frame_index=2,
+        passes=(
+            RenderPassSnapshot(
+                name="ui",
+                commands=(
+                    RenderCommand(kind="text", layer=30, sort_key="b", data=(("key", "ui-b"),)),
+                    RenderCommand(kind="text", layer=10, sort_key="a", data=(("key", "ui-a"),)),
+                ),
+            ),
+            RenderPassSnapshot(
+                name="world",
+                commands=(
+                    RenderCommand(kind="rect", layer=20, sort_key="b", data=(("key", "w-b"),)),
+                    RenderCommand(kind="rect", layer=10, sort_key="a", data=(("key", "w-a"),)),
+                ),
+            ),
+            RenderPassSnapshot(
+                name="post_bloom",
+                commands=(
+                    RenderCommand(kind="title", layer=0, sort_key="a", data=(("key", "p-a"),)),
+                ),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+
+    assert executed == [
+        ("rect", "w-a"),
+        ("rect", "w-b"),
+        ("text", "ui-a"),
+        ("text", "ui-b"),
+        ("title", "p-a"),
+    ]
+
+
+@pytest.mark.graphics
+def test_scene_renderer_immediate_path_uses_common_batch_builder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_auto = SimpleNamespace(RenderCanvas=_FakeCanvas)
+    monkeypatch.setattr(scene_mod, "gfx", _FakeGfx)
+    monkeypatch.setattr(scene_mod, "rc_auto", fake_auto)
+    monkeypatch.setattr(scene_mod, "_gfx_import_error", None)
+    monkeypatch.setattr(scene_mod, "_canvas_import_error", None)
+    monkeypatch.setattr(scene_mod, "run_backend_loop", lambda rc_auto: None)
+    monkeypatch.setattr(scene_mod, "stop_backend_loop", lambda rc_auto: None)
+
+    renderer = scene_mod.SceneRenderer(width=300, height=200)
+    build_batches_calls = 0
+    original_build_batches = scene_mod.SceneRenderer._build_pass_batches
+
+    def _record_build_batches(self, snapshot: RenderSnapshot):
+        nonlocal build_batches_calls
+        build_batches_calls += 1
+        return original_build_batches(self, snapshot)
+
+    monkeypatch.setattr(scene_mod.SceneRenderer, "_build_pass_batches", _record_build_batches)
+    renderer.begin_frame()
+    renderer.set_title("phase6")
+    renderer.end_frame()
+
+    assert build_batches_calls >= 1
