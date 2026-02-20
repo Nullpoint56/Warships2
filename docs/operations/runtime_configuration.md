@@ -35,10 +35,6 @@ Diagnostics-related:
 
 - `ENGINE_DEBUG_METRICS`: enable runtime metrics collection
 - `ENGINE_DEBUG_OVERLAY`: enable in-frame metrics overlay (`F3` toggle)
-- `ENGINE_DEBUG_UI_TRACE`: enable UI trace diagnostics hooks
-- `ENGINE_DEBUG_RESIZE_TRACE`: enable resize diagnostics hooks
-- `ENGINE_DEBUG_UI_TRACE_AUTO_DUMP`: dump trace buffer on anomalies
-- `ENGINE_DEBUG_UI_TRACE_DUMP_DIR`: anomaly dump directory
 
 Headless and renderer initialization:
 
