@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
@@ -74,23 +75,44 @@ class WgpuRenderer:
     _closed: bool = field(init=False, default=False)
     _frame_active: bool = field(init=False, default=False)
     _immediate_commands: list[RenderCommand] = field(init=False, default_factory=list)
+    _retained_commands: dict[str, RenderCommand] = field(init=False, default_factory=dict)
     _diagnostics_hub: DiagnosticHub | None = field(init=False, default=None)
     _frame_index: int = field(init=False, default=0)
+    _frame_dirty: bool = field(init=False, default=False)
+    _frame_presented: bool = field(init=False, default=False)
+    _owner_thread_id: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
+        self._owner_thread_id = int(threading.get_ident())
         factory = self._backend_factory or _create_wgpu_backend
         self._backend = factory(self.surface)
 
     def begin_frame(self) -> None:
+        self._assert_owner_thread()
         if self._closed or self._frame_active:
             return
         self._frame_active = True
+        self._frame_presented = False
         self._backend.begin_frame()
         self._emit_render_stage("begin_frame")
 
     def end_frame(self) -> None:
+        self._assert_owner_thread()
         if self._closed or not self._frame_active:
             return
+        if self._frame_dirty and not self._frame_presented:
+            composed = self._compose_frame_snapshot(RenderSnapshot(frame_index=self._frame_index, passes=()))
+            batches = self._build_pass_batches(composed)
+            self._emit_render_stage(
+                "build_batches",
+                value={"pass_count": int(len(batches))},
+            )
+            self._execute_pass_batches(batches)
+            self._emit_render_stage("execute_passes")
+            self._backend.present()
+            self._emit_render_stage("present")
+            self._frame_presented = True
+            self._frame_dirty = False
         self._frame_active = False
         self._backend.end_frame()
         self._frame_index += 1
@@ -121,7 +143,7 @@ class WgpuRenderer:
                 ("static", bool(static)),
             ),
         )
-        self._execute_immediate_command(command)
+        self._submit_command(command)
 
     def add_grid(
         self,
@@ -150,7 +172,7 @@ class WgpuRenderer:
                 ("static", bool(static)),
             ),
         )
-        self._execute_immediate_command(command)
+        self._submit_command(command)
 
     def add_text(
         self,
@@ -179,9 +201,10 @@ class WgpuRenderer:
                 ("static", bool(static)),
             ),
         )
-        self._execute_immediate_command(command)
+        self._submit_command(command)
 
     def set_title(self, title: str) -> None:
+        self._assert_owner_thread()
         self._backend.set_title(title)
 
     def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
@@ -190,7 +213,7 @@ class WgpuRenderer:
             layer=int(round(float(z) * 100.0)),
             data=(("key", str(key)), ("color", str(color)), ("z", float(z))),
         )
-        self._execute_immediate_command(command)
+        self._submit_command(command)
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (float(x), float(y))
@@ -199,23 +222,27 @@ class WgpuRenderer:
         return
 
     def run(self, draw_callback: Callable[[], None]) -> None:
+        self._assert_owner_thread()
         self._draw_callback = draw_callback
         if self._closed:
             return
         draw_callback()
 
     def close(self) -> None:
+        self._assert_owner_thread()
         if self._closed:
             return
         self._closed = True
         self._backend.close()
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        self._assert_owner_thread()
         started_here = not self._frame_active
         if started_here:
             self.begin_frame()
         try:
-            batches = self._build_pass_batches(snapshot)
+            composed = self._compose_frame_snapshot(snapshot)
+            batches = self._build_pass_batches(composed)
             self._emit_render_stage(
                 "build_batches",
                 value={"pass_count": int(len(batches))},
@@ -224,11 +251,14 @@ class WgpuRenderer:
             self._emit_render_stage("execute_passes")
             self._backend.present()
             self._emit_render_stage("present")
+            self._frame_presented = True
+            self._frame_dirty = False
         finally:
             if started_here:
                 self.end_frame()
 
     def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        self._assert_owner_thread()
         self.width = max(1, int(event.physical_width))
         self.height = max(1, int(event.physical_height))
         self._backend.reconfigure(event)
@@ -236,16 +266,38 @@ class WgpuRenderer:
     def set_diagnostics_hub(self, hub: DiagnosticHub | None) -> None:
         self._diagnostics_hub = hub
 
-    def _execute_immediate_command(self, command: RenderCommand) -> None:
-        self._immediate_commands.append(command)
+    def _submit_command(self, command: RenderCommand) -> None:
+        key = _command_key(command)
+        if key:
+            self._retained_commands[key] = command
+        else:
+            self._immediate_commands.append(command)
+        self._frame_dirty = True
         if self._frame_active:
             return
-        snapshot = RenderSnapshot(
-            frame_index=self._frame_index,
-            passes=(RenderPassSnapshot(name="overlay", commands=tuple(self._immediate_commands)),),
-        )
+        self.render_snapshot(RenderSnapshot(frame_index=self._frame_index, passes=()))
+
+    def _compose_frame_snapshot(self, snapshot: RenderSnapshot) -> RenderSnapshot:
+        overlay_commands = list(self._retained_commands.values()) + list(self._immediate_commands)
         self._immediate_commands.clear()
-        self.render_snapshot(snapshot)
+        if not overlay_commands:
+            return snapshot
+        passes = list(snapshot.passes)
+        merged = False
+        for index, render_pass in enumerate(passes):
+            descriptor = _resolve_pass_descriptor(render_pass.name)
+            if descriptor.canonical_name == "overlay":
+                passes[index] = RenderPassSnapshot(
+                    name=render_pass.name,
+                    commands=tuple(render_pass.commands) + tuple(overlay_commands),
+                )
+                merged = True
+                break
+        if not merged:
+            passes.append(
+                RenderPassSnapshot(name="overlay", commands=tuple(overlay_commands))
+            )
+        return RenderSnapshot(frame_index=int(snapshot.frame_index), passes=tuple(passes))
 
     def _build_pass_batches(self, snapshot: RenderSnapshot) -> tuple[_RenderPassBatch, ...]:
         batches: list[_RenderPassBatch] = []
@@ -295,6 +347,21 @@ class WgpuRenderer:
             metadata=metadata,
         )
 
+    def _assert_owner_thread(self) -> None:
+        if int(threading.get_ident()) != self._owner_thread_id:
+            raise RuntimeError("WgpuRenderer must run on its owner thread")
+
+
+def _command_key(command: RenderCommand) -> str:
+    payload = {str(key): value for key, value in command.data}
+    key = payload.get("key")
+    if not isinstance(key, str):
+        return ""
+    normalized = key.strip()
+    if not normalized:
+        return ""
+    return f"{command.kind}:{normalized}"
+
 
 def _resolve_pass_descriptor(name: str) -> _PassDescriptor:
     normalized = name.strip().lower()
@@ -342,6 +409,10 @@ class _WgpuBackend:
     _queued_packets: list[tuple[str, tuple[_DrawPacket, ...]]] = field(init=False, default_factory=list)
     _target_width: int = field(init=False, default=1200)
     _target_height: int = field(init=False, default=720)
+    _upload_threshold_packets: int = field(init=False, default=256)
+    _upload_mode_last: str = field(init=False, default="none")
+    _uploaded_packet_count: int = field(init=False, default=0)
+    _stream_write_cursor: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
         try:
@@ -369,6 +440,7 @@ class _WgpuBackend:
 
     def draw_packets(self, pass_name: str, packets: tuple[_DrawPacket, ...]) -> None:
         self._queued_packets.append((str(pass_name), tuple(packets)))
+        self._stage_draw_packets(packets)
         encoder = self._command_encoder
         if encoder is None:
             return
@@ -549,6 +621,43 @@ class _WgpuBackend:
         create_view = getattr(self._frame_texture, "create_view", None)
         self._frame_texture_view = create_view() if callable(create_view) else None
 
+    def _stage_draw_packets(self, packets: tuple[_DrawPacket, ...]) -> None:
+        packet_count = int(len(packets))
+        if packet_count <= 0:
+            self._upload_mode_last = "none"
+            self._uploaded_packet_count = 0
+            return
+        if packet_count <= self._upload_threshold_packets:
+            self._upload_mode_last = "full_rewrite"
+            self._uploaded_packet_count = packet_count
+            self._upload_full_rewrite(packet_count)
+            return
+        self._upload_mode_last = "ring_buffer"
+        self._uploaded_packet_count = packet_count
+        self._upload_ring_buffer(packet_count)
+
+    def _upload_full_rewrite(self, packet_count: int) -> None:
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if not callable(create_buffer):
+            return
+        size = max(256, int(packet_count * 64))
+        usage = _resolve_buffer_usage(self._wgpu)
+        try:
+            create_buffer(size=size, usage=usage, mapped_at_creation=False)
+        except Exception:
+            return
+
+    def _upload_ring_buffer(self, packet_count: int) -> None:
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if callable(create_buffer):
+            size = max(1024, int(packet_count * 64))
+            usage = _resolve_buffer_usage(self._wgpu)
+            try:
+                create_buffer(size=size, usage=usage, mapped_at_creation=False)
+            except Exception:
+                pass
+        self._stream_write_cursor = (self._stream_write_cursor + packet_count) % 1_000_000
+
 
 def _resolve_texture_usage(wgpu_mod: object) -> int:
     texture_usage = getattr(wgpu_mod, "TextureUsage", None)
@@ -557,6 +666,15 @@ def _resolve_texture_usage(wgpu_mod: object) -> int:
     render_attachment = int(getattr(texture_usage, "RENDER_ATTACHMENT", 0x10))
     copy_src = int(getattr(texture_usage, "COPY_SRC", 0x04))
     return render_attachment | copy_src
+
+
+def _resolve_buffer_usage(wgpu_mod: object) -> int:
+    buffer_usage = getattr(wgpu_mod, "BufferUsage", None)
+    if buffer_usage is None:
+        return 0x80 | 0x20  # VERTEX | COPY_DST fallback
+    vertex = int(getattr(buffer_usage, "VERTEX", 0x80))
+    copy_dst = int(getattr(buffer_usage, "COPY_DST", 0x20))
+    return vertex | copy_dst
 
 
 def _resolve_backend_priority() -> tuple[str, ...]:

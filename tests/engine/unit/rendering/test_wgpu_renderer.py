@@ -42,6 +42,16 @@ class _FakeBackend:
         self.resize_events.append(event)
 
 
+@dataclass(slots=True)
+class _FakeHub:
+    events: list[str] = field(default_factory=list)
+
+    def emit_fast(self, *, category: str, name: str, **kwargs) -> None:
+        _ = kwargs
+        if category == "render":
+            self.events.append(name)
+
+
 def test_wgpu_renderer_renders_empty_snapshot() -> None:
     backend = _FakeBackend()
     renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
@@ -93,7 +103,7 @@ def test_wgpu_renderer_pass_execution_order_is_deterministic() -> None:
     assert [name for name, _ in backend.passes] == ["world", "overlay", "post_bloom"]
 
 
-def test_wgpu_renderer_immediate_mode_uses_render_snapshot_pipeline() -> None:
+def test_wgpu_renderer_immediate_mode_uses_common_batch_stage() -> None:
     backend = _FakeBackend()
     renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
 
@@ -106,9 +116,46 @@ def test_wgpu_renderer_immediate_mode_uses_render_snapshot_pipeline() -> None:
     assert backend.end_calls == 3
     assert backend.passes == [
         ("overlay", ("rect",)),
-        ("overlay", ("grid",)),
-        ("overlay", ("text",)),
+        ("overlay", ("rect", "grid")),
+        ("overlay", ("rect", "grid", "text")),
     ]
+
+
+def test_wgpu_renderer_merges_immediate_commands_during_active_frame() -> None:
+    backend = _FakeBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+
+    renderer.begin_frame()
+    renderer.add_rect("a", 0.0, 0.0, 1.0, 1.0, "#fff")
+    renderer.add_text("b", "T", 0.0, 0.0)
+    renderer.end_frame()
+
+    assert backend.begin_calls == 1
+    assert backend.present_calls == 1
+    assert backend.end_calls == 1
+    assert backend.passes == [("overlay", ("rect", "text"))]
+
+
+def test_wgpu_renderer_emits_explicit_render_stage_diagnostics() -> None:
+    backend = _FakeBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    hub = _FakeHub()
+    renderer.set_diagnostics_hub(hub)  # type: ignore[arg-type]
+
+    renderer.render_snapshot(
+        RenderSnapshot(
+            frame_index=7,
+            passes=(RenderPassSnapshot(name="overlay", commands=(RenderCommand(kind="rect"),)),),
+        )
+    )
+
+    assert "render.stage.begin_frame" in hub.events
+    assert "render.stage.build_batches" in hub.events
+    assert "render.stage.execute_pass.begin" in hub.events
+    assert "render.stage.execute_pass.end" in hub.events
+    assert "render.stage.execute_passes" in hub.events
+    assert "render.stage.present" in hub.events
+    assert "render.stage.end_frame" in hub.events
 
 
 def test_wgpu_renderer_can_forward_resize_and_title() -> None:
@@ -122,11 +169,11 @@ def test_wgpu_renderer_can_forward_resize_and_title() -> None:
         dpi_scale=2.0,
     )
 
-    renderer.set_title("phase1")
+    renderer.set_title("phase3")
     renderer.apply_window_resize(event)
     renderer.close()
 
-    assert backend.title == "phase1"
+    assert backend.title == "phase3"
     assert backend.resize_events == [event]
     assert backend.close_calls == 1
 
@@ -181,6 +228,7 @@ class _FakeDevice:
         self.shader_modules: list[str] = []
         self.pipelines: list[dict[str, object]] = []
         self.textures: list[tuple[object, ...]] = []
+        self.buffers: list[tuple[object, ...]] = []
 
     def create_command_encoder(self, label: str = "") -> _FakeEncoder:
         _ = label
@@ -200,6 +248,10 @@ class _FakeDevice:
         self.textures.append(tuple(kwargs.items()))
         return _FakeTexture()
 
+    def create_buffer(self, **kwargs):
+        self.buffers.append(tuple(kwargs.items()))
+        return object()
+
 
 class _FakeAdapter:
     def __init__(self, device: _FakeDevice) -> None:
@@ -215,9 +267,11 @@ def _install_fake_wgpu_module(monkeypatch) -> _FakeDevice:
     adapter = _FakeAdapter(device)
     gpu = SimpleNamespace(request_adapter_sync=lambda **kwargs: adapter)
     texture_usage = SimpleNamespace(RENDER_ATTACHMENT=0x10, COPY_SRC=0x04)
+    buffer_usage = SimpleNamespace(VERTEX=0x80, COPY_DST=0x20)
     fake_mod = ModuleType("wgpu")
     fake_mod.gpu = gpu
     fake_mod.TextureUsage = texture_usage
+    fake_mod.BufferUsage = buffer_usage
     monkeypatch.setitem(sys.modules, "wgpu", fake_mod)
     return device
 
@@ -244,3 +298,30 @@ def test_wgpu_backend_sets_up_device_surface_pipelines_and_pass_encoding(monkeyp
 
     assert device.encoders
     assert device.queue.submissions == [["cmd"]]
+
+
+def test_wgpu_backend_uses_hybrid_upload_modes(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._upload_threshold_packets = 2  # noqa: SLF001
+
+    backend.begin_frame()
+    backend.draw_packets(
+        "overlay",
+        (
+            SimpleNamespace(kind="rect"),
+            SimpleNamespace(kind="grid"),
+        ),
+    )
+    assert backend._upload_mode_last == "full_rewrite"  # noqa: SLF001
+
+    backend.draw_packets(
+        "overlay",
+        (
+            SimpleNamespace(kind="rect"),
+            SimpleNamespace(kind="grid"),
+            SimpleNamespace(kind="text"),
+        ),
+    )
+    assert backend._upload_mode_last == "ring_buffer"  # noqa: SLF001
+
