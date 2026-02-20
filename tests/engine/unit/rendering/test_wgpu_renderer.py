@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import sys
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
@@ -118,6 +119,100 @@ def test_wgpu_renderer_pass_execution_order_is_deterministic() -> None:
     renderer.render_snapshot(snapshot)
 
     assert [name for name, _ in backend.passes] == ["world", "overlay", "post_bloom"]
+
+
+def test_wgpu_renderer_command_sort_uses_deterministic_tie_break_keys() -> None:
+    @dataclass(slots=True)
+    class _OrderBackend(_FakeBackend):
+        sort_keys: list[tuple[str, ...]] = field(default_factory=list)
+
+        def draw_packets(self, pass_name: str, packets) -> None:
+            super().draw_packets(pass_name, packets)
+            self.sort_keys.append(tuple(str(packet.data[0][1]) for packet in packets))
+
+    backend = _OrderBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    snapshot = RenderSnapshot(
+        frame_index=9,
+        passes=(
+            RenderPassSnapshot(
+                name="overlay",
+                commands=(
+                    RenderCommand(kind="rect", layer=10, sort_key="a", data=(("key", "b"),)),
+                    RenderCommand(kind="rect", layer=10, sort_key="a", data=(("key", "a"),)),
+                    RenderCommand(kind="rect", layer=10, sort_key="a", data=(("key", "c"),)),
+                ),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+
+    assert backend.passes == [("overlay", ("rect", "rect", "rect"))]
+    assert backend.sort_keys == [("a", "b", "c")]
+
+
+def test_wgpu_renderer_normalized_golden_subset_for_packet_translation() -> None:
+    @dataclass(slots=True)
+    class _GoldenBackend(_FakeBackend):
+        normalized_packets: list[tuple[str, tuple[tuple[object, ...], ...]]] = field(default_factory=list)
+
+        def draw_packets(self, pass_name: str, packets) -> None:
+            super().draw_packets(pass_name, packets)
+            normalized: list[tuple[object, ...]] = []
+            for packet in packets:
+                payload = dict(packet.data)
+                linear_rgba = tuple(round(float(v), 6) for v in payload.get("linear_rgba", ()))
+                normalized.append(
+                    (
+                        str(packet.kind),
+                        int(packet.layer),
+                        str(packet.sort_key),
+                        str(payload.get("key", "")),
+                        str(payload.get("color", "")),
+                        linear_rgba,
+                    )
+                )
+            self.normalized_packets.append((str(pass_name), tuple(normalized)))
+
+    backend = _GoldenBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    snapshot = RenderSnapshot(
+        frame_index=11,
+        passes=(
+            RenderPassSnapshot(
+                name="overlay",
+                commands=(
+                    RenderCommand(kind="text", layer=2, sort_key="b", data=(("key", "title"), ("color", "#ffffff"))),
+                    RenderCommand(kind="rect", layer=1, sort_key="a", data=(("key", "panel"), ("color", "#808080"))),
+                ),
+            ),
+            RenderPassSnapshot(
+                name="world",
+                commands=(
+                    RenderCommand(kind="grid", layer=0, sort_key="g", data=(("key", "board"), ("color", "#00ff00"))),
+                ),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+
+    assert backend.normalized_packets == [
+        (
+            "world",
+            (
+                ("grid", 0, "g", "board", "#00ff00", (0.0, 1.0, 0.0, 1.0)),
+            ),
+        ),
+        (
+            "overlay",
+            (
+                ("rect", 1, "a", "panel", "#808080", (0.215861, 0.215861, 0.215861, 1.0)),
+                ("text", 2, "b", "title", "#ffffff", (1.0, 1.0, 1.0, 1.0)),
+            ),
+        ),
+    ]
 
 
 def test_wgpu_renderer_immediate_mode_uses_common_batch_stage() -> None:
@@ -396,6 +491,73 @@ def test_wgpu_backend_present_mode_fallback_chain(monkeypatch) -> None:
     backend = _WgpuBackend()
 
     assert backend._present_mode == "immediate"  # noqa: SLF001
+
+
+def test_wgpu_backend_color_policy_uses_srgb_surface_and_linear_payload(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    command = RenderCommand(
+        kind="rect",
+        layer=1,
+        sort_key="k",
+        data=(("color", "#808080"),),
+    )
+
+    packet = wgpu_renderer._command_to_packet(command)  # noqa: SLF001
+    payload = dict(packet.data)
+    linear = payload["linear_rgba"]
+    srgb = payload["srgb_rgba"]
+
+    assert "srgb" in backend._surface_format  # noqa: SLF001
+    assert isinstance(srgb, tuple)
+    assert isinstance(linear, tuple)
+    assert float(srgb[0]) > float(linear[0])
+    assert float(linear[0]) == pytest.approx(0.21586, rel=1e-3)
+
+
+def test_wgpu_backend_rejects_non_srgb_surface_format(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._surface_format = "bgra8unorm"  # noqa: SLF001
+
+    with pytest.raises(RuntimeError, match="must be sRGB"):
+        backend._setup_surface_state()  # noqa: SLF001
+
+
+def test_wgpu_backend_one_frame_in_flight_baseline(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+
+    backend.begin_frame()
+    with pytest.raises(RuntimeError, match="one frame in flight"):
+        backend.begin_frame()
+    backend.end_frame()
+
+
+def test_wgpu_backend_runtime_render_path_performs_no_asset_io(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    command = RenderCommand(
+        kind="rect",
+        data=(("color", "#abcdef"),),
+    )
+    packet = wgpu_renderer._command_to_packet(command)  # noqa: SLF001
+
+    def _fail_open(*args, **kwargs):
+        _ = (args, kwargs)
+        raise AssertionError("runtime render path must not perform asset I/O")
+
+    def _fail_scandir(*args, **kwargs):
+        _ = (args, kwargs)
+        raise AssertionError("runtime render path must not scan asset directories")
+
+    monkeypatch.setattr(builtins, "open", _fail_open)
+    monkeypatch.setattr(wgpu_renderer.os, "scandir", _fail_scandir)
+
+    backend.begin_frame()
+    backend.draw_packets("overlay", (packet,))
+    backend.present()
+    backend.end_frame()
 
 
 def test_wgpu_backend_uses_system_font_fallback(monkeypatch) -> None:

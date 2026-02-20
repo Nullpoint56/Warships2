@@ -328,16 +328,14 @@ class WgpuRenderer:
         batches: list[_RenderPassBatch] = []
         for render_pass in snapshot.passes:
             descriptor = _resolve_pass_descriptor(render_pass.name)
-            commands = tuple(
+            indexed_commands = tuple(enumerate(render_pass.commands))
+            sorted_indexed = tuple(
                 sorted(
-                    tuple(render_pass.commands),
-                    key=lambda command: (
-                        int(command.layer),
-                        str(command.kind),
-                        str(command.sort_key),
-                    ),
+                    indexed_commands,
+                    key=lambda indexed: _command_sort_key(indexed[1], indexed[0]),
                 )
             )
+            commands = tuple(command for _, command in sorted_indexed)
             batches.append(_RenderPassBatch(name=descriptor.canonical_name, commands=commands))
         return tuple(sorted(batches, key=lambda batch: _resolve_pass_descriptor(batch.name).priority))
 
@@ -442,17 +440,88 @@ def _resolve_pass_descriptor(name: str) -> _PassDescriptor:
 
 
 def _command_to_packet(command: RenderCommand) -> _DrawPacket:
+    payload = tuple((str(key), value) for key, value in command.data)
+    srgb_rgba = _extract_srgb_rgba(payload)
+    linear_rgba = _srgb_to_linear_rgba(srgb_rgba)
     return _DrawPacket(
         kind=str(command.kind),
         layer=int(command.layer),
         sort_key=str(command.sort_key),
         transform=tuple(float(value) for value in command.transform.values),
-        data=tuple((str(key), value) for key, value in command.data),
+        data=payload + (("srgb_rgba", srgb_rgba), ("linear_rgba", linear_rgba)),
     )
 
 
 def _create_wgpu_backend(surface: SurfaceHandle | None) -> _Backend:
     return _WgpuBackend(surface=surface)
+
+
+def _command_sort_key(command: RenderCommand, ordinal: int) -> tuple[object, ...]:
+    return (
+        int(command.layer),
+        str(command.sort_key),
+        str(command.kind),
+        _command_key(command),
+        tuple((str(key), _stable_sort_value(value)) for key, value in command.data),
+        tuple(_stable_sort_value(float(value)) for value in command.transform.values),
+        int(ordinal),
+    )
+
+
+def _stable_sort_value(value: object) -> object:
+    if isinstance(value, (int, float, str, bool)) or value is None:
+        return value
+    return repr(value)
+
+
+def _extract_srgb_rgba(payload: tuple[tuple[str, object], ...]) -> tuple[float, float, float, float]:
+    color_value: object = "#ffffff"
+    for key, value in payload:
+        if str(key) == "color":
+            color_value = value
+            break
+    if isinstance(color_value, str):
+        parsed = _parse_hex_color(color_value)
+        if parsed is not None:
+            return parsed
+    return (1.0, 1.0, 1.0, 1.0)
+
+
+def _parse_hex_color(raw: str) -> tuple[float, float, float, float] | None:
+    normalized = raw.strip().lower()
+    if not normalized.startswith("#"):
+        return None
+    value = normalized.removeprefix("#")
+    if len(value) == 3:
+        value = "".join(ch * 2 for ch in value)
+    elif len(value) == 4:
+        value = "".join(ch * 2 for ch in value)
+    elif len(value) == 6:
+        value = f"{value}ff"
+    if len(value) != 8:
+        return None
+    try:
+        channels = tuple(int(value[index:index + 2], 16) for index in range(0, 8, 2))
+    except ValueError:
+        return None
+    return (
+        float(channels[0]) / 255.0,
+        float(channels[1]) / 255.0,
+        float(channels[2]) / 255.0,
+        float(channels[3]) / 255.0,
+    )
+
+
+def _srgb_to_linear_rgba(srgb: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
+    r, g, b, a = srgb
+    return (_srgb_to_linear_channel(r), _srgb_to_linear_channel(g), _srgb_to_linear_channel(b), a)
+
+
+def _srgb_to_linear_channel(value: float) -> float:
+    clamped = min(1.0, max(0.0, float(value)))
+    if clamped <= 0.04045:
+        return clamped / 12.92
+    return float(((clamped + 0.055) / 1.055) ** 2.4)
 
 
 @dataclass(slots=True)
@@ -489,6 +558,8 @@ class _WgpuBackend:
     _selected_backend: str = field(init=False, default="unknown")
     _adapter_info: dict[str, object] = field(init=False, default_factory=dict)
     _font_path: str = field(init=False, default="")
+    _frame_in_flight: bool = field(init=False, default=False)
+    _frame_in_flight_limit: int = field(init=False, default=1)
 
     def __post_init__(self) -> None:
         try:
@@ -530,6 +601,9 @@ class _WgpuBackend:
         self._wgpu_loaded = True
 
     def begin_frame(self) -> None:
+        if self._frame_in_flight:
+            raise RuntimeError("wgpu backend supports only one frame in flight")
+        self._frame_in_flight = True
         create_command_encoder = getattr(self._device, "create_command_encoder", None)
         if callable(create_command_encoder):
             self._command_encoder = create_command_encoder(label="engine.wgpu.frame")
@@ -585,6 +659,7 @@ class _WgpuBackend:
 
     def end_frame(self) -> None:
         self._command_encoder = None
+        self._frame_in_flight = False
         return
 
     def close(self) -> None:
@@ -705,6 +780,11 @@ class _WgpuBackend:
         return {}
 
     def _setup_surface_state(self) -> dict[str, object]:
+        if "srgb" not in self._surface_format.lower():
+            raise RuntimeError(
+                "wgpu surface format must be sRGB for presentation "
+                f"(configured={self._surface_format})"
+            )
         state: dict[str, object] = {
             "surface_id": "",
             "backend": "unknown",
