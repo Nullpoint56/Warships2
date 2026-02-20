@@ -6,6 +6,7 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Any
 
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.window import (
     SurfaceHandle,
     WindowCloseEvent,
@@ -118,6 +119,7 @@ class RenderCanvasWindow(WindowPort):
     canvas: Any
     backend: str = "rendercanvas.glfw"
     _events: deque[WindowEvent] = field(default_factory=deque)
+    _input_events: deque[PointerEvent | KeyEvent | WheelEvent] = field(default_factory=deque)
     _rc_auto: Any | None = field(default=None, repr=False)
 
     def __post_init__(self) -> None:
@@ -135,6 +137,11 @@ class RenderCanvasWindow(WindowPort):
     def poll_events(self) -> tuple[WindowEvent, ...]:
         drained = tuple(self._events)
         self._events.clear()
+        return drained
+
+    def poll_input_events(self) -> tuple[PointerEvent | KeyEvent | WheelEvent, ...]:
+        drained = tuple(self._input_events)
+        self._input_events.clear()
         return drained
 
     def set_title(self, title: str) -> None:
@@ -179,6 +186,13 @@ class RenderCanvasWindow(WindowPort):
             add_handler(self._on_close, "close")
             add_handler(self._on_minimize, "minimize")
             add_handler(self._on_focus, "focus")
+            add_handler(self._on_pointer_down, "pointer_down")
+            add_handler(self._on_pointer_move, "pointer_move")
+            add_handler(self._on_pointer_up, "pointer_up")
+            add_handler(self._on_key_down, "key_down")
+            add_handler(self._on_key_up, "key_up")
+            add_handler(self._on_char, "char")
+            add_handler(self._on_wheel, "wheel")
         except Exception:
             return
 
@@ -221,6 +235,41 @@ class RenderCanvasWindow(WindowPort):
         _ = event
         self._events.append(WindowCloseEvent())
 
+    def _on_pointer_down(self, event: object) -> None:
+        parsed = _parse_pointer_event(event, expected_type="pointer_down")
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_pointer_move(self, event: object) -> None:
+        parsed = _parse_pointer_event(event, expected_type="pointer_move")
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_pointer_up(self, event: object) -> None:
+        parsed = _parse_pointer_event(event, expected_type="pointer_up")
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_key_down(self, event: object) -> None:
+        parsed = _parse_key_event(event, expected_type="key_down")
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_key_up(self, event: object) -> None:
+        parsed = _parse_key_event(event, expected_type="key_up")
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_char(self, event: object) -> None:
+        parsed = _parse_char_event(event)
+        if parsed is not None:
+            self._input_events.append(parsed)
+
+    def _on_wheel(self, event: object) -> None:
+        parsed = _parse_wheel_event(event)
+        if parsed is not None:
+            self._input_events.append(parsed)
+
 
 def create_rendercanvas_window(
     canvas: Any | None = None,
@@ -257,3 +306,57 @@ def create_rendercanvas_window(
     except TypeError:
         canvas = canvas_cls(size=(int(width), int(height)), title=title)
     return RenderCanvasWindow(canvas=canvas, _rc_auto=rc_auto)
+
+
+def _parse_pointer_event(event: object, *, expected_type: str) -> PointerEvent | None:
+    if not isinstance(event, dict):
+        return None
+    if str(event.get("event_type", "")) != expected_type:
+        return None
+    x = event.get("x")
+    y = event.get("y")
+    button = event.get("button", 0)
+    if not isinstance(x, (int, float)) or not isinstance(y, (int, float)):
+        return None
+    if not isinstance(button, int):
+        button = 0
+    return PointerEvent(expected_type, float(x), float(y), int(button))
+
+
+def _parse_key_event(event: object, *, expected_type: str) -> KeyEvent | None:
+    if not isinstance(event, dict):
+        return None
+    if str(event.get("event_type", "")) != expected_type:
+        return None
+    key = event.get("key")
+    if not isinstance(key, str):
+        return None
+    return KeyEvent(expected_type, key)
+
+
+def _parse_char_event(event: object) -> KeyEvent | None:
+    if not isinstance(event, dict):
+        return None
+    if str(event.get("event_type", "")) != "char":
+        return None
+    value = event.get("data")
+    if not isinstance(value, str):
+        return None
+    return KeyEvent("char", value)
+
+
+def _parse_wheel_event(event: object) -> WheelEvent | None:
+    if not isinstance(event, dict):
+        return None
+    if str(event.get("event_type", "")) != "wheel":
+        return None
+    x = event.get("x")
+    y = event.get("y")
+    dy = event.get("dy")
+    if (
+        not isinstance(x, (int, float))
+        or not isinstance(y, (int, float))
+        or not isinstance(dy, (int, float))
+    ):
+        return None
+    return WheelEvent(float(x), float(y), float(dy))

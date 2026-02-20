@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from engine.api.input_snapshot import InputSnapshot
 import engine.runtime.pygfx_frontend as frontend_mod
 
 
@@ -29,6 +30,7 @@ class _Renderer:
 class _Window:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[int, int] | tuple[()]]] = []
+        self.input_events = ()
 
     def set_fullscreen(self) -> None:
         self.calls.append(("set_fullscreen", ()))
@@ -48,6 +50,9 @@ class _Window:
     def close(self) -> None:
         self.calls.append(("close", ()))
 
+    def poll_input_events(self):
+        return self.input_events
+
 
 class _Input:
     def __init__(self, pointer=None, key=None, wheel=None) -> None:
@@ -55,14 +60,16 @@ class _Input:
         self._key = key or []
         self._wheel = wheel or []
 
-    def drain_pointer_events(self):
-        return list(self._pointer)
+    def build_input_snapshot(self, *, frame_index: int) -> InputSnapshot:
+        return InputSnapshot(
+            frame_index=frame_index,
+            pointer_events=tuple(self._pointer),
+            key_events=tuple(self._key),
+            wheel_events=tuple(self._wheel),
+        )
 
-    def drain_key_events(self):
-        return list(self._key)
-
-    def drain_wheel_events(self):
-        return list(self._wheel)
+    def consume_window_input_events(self, events) -> None:
+        _ = events
 
 
 class _Host:
@@ -71,14 +78,11 @@ class _Host:
         self.frame_calls = 0
         self.closed = False
 
-    def handle_pointer_event(self, event) -> bool:
-        return bool(event)
+    def current_frame_index(self) -> int:
+        return 0
 
-    def handle_key_event(self, event) -> bool:
-        return bool(event)
-
-    def handle_wheel_event(self, event) -> bool:
-        return bool(event)
+    def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        return bool(snapshot.pointer_events or snapshot.key_events or snapshot.wheel_events)
 
     def frame(self) -> None:
         self.frame_calls += 1
@@ -133,19 +137,19 @@ def test_draw_frame_closes_renderer_when_host_closed() -> None:
     assert ("close", ()) in window_port.calls
 
 
-def test_drain_input_events_without_changes_does_not_invalidate() -> None:
+def test_dispatch_input_snapshot_without_changes_does_not_invalidate() -> None:
     renderer = _Renderer()
     window = frontend_mod.PygfxFrontendWindow(
         renderer=renderer,
         window=_Window(),
-        input_controller=_Input(pointer=[None], key=[None], wheel=[None]),
+        input_controller=_Input(pointer=[], key=[], wheel=[]),
         host=_Host(close_after_frame=False),
     )
-    window._drain_input_events()
+    window._dispatch_input_snapshot(window._build_input_snapshot())
     assert renderer.invalidate_calls == 0
 
 
-def test_drain_input_events_records_pointer_event_type_reasons() -> None:
+def test_dispatch_input_snapshot_records_pointer_event_type_reasons() -> None:
     renderer = _Renderer()
     pointer_event = SimpleNamespace(event_type="pointer_move")
     window = frontend_mod.PygfxFrontendWindow(
@@ -154,7 +158,7 @@ def test_drain_input_events_records_pointer_event_type_reasons() -> None:
         input_controller=_Input(pointer=[pointer_event]),
         host=_Host(close_after_frame=False),
     )
-    window._drain_input_events()
+    window._dispatch_input_snapshot(window._build_input_snapshot())
     assert "input:pointer:pointer_move" in renderer.frame_reasons
 
 

@@ -11,6 +11,7 @@ from engine.api.window import (
     WindowMinimizeEvent,
     WindowResizeEvent,
 )
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.window.rendercanvas_glfw import (
     RenderCanvasWindow,
     apply_startup_window_mode,
@@ -170,6 +171,15 @@ def test_window_port_event_polling_and_controls(monkeypatch: pytest.MonkeyPatch)
     assert isinstance(events[2], WindowMinimizeEvent)
     assert isinstance(events[3], WindowCloseEvent)
     assert window.poll_events() == ()
+
+    canvas.emit("pointer_down", x=1.0, y=2.0, button=1)
+    canvas.emit("key_down", key="A")
+    canvas.emit("wheel", x=1.0, y=2.0, dy=0.5)
+    input_events = window.poll_input_events()
+    assert isinstance(input_events[0], PointerEvent)
+    assert isinstance(input_events[1], KeyEvent)
+    assert isinstance(input_events[2], WheelEvent)
+    assert window.poll_input_events() == ()
 
 
 def test_create_rendercanvas_window_factory() -> None:

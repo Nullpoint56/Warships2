@@ -171,8 +171,16 @@ class WarshipsGameModule(GameModule):
         self._context.provide("frame_context", context)
         self._graph.update_all(self._context)
 
-    def on_input_snapshot(self, snapshot: InputSnapshot) -> None:
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         self._context.provide("input_snapshot", snapshot)
+        changed = False
+        for pointer_event in snapshot.pointer_events:
+            changed = self._framework.handle_pointer_event(pointer_event) or changed
+        for key_event in snapshot.key_events:
+            changed = self._framework.handle_key_event(key_event) or changed
+        for wheel_event in snapshot.wheel_events:
+            changed = self._framework.handle_wheel_event(wheel_event) or changed
+        return changed
 
     def simulate(self, context: HostFrameContext) -> None:
         self.on_frame(context)

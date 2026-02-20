@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.window import WindowPort
 from engine.input.input_controller import InputController
 from engine.rendering.scene import SceneRenderer
@@ -41,36 +42,32 @@ class PygfxFrontendWindow:
 
     def _draw_frame(self) -> None:
         self._renderer.note_frame_reason("draw")
-        self._drain_input_events()
+        snapshot = self._build_input_snapshot()
+        self._dispatch_input_snapshot(snapshot)
         self._host.frame()
         if self._host.is_closed():
             self._renderer.close()
             self._window.close()
 
-    def _drain_input_events(self) -> None:
-        changed = False
-        pointer_count = 0
-        for pointer_event in self._input.drain_pointer_events():
-            pointer_count += 1
+    def _build_input_snapshot(self) -> InputSnapshot:
+        window_raw_input = self._window.poll_input_events()
+        if window_raw_input:
+            self._input.consume_window_input_events(window_raw_input)
+        return self._input.build_input_snapshot(frame_index=self._host.current_frame_index())
+
+    def _dispatch_input_snapshot(self, snapshot: InputSnapshot) -> None:
+        changed = self._host.handle_input_snapshot(snapshot)
+        if snapshot.pointer_events:
+            self._renderer.note_frame_reason("input:pointer")
+        if snapshot.key_events:
+            self._renderer.note_frame_reason("input:key")
+        if snapshot.wheel_events:
+            self._renderer.note_frame_reason("input:wheel")
+        for pointer_event in snapshot.pointer_events:
             event_type = getattr(pointer_event, "event_type", "")
             if isinstance(event_type, str) and event_type.strip():
                 normalized_type = event_type.strip().lower().replace(" ", "_")
                 self._renderer.note_frame_reason(f"input:pointer:{normalized_type}")
-            changed = self._host.handle_pointer_event(pointer_event) or changed
-        key_count = 0
-        for key_event in self._input.drain_key_events():
-            key_count += 1
-            changed = self._host.handle_key_event(key_event) or changed
-        wheel_count = 0
-        for wheel_event in self._input.drain_wheel_events():
-            wheel_count += 1
-            changed = self._host.handle_wheel_event(wheel_event) or changed
-        if pointer_count:
-            self._renderer.note_frame_reason("input:pointer")
-        if key_count:
-            self._renderer.note_frame_reason("input:key")
-        if wheel_count:
-            self._renderer.note_frame_reason("input:wheel")
         if changed:
             self._renderer.note_frame_reason("input:changed")
             self._renderer.invalidate()

@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Protocol
 
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+
 
 @dataclass(frozen=True, slots=True)
 class SurfaceHandle:
@@ -57,6 +59,9 @@ class WindowPort(Protocol):
 
     def poll_events(self) -> tuple[WindowEvent, ...]:
         """Poll and return normalized window events."""
+
+    def poll_input_events(self) -> tuple[PointerEvent | KeyEvent | WheelEvent, ...]:
+        """Poll and return normalized raw input events for input subsystem ingestion."""
 
     def set_title(self, title: str) -> None:
         """Set OS window title."""

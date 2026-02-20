@@ -51,8 +51,8 @@ class GameModule(Protocol):
     def on_wheel_event(self, event: WheelEvent) -> bool:
         """Handle wheel event. Return whether state changed."""
 
-    def on_input_snapshot(self, snapshot: InputSnapshot) -> None:
-        """Handle immutable per-frame input snapshot."""
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        """Handle immutable per-frame input snapshot. Return whether state changed."""
 
     def simulate(self, context: HostFrameContext) -> None:
         """Advance simulation for one frame."""

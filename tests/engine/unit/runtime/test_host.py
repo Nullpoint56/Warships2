@@ -6,7 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from engine.api.input_events import KeyEvent
+from engine.api.input_events import KeyEvent, PointerEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.runtime.host import EngineHost
 from engine.runtime.metrics import MetricsSnapshot
 
@@ -45,6 +46,16 @@ class FakeModule:
         if context.frame_index >= 1:
             self._should_close = True
 
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        _ = snapshot
+        return False
+
+    def simulate(self, context) -> None:
+        self.on_frame(context)
+
+    def build_render_snapshot(self):
+        return None
+
     def should_close(self) -> bool:
         return self._should_close
 
@@ -74,6 +85,16 @@ class _ScheduledCloseModule:
     def on_frame(self, context) -> None:
         _ = context
         self.frame_calls += 1
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        _ = snapshot
+        return False
+
+    def simulate(self, context) -> None:
+        _ = context
+
+    def build_render_snapshot(self):
+        return None
 
     def should_close(self) -> bool:
         return False
@@ -138,6 +159,19 @@ def test_engine_host_forwards_input_events() -> None:
     assert host.handle_key_event(object()) is True
     assert host.handle_wheel_event(object()) is True
     assert (module.pointer_events, module.key_events, module.wheel_events) == (1, 1, 1)
+
+
+def test_engine_host_handles_input_snapshot() -> None:
+    module = FakeModule()
+    host = EngineHost(module=module)
+    snapshot = InputSnapshot(
+        frame_index=0,
+        pointer_events=(PointerEvent(event_type="pointer_down", x=1.0, y=2.0, button=1),),
+        key_events=(KeyEvent(event_type="key_down", value="a"),),
+    )
+    assert host.handle_input_snapshot(snapshot) is False
+    assert module.pointer_events == 0
+    assert module.key_events == 0
 
 
 def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:

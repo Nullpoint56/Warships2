@@ -6,13 +6,14 @@ import json
 import logging
 import os
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.diagnostics import (
     CrashBundleWriter,
@@ -144,6 +145,9 @@ class EngineHost(HostControl):
     def diagnostics_replay_snapshot(self) -> object:
         return self._replay_recorder.snapshot()
 
+    def current_frame_index(self) -> int:
+        return self._frame_index
+
     def export_diagnostics_profiling(self, *, path: str) -> str:
         exported = self._diagnostics_profiler.export_json(path=Path(path))
         return str(exported)
@@ -225,6 +229,51 @@ class EngineHost(HostControl):
             },
         )
         return self._module.on_wheel_event(event)
+
+    def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        for pointer_event in snapshot.pointer_events:
+            self._replay_recorder.record_command(
+                tick=self._frame_index,
+                command_type="input.pointer",
+                payload={
+                    "event_type": str(getattr(pointer_event, "event_type", "")),
+                    "x": float(getattr(pointer_event, "x", 0.0)),
+                    "y": float(getattr(pointer_event, "y", 0.0)),
+                    "button": int(getattr(pointer_event, "button", 0)),
+                },
+            )
+        filtered_key_events: list[KeyEvent] = []
+        overlay_toggled = False
+        for key_event in snapshot.key_events:
+            self._replay_recorder.record_command(
+                tick=self._frame_index,
+                command_type="input.key",
+                payload={
+                    "event_type": str(getattr(key_event, "event_type", "")),
+                    "value": str(getattr(key_event, "value", "")),
+                },
+            )
+            if self._debug_overlay is not None and self._is_overlay_toggle_event(key_event):
+                self._debug_overlay_visible = not self._debug_overlay_visible
+                if self._render_api is not None and hasattr(self._render_api, "invalidate"):
+                    self._render_api.invalidate()
+                overlay_toggled = True
+                continue
+            filtered_key_events.append(key_event)
+        for wheel_event in snapshot.wheel_events:
+            self._replay_recorder.record_command(
+                tick=self._frame_index,
+                command_type="input.wheel",
+                payload={
+                    "x": float(getattr(wheel_event, "x", 0.0)),
+                    "y": float(getattr(wheel_event, "y", 0.0)),
+                    "dy": float(getattr(wheel_event, "dy", 0.0)),
+                },
+            )
+        module_snapshot = snapshot
+        if len(filtered_key_events) != len(snapshot.key_events):
+            module_snapshot = replace(snapshot, key_events=tuple(filtered_key_events))
+        return bool(self._module.on_input_snapshot(module_snapshot)) or overlay_toggled
 
     def frame(self) -> None:
         """Execute one frame callback."""

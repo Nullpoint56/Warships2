@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+
 
 @dataclass(frozen=True, slots=True)
 class KeyboardSnapshot:
@@ -58,6 +60,9 @@ class InputSnapshot:
     mouse: MouseSnapshot = field(default_factory=MouseSnapshot)
     controllers: tuple[ControllerSnapshot, ...] = ()
     actions: ActionSnapshot = field(default_factory=ActionSnapshot)
+    pointer_events: tuple[PointerEvent, ...] = ()
+    key_events: tuple[KeyEvent, ...] = ()
+    wheel_events: tuple[WheelEvent, ...] = ()
 
 
 def create_empty_input_snapshot(*, frame_index: int = 0) -> InputSnapshot:
@@ -73,4 +78,3 @@ __all__ = [
     "MouseSnapshot",
     "create_empty_input_snapshot",
 ]
-
