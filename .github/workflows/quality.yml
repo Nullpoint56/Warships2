@@ -8,6 +8,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  no_pygfx_guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Guard against pygfx reintroduction
+        run: |
+          set -euo pipefail
+
+          if grep -Eni 'pygfx' pyproject.toml; then
+            echo "pygfx token found in pyproject.toml"
+            exit 1
+          fi
+
+          if grep -RInE '(^|[[:space:]])(import[[:space:]]+pygfx|from[[:space:]]+pygfx)' engine warships; then
+            echo "runtime import pygfx found under engine/ or warships/"
+            exit 1
+          fi
+
+          if grep -RInE 'pygfx' docs/architecture docs/operations; then
+            echo "pygfx token found in active runtime docs"
+            exit 1
+          fi
+
   detect_changes:
     runs-on: ubuntu-latest
     outputs:

@@ -26,6 +26,7 @@ Bootstrap:
 
 ## Common Engine Flags
 
+- `ENGINE_HEADLESS`: `0|1` (`1`, `true`, `yes`, `on` are truthy)
 - `ENGINE_WINDOW_MODE`: `windowed` | `maximized` | `fullscreen` | `borderless`
 - `ENGINE_UI_ASPECT_MODE`: aspect behavior mode (default `contain`)
 - `ENGINE_LOG_LEVEL`: engine/runtime logging verbosity
@@ -38,6 +39,13 @@ Diagnostics-related:
 - `ENGINE_DEBUG_RESIZE_TRACE`: enable resize diagnostics hooks
 - `ENGINE_DEBUG_UI_TRACE_AUTO_DUMP`: dump trace buffer on anomalies
 - `ENGINE_DEBUG_UI_TRACE_DUMP_DIR`: anomaly dump directory
+
+Headless and renderer initialization:
+
+- When `ENGINE_HEADLESS` is enabled, runtime runs without creating a renderer/window frontend.
+- When `ENGINE_HEADLESS` is disabled, wgpu initialization failures are hard startup failures.
+- Non-headless startup failures include detailed diagnostics payloads (adapter/backend/surface/
+  platform context and stack/exception details).
 
 ## Common App Flags
 
