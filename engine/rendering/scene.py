@@ -29,6 +29,7 @@ from engine.rendering.scene_viewport import (
     to_design_space,
     viewport_transform,
 )
+from engine.api.render_snapshot import RenderSnapshot
 from engine.rendering.ui_diagnostics import UIDiagnostics, UIDiagnosticsConfig
 from engine.runtime.debug_config import load_debug_config
 
@@ -1163,6 +1164,93 @@ class SceneRenderer:
         if self._render_loop_mode == "continuous_during_resize":
             return now <= self._resize_continuous_until
         return False
+
+    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        """Render one immutable snapshot payload."""
+        def _as_float(value: object, default: float) -> float:
+            if isinstance(value, (int, float)):
+                return float(value)
+            return default
+
+        def _as_int(value: object, default: int) -> int:
+            if isinstance(value, int):
+                return value
+            if isinstance(value, float):
+                return int(value)
+            return default
+
+        self.begin_frame()
+        try:
+            for render_pass in snapshot.passes:
+                _ = render_pass
+                for command in render_pass.commands:
+                    payload = {str(k): v for k, v in command.data}
+                    kind = str(command.kind)
+                    if kind == "fill_window":
+                        key = payload.get("key")
+                        color = payload.get("color")
+                        z = _as_float(payload.get("z"), -100.0)
+                        if isinstance(key, str) and isinstance(color, str):
+                            self.fill_window(key, color, z)
+                        continue
+                    if kind == "rect":
+                        color = payload.get("color")
+                        if not isinstance(color, str):
+                            continue
+                        rect_key = payload.get("key")
+                        self.add_rect(
+                            key=rect_key if isinstance(rect_key, str) else None,
+                            x=_as_float(payload.get("x"), 0.0),
+                            y=_as_float(payload.get("y"), 0.0),
+                            w=_as_float(payload.get("w"), 0.0),
+                            h=_as_float(payload.get("h"), 0.0),
+                            color=color,
+                            z=_as_float(payload.get("z"), 0.0),
+                            static=bool(payload.get("static", False)),
+                        )
+                        continue
+                    if kind == "grid":
+                        key = payload.get("key")
+                        color = payload.get("color")
+                        if not isinstance(key, str) or not isinstance(color, str):
+                            continue
+                        self.add_grid(
+                            key=key,
+                            x=_as_float(payload.get("x"), 0.0),
+                            y=_as_float(payload.get("y"), 0.0),
+                            width=_as_float(payload.get("width"), 0.0),
+                            height=_as_float(payload.get("height"), 0.0),
+                            lines=_as_int(payload.get("lines"), 0),
+                            color=color,
+                            z=_as_float(payload.get("z"), 0.5),
+                            static=bool(payload.get("static", False)),
+                        )
+                        continue
+                    if kind == "text":
+                        text = payload.get("text")
+                        color = payload.get("color", "#ffffff")
+                        anchor = payload.get("anchor", "top-left")
+                        if not isinstance(text, str):
+                            continue
+                        text_key = payload.get("key")
+                        self.add_text(
+                            key=text_key if isinstance(text_key, str) else None,
+                            text=text,
+                            x=_as_float(payload.get("x"), 0.0),
+                            y=_as_float(payload.get("y"), 0.0),
+                            font_size=_as_float(payload.get("font_size"), 18.0),
+                            color=str(color),
+                            anchor=str(anchor),
+                            z=_as_float(payload.get("z"), 2.0),
+                            static=bool(payload.get("static", False)),
+                        )
+                        continue
+                    if kind == "title":
+                        title = payload.get("title")
+                        if isinstance(title, str):
+                            self.set_title(title)
+        finally:
+            self.end_frame()
 
     def _continuous_frame_due(self, now: float) -> bool:
         if self._render_loop_mode == "continuous":

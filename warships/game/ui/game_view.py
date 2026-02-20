@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 
+from engine.api.render_snapshot import IDENTITY_MAT4, RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.render import RenderAPI as Render2D
 from engine.api.ui_primitives import Button, GridLayout
 from warships.game.app.state_machine import AppState
@@ -114,3 +116,178 @@ class GameView:
                 z=10.5 if button.id.startswith("prompt_") else 3.0,
             )
         return labels
+
+    def build_snapshot(
+        self,
+        *,
+        frame_index: int,
+        ui: AppUIState,
+        debug_ui: bool,
+        debug_labels_state: list[str],
+    ) -> tuple[RenderSnapshot, list[str]]:
+        """Build immutable render snapshot for current UI state."""
+        recorder = _SnapshotRecorder()
+        snapshot_view = GameView(recorder, self._layout)
+        labels = snapshot_view.render(ui=ui, debug_ui=debug_ui, debug_labels_state=debug_labels_state)
+        return recorder.finish(frame_index=frame_index), labels
+
+
+class _SnapshotRecorder:
+    """RenderAPI-compatible recorder that captures immutable snapshot commands."""
+
+    def __init__(self) -> None:
+        self._commands: list[RenderCommand] = []
+
+    def begin_frame(self) -> None:
+        return
+
+    def end_frame(self) -> None:
+        return
+
+    def add_rect(
+        self,
+        key: str | None,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+    ) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind="rect",
+                layer=int(round(z * 100.0)),
+                transform=IDENTITY_MAT4,
+                data=(
+                    ("key", key),
+                    ("x", float(x)),
+                    ("y", float(y)),
+                    ("w", float(w)),
+                    ("h", float(h)),
+                    ("color", str(color)),
+                    ("z", float(z)),
+                    ("static", bool(static)),
+                ),
+            )
+        )
+
+    def add_grid(
+        self,
+        key: str,
+        x: float,
+        y: float,
+        width: float,
+        height: float,
+        lines: int,
+        color: str,
+        z: float = 0.5,
+        static: bool = False,
+    ) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind="grid",
+                layer=int(round(z * 100.0)),
+                transform=IDENTITY_MAT4,
+                data=(
+                    ("key", key),
+                    ("x", float(x)),
+                    ("y", float(y)),
+                    ("width", float(width)),
+                    ("height", float(height)),
+                    ("lines", int(lines)),
+                    ("color", str(color)),
+                    ("z", float(z)),
+                    ("static", bool(static)),
+                ),
+            )
+        )
+
+    def add_text(
+        self,
+        key: str | None,
+        text: str,
+        x: float,
+        y: float,
+        font_size: float = 18.0,
+        color: str = "#ffffff",
+        anchor: str = "top-left",
+        z: float = 2.0,
+        static: bool = False,
+    ) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind="text",
+                layer=int(round(z * 100.0)),
+                transform=IDENTITY_MAT4,
+                data=(
+                    ("key", key),
+                    ("text", str(text)),
+                    ("x", float(x)),
+                    ("y", float(y)),
+                    ("font_size", float(font_size)),
+                    ("color", str(color)),
+                    ("anchor", str(anchor)),
+                    ("z", float(z)),
+                    ("static", bool(static)),
+                ),
+            )
+        )
+
+    def set_title(self, title: str) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind="title",
+                layer=0,
+                transform=IDENTITY_MAT4,
+                data=(("title", str(title)),),
+            )
+        )
+
+    def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind="fill_window",
+                layer=int(round(z * 100.0)),
+                transform=IDENTITY_MAT4,
+                data=(
+                    ("key", str(key)),
+                    ("color", str(color)),
+                    ("z", float(z)),
+                ),
+            )
+        )
+
+    def to_design_space(self, x: float, y: float) -> tuple[float, float]:
+        return (x, y)
+
+    def invalidate(self) -> None:
+        return
+
+    def run(self, draw_callback: Callable[[], None]) -> None:
+        _ = draw_callback
+        return
+
+    def close(self) -> None:
+        return
+
+    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        _ = snapshot
+        return
+
+    def finish(self, *, frame_index: int) -> RenderSnapshot:
+        commands = tuple(
+            sorted(
+                self._commands,
+                key=lambda command: (
+                    int(getattr(command, "layer", 0)),
+                    str(getattr(command, "kind", "")),
+                    str(getattr(command, "sort_key", "")),
+                ),
+            )
+        )
+        return RenderSnapshot(
+            frame_index=int(frame_index),
+            passes=(RenderPassSnapshot(name="ui", commands=commands),),
+        )

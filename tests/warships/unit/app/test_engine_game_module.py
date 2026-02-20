@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from engine.api.game_module import HostFrameContext
 from engine.api.input_snapshot import InputSnapshot
+from engine.api.render_snapshot import RenderSnapshot
 from warships.game.app.engine_game_module import WarshipsGameModule
 
 
@@ -44,6 +45,11 @@ class _View:
         _ = (ui, debug_ui, labels)
         self.calls += 1
         return ["next"]
+
+    def build_snapshot(self, *, frame_index: int, ui, debug_ui: bool, debug_labels_state: list[str]):
+        _ = (frame_index, ui, debug_ui, debug_labels_state)
+        self.calls += 1
+        return RenderSnapshot(frame_index=frame_index), ["next"]
 
 
 class _Controller:
@@ -99,7 +105,9 @@ def test_game_module_frame_and_close_lifecycle() -> None:
     )
     module.on_start(host)
     module.on_frame(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))
+    snapshot = module.build_render_snapshot()
     assert framework.synced == 1
     assert view.calls == 1
+    assert snapshot is not None
     assert host.closed == 1
     assert not module.should_close()

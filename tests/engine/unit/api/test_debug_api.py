@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.debug import (
     export_crash_bundle,
     export_profiling_snapshot,
@@ -34,6 +35,16 @@ class _FakeModule:
 
     def on_frame(self, context) -> None:
         _ = context
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        _ = snapshot
+        return False
+
+    def simulate(self, context) -> None:
+        self.on_frame(context)
+
+    def build_render_snapshot(self):
+        return None
 
     def should_close(self) -> bool:
         return False

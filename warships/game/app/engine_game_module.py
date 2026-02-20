@@ -23,6 +23,7 @@ from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_gra
 from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_framework import UIFramework
 from warships.game.app.controller import GameController
+from warships.game.app.ui_state import AppUIState
 from warships.game.ui.game_view import GameView
 
 
@@ -54,8 +55,8 @@ class _FrameworkSyncSystem(GameplaySystem):
         _ = context
 
 
-class _ViewRenderSystem(GameplaySystem):
-    """Render frame and update transient frame state."""
+class _ViewProjectionSystem(GameplaySystem):
+    """Capture current UI state for frame snapshot build."""
 
     def start(self, context: RuntimeContext) -> None:
         _ = context
@@ -63,13 +64,10 @@ class _ViewRenderSystem(GameplaySystem):
     def update(self, context: RuntimeContext, delta_seconds: float) -> None:
         _ = delta_seconds
         controller = cast(GameController, context.require("controller"))
-        view = cast(GameView, context.require("view"))
-        debug_ui = cast(bool, context.require("debug_ui"))
         state_store = cast(StateStore[_FrameState], context.require("frame_state_store"))
-        frame_state = state_store.get()
         ui = controller.ui_state()
-        next_labels = view.render(ui, debug_ui, frame_state.debug_labels)
-        state_store.set(_FrameState(debug_labels=next_labels, ui_state=ui))
+        frame_state = state_store.get()
+        state_store.set(_FrameState(debug_labels=frame_state.debug_labels, ui_state=ui))
 
     def shutdown(self, context: RuntimeContext) -> None:
         _ = context
@@ -140,7 +138,7 @@ class WarshipsGameModule(GameModule):
         self._context.provide("frame_state_store", self._frame_state_store)
         self._update_loop = create_update_loop()
         self._update_loop.add_system(SystemSpec("framework_sync", _FrameworkSyncSystem(), order=0))
-        self._update_loop.add_system(SystemSpec("view_render", _ViewRenderSystem(), order=10))
+        self._update_loop.add_system(SystemSpec("view_projection", _ViewProjectionSystem(), order=10))
         self._update_loop.add_system(
             SystemSpec("close_lifecycle", _CloseLifecycleSystem(), order=20)
         )
@@ -168,6 +166,9 @@ class WarshipsGameModule(GameModule):
         return self._framework.handle_wheel_event(event)
 
     def on_frame(self, context: HostFrameContext) -> None:
+        self.simulate(context)
+
+    def simulate(self, context: HostFrameContext) -> None:
         self._context.provide("frame_context", context)
         self._graph.update_all(self._context)
 
@@ -175,11 +176,24 @@ class WarshipsGameModule(GameModule):
         self._context.provide("input_snapshot", snapshot)
         return self._framework.handle_input_snapshot(snapshot)
 
-    def simulate(self, context: HostFrameContext) -> None:
-        self.on_frame(context)
-
     def build_render_snapshot(self) -> RenderSnapshot | None:
-        return None
+        frame_context = cast(HostFrameContext | None, self._context.get("frame_context"))
+        if frame_context is None:
+            return None
+        state_store = cast(StateStore[_FrameState], self._context.require("frame_state_store"))
+        frame_state = state_store.get()
+        ui_state = frame_state.ui_state
+        if ui_state is None:
+            return None
+        view = cast(GameView, self._context.require("view"))
+        snapshot, labels = view.build_snapshot(
+            frame_index=frame_context.frame_index,
+            ui=cast(AppUIState, ui_state),
+            debug_ui=cast(bool, self._context.require("debug_ui")),
+            debug_labels_state=frame_state.debug_labels,
+        )
+        state_store.set(_FrameState(debug_labels=labels, ui_state=ui_state))
+        return snapshot
 
     def should_close(self) -> bool:
         return False

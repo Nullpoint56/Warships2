@@ -8,6 +8,7 @@ import pytest
 
 from engine.api.input_events import KeyEvent, PointerEvent
 from engine.api.input_snapshot import ActionSnapshot, ControllerSnapshot, InputSnapshot
+from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.runtime.host import EngineHost
 from engine.runtime.metrics import MetricsSnapshot
 
@@ -109,6 +110,7 @@ class _FakeRenderer:
         self.text_calls: list[str] = []
         self.text_values: list[str] = []
         self.invalidates = 0
+        self.snapshots: list[RenderSnapshot] = []
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (x, y)
@@ -136,6 +138,30 @@ class _FakeRenderer:
     def invalidate(self) -> None:
         self.invalidates += 1
 
+    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        self.snapshots.append(snapshot)
+        for render_pass in snapshot.passes:
+            for command in render_pass.commands:
+                data = {str(key): value for key, value in command.data}
+                if command.kind == "text":
+                    key = data.get("key")
+                    text = data.get("text")
+                    self.text_calls.append(str(key))
+                    self.text_values.append(str(text))
+
+
+class _SnapshotModule(FakeModule):
+    def __init__(self) -> None:
+        super().__init__()
+        self.payload: list[str] = ["base"]
+
+    def build_render_snapshot(self) -> RenderSnapshot:
+        command = RenderCommand(kind="text", data=(("key", "mod:text"), ("text", self.payload)))
+        return RenderSnapshot(
+            frame_index=len(self.frames),
+            passes=(RenderPassSnapshot(name="main", commands=(command,)),),
+        )
+
 
 def test_engine_host_lifecycle_and_close() -> None:
     module = FakeModule()
@@ -150,6 +176,32 @@ def test_engine_host_lifecycle_and_close() -> None:
     assert module.frames[1][2] >= module.frames[1][1]
     assert host.is_closed()
     assert module.shutdown_calls == 1
+
+
+def test_engine_host_submits_module_snapshot_to_renderer() -> None:
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+
+    assert len(renderer.snapshots) == 1
+    submitted = renderer.snapshots[0]
+    assert submitted.frame_index == len(module.frames)
+    assert submitted.passes[0].commands[0].kind == "text"
+
+
+def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+    module.payload.append("mutated")
+
+    submitted = renderer.snapshots[0]
+    data = dict(submitted.passes[0].commands[0].data)
+    assert data["text"] == ("base",)
 
 
 def test_engine_host_forwards_input_events() -> None:

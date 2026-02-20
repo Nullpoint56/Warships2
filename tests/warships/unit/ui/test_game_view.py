@@ -44,3 +44,25 @@ def test_game_view_skips_new_game_custom_buttons_in_overlay() -> None:
     labels = view.render(ui, debug_ui=False, debug_labels_state=[])
     assert renderer.begun == 1 and renderer.ended == 1
     assert isinstance(labels, list)
+
+
+def test_game_view_build_snapshot_contains_scalar_render_payloads() -> None:
+    renderer = _Render()
+    view = GameView(renderer, GridLayout())
+    ui = make_ui_state(state=AppState.MAIN_MENU)
+
+    snapshot, _labels = view.build_snapshot(
+        frame_index=7,
+        ui=ui,
+        debug_ui=False,
+        debug_labels_state=[],
+    )
+
+    assert snapshot.frame_index == 7
+    assert snapshot.passes
+    for render_pass in snapshot.passes:
+        for command in render_pass.commands:
+            assert len(command.transform.values) == 16
+            for key, value in command.data:
+                assert isinstance(key, str)
+                assert value is None or isinstance(value, (bool, int, float, str))
