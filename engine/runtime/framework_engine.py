@@ -5,6 +5,7 @@ from __future__ import annotations
 from engine.api.app_port import EngineAppPort, InteractionPlanView
 from engine.api.commands import create_command_map
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.ui_primitives import (
     GridLayout,
@@ -100,6 +101,31 @@ class EngineUIFramework:
         if not can_scroll_with_wheel(interactions, x, y):
             return False
         return self._app.on_wheel(x=x, y=y, dy=event.dy)
+
+    def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        """Route one immutable input snapshot through framework handlers."""
+        changed = False
+        mx = float(snapshot.mouse.x)
+        my = float(snapshot.mouse.y)
+        if snapshot.mouse.delta_x != 0.0 or snapshot.mouse.delta_y != 0.0:
+            changed = self.handle_pointer_event(
+                PointerEvent("pointer_move", mx, my, 0)
+            ) or changed
+        for button in sorted(snapshot.mouse.just_pressed_buttons):
+            changed = self.handle_pointer_event(
+                PointerEvent("pointer_down", mx, my, int(button))
+            ) or changed
+        for button in sorted(snapshot.mouse.just_released_buttons):
+            changed = self.handle_pointer_event(
+                PointerEvent("pointer_up", mx, my, int(button))
+            ) or changed
+        for key in sorted(snapshot.keyboard.just_pressed_keys):
+            changed = self.handle_key_event(KeyEvent("key_down", str(key))) or changed
+        for char in snapshot.keyboard.text_input:
+            changed = self.handle_key_event(KeyEvent("char", str(char))) or changed
+        if snapshot.mouse.wheel_delta != 0.0:
+            changed = self.handle_wheel_event(WheelEvent(mx, my, float(snapshot.mouse.wheel_delta))) or changed
+        return changed
 
     @staticmethod
     def _resolve_shortcut_button_command(

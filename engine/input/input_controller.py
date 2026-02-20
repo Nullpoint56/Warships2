@@ -43,8 +43,10 @@ class InputController:
         self._pointer_action_bindings: dict[int, str] = {}
         self._char_action_bindings: dict[str, str] = {}
         self._active_actions: set[str] = set()
+        self._pending_mapping_conflicts: list[str] = []
         self._debug = os.getenv("WARSHIPS_DEBUG_INPUT", "0") == "1"
         self._on_click_queued = on_click_queued
+        self.bind_action_key_down("f3", "engine.debug_overlay.toggle")
 
     def bind(self, canvas: Any) -> None:
         """Attach pointer listeners to a wgpu canvas."""
@@ -115,18 +117,31 @@ class InputController:
         normalized = key_name.strip().lower()
         if not normalized:
             raise ValueError("key_name must not be empty")
+        existing = self._key_action_bindings.get(normalized)
+        if existing is not None and existing != action_name:
+            self._pending_mapping_conflicts.append(
+                f"key_down:{normalized}:{existing}->{action_name}"
+            )
         self._key_action_bindings[normalized] = action_name
 
     def bind_action_pointer_down(self, button: int, action_name: str) -> None:
         """Bind pointer-down button to logical action."""
         if button < 0:
             raise ValueError("button must be >= 0")
+        existing = self._pointer_action_bindings.get(button)
+        if existing is not None and existing != action_name:
+            self._pending_mapping_conflicts.append(
+                f"pointer_down:{button}:{existing}->{action_name}"
+            )
         self._pointer_action_bindings[button] = action_name
 
     def bind_action_char(self, char_value: str, action_name: str) -> None:
         """Bind char input to logical action."""
         if not char_value:
             raise ValueError("char_value must not be empty")
+        existing = self._char_action_bindings.get(char_value)
+        if existing is not None and existing != action_name:
+            self._pending_mapping_conflicts.append(f"char:{char_value}:{existing}->{action_name}")
         self._char_action_bindings[char_value] = action_name
 
     def build_input_snapshot(self, *, frame_index: int) -> InputSnapshot:
@@ -220,7 +235,13 @@ class InputController:
             active=frozenset(self._active_actions),
             just_started=frozenset(just_started_actions),
             just_ended=frozenset(just_ended_actions),
+            values=tuple(
+                [("meta.mapping_conflicts", float(len(self._pending_mapping_conflicts)))]
+                if self._pending_mapping_conflicts
+                else []
+            ),
         )
+        self._pending_mapping_conflicts.clear()
         return InputSnapshot(
             frame_index=frame_index,
             keyboard=keyboard,

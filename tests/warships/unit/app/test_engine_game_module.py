@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from engine.api.game_module import HostFrameContext
+from engine.api.input_snapshot import InputSnapshot
 from warships.game.app.engine_game_module import WarshipsGameModule
 
 
@@ -27,6 +28,11 @@ class _Framework:
     def handle_wheel_event(self, event) -> bool:
         _ = event
         self.calls.append("wheel")
+        return True
+
+    def handle_input_snapshot(self, snapshot) -> bool:
+        _ = snapshot
+        self.calls.append("snapshot")
         return True
 
 
@@ -81,6 +87,7 @@ def test_game_module_forwards_input_events() -> None:
     assert module.on_pointer_event(object())
     assert module.on_key_event(object())
     assert module.on_wheel_event(object())
+    assert module.on_input_snapshot(InputSnapshot(frame_index=0))
 
 
 def test_game_module_frame_and_close_lifecycle() -> None:

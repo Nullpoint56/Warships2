@@ -1,4 +1,5 @@
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot, KeyboardSnapshot, MouseSnapshot
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.ui_runtime.grid_layout import GridLayout
 from tests.engine.conftest import (
@@ -122,3 +123,31 @@ def test_modal_key_swallow_without_action_returns_false() -> None:
     framework.sync_ui_state()
     changed = framework.handle_key_event(KeyEvent("key_down", "F1"))
     assert not changed
+
+
+def test_input_snapshot_routes_through_framework_handlers() -> None:
+    app = FakeApp()
+    app.set_plan(FakeInteractionPlan(wheel_scroll_regions=(Box(0, 0, 200, 200),)))
+    framework = EngineUIFramework(app=app, renderer=FakeRenderer(), layout=GridLayout())
+    snapshot = InputSnapshot(
+        frame_index=1,
+        keyboard=KeyboardSnapshot(just_pressed_keys=frozenset({"r"}), text_input=("x",)),
+        mouse=MouseSnapshot(
+            x=50.0,
+            y=50.0,
+            delta_x=1.0,
+            delta_y=0.0,
+            wheel_delta=1.0,
+            just_pressed_buttons=frozenset({1}),
+            just_released_buttons=frozenset({1}),
+        ),
+    )
+    changed = framework.handle_input_snapshot(snapshot)
+    assert changed
+    call_names = [name for name, _ in app.calls]
+    assert "on_pointer_move" in call_names
+    assert "on_pointer_down" in call_names or "on_button" in call_names
+    assert "on_pointer_release" in call_names
+    assert "on_key" in call_names
+    assert "on_char" in call_names
+    assert "on_wheel" in call_names

@@ -6,6 +6,7 @@ from typing import Protocol
 
 from engine.api.app_port import EngineAppPort
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.ui_primitives import GridLayout
 
@@ -24,6 +25,9 @@ class UIFramework(Protocol):
 
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Handle wheel event and return changed flag."""
+
+    def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        """Handle one immutable input snapshot and return changed flag."""
 
 
 def create_ui_framework(

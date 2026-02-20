@@ -64,6 +64,7 @@ class EngineHost(HostControl):
         self._clock = FrameClock()
         self._scheduler = Scheduler()
         self._render_api = render_api
+        self._connected_controller_ids: set[str] = set()
         cfg = load_debug_config()
         diag_cfg = load_diagnostics_config()
         self._diag_cfg = diag_cfg
@@ -231,49 +232,86 @@ class EngineHost(HostControl):
         return self._module.on_wheel_event(event)
 
     def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
-        for pointer_event in snapshot.pointer_events:
-            self._replay_recorder.record_command(
-                tick=self._frame_index,
-                command_type="input.pointer",
-                payload={
-                    "event_type": str(getattr(pointer_event, "event_type", "")),
-                    "x": float(getattr(pointer_event, "x", 0.0)),
-                    "y": float(getattr(pointer_event, "y", 0.0)),
-                    "button": int(getattr(pointer_event, "button", 0)),
-                },
-            )
-        filtered_key_events: list[KeyEvent] = []
-        overlay_toggled = False
-        for key_event in snapshot.key_events:
-            self._replay_recorder.record_command(
-                tick=self._frame_index,
-                command_type="input.key",
-                payload={
-                    "event_type": str(getattr(key_event, "event_type", "")),
-                    "value": str(getattr(key_event, "value", "")),
-                },
-            )
-            if self._debug_overlay is not None and self._is_overlay_toggle_event(key_event):
-                self._debug_overlay_visible = not self._debug_overlay_visible
-                if self._render_api is not None and hasattr(self._render_api, "invalidate"):
-                    self._render_api.invalidate()
-                overlay_toggled = True
-                continue
-            filtered_key_events.append(key_event)
-        for wheel_event in snapshot.wheel_events:
-            self._replay_recorder.record_command(
-                tick=self._frame_index,
-                command_type="input.wheel",
-                payload={
-                    "x": float(getattr(wheel_event, "x", 0.0)),
-                    "y": float(getattr(wheel_event, "y", 0.0)),
-                    "dy": float(getattr(wheel_event, "dy", 0.0)),
-                },
-            )
-        module_snapshot = snapshot
-        if len(filtered_key_events) != len(snapshot.key_events):
-            module_snapshot = replace(snapshot, key_events=tuple(filtered_key_events))
+        self._emit_input_snapshot_diagnostics(snapshot)
+        self._record_snapshot_action_stream(snapshot)
+        overlay_toggled = self._toggle_overlay_from_actions(snapshot.actions.just_started)
+        module_snapshot = self._filter_overlay_key_events(snapshot)
         return bool(self._module.on_input_snapshot(module_snapshot)) or overlay_toggled
+
+    def _emit_input_snapshot_diagnostics(self, snapshot: InputSnapshot) -> None:
+        self._diagnostics_hub.emit_fast(
+            category="input",
+            name="input.event_frequency",
+            tick=self._frame_index,
+            value={
+                "pointer_events": int(len(snapshot.pointer_events)),
+                "key_events": int(len(snapshot.key_events)),
+                "wheel_events": int(len(snapshot.wheel_events)),
+                "controllers": int(len(snapshot.controllers)),
+            },
+        )
+        for name, value in snapshot.actions.values:
+            if name == "meta.mapping_conflicts" and float(value) > 0:
+                self._diagnostics_hub.emit_fast(
+                    category="input",
+                    name="input.mapping_conflict",
+                    tick=self._frame_index,
+                    value=float(value),
+                )
+        current_connected: set[str] = {
+            str(controller.device_id)
+            for controller in snapshot.controllers
+            if bool(getattr(controller, "connected", False))
+        }
+        for device_id in sorted(current_connected - self._connected_controller_ids):
+            self._diagnostics_hub.emit_fast(
+                category="input",
+                name="input.device_connected",
+                tick=self._frame_index,
+                value={"device_id": device_id},
+            )
+        for device_id in sorted(self._connected_controller_ids - current_connected):
+            self._diagnostics_hub.emit_fast(
+                category="input",
+                name="input.device_disconnected",
+                tick=self._frame_index,
+                value={"device_id": device_id},
+            )
+        self._connected_controller_ids = current_connected
+
+    def _record_snapshot_action_stream(self, snapshot: InputSnapshot) -> None:
+        for action in sorted(snapshot.actions.just_started):
+            self._replay_recorder.record_command(
+                tick=self._frame_index,
+                command_type="input.action",
+                payload={"name": str(action), "phase": "start"},
+            )
+        for action in sorted(snapshot.actions.just_ended):
+            self._replay_recorder.record_command(
+                tick=self._frame_index,
+                command_type="input.action",
+                payload={"name": str(action), "phase": "end"},
+            )
+
+    def _toggle_overlay_from_actions(self, just_started_actions: frozenset[str]) -> bool:
+        if self._debug_overlay is None:
+            return False
+        if "engine.debug_overlay.toggle" not in just_started_actions:
+            return False
+        self._debug_overlay_visible = not self._debug_overlay_visible
+        if self._render_api is not None and hasattr(self._render_api, "invalidate"):
+            self._render_api.invalidate()
+        return True
+
+    def _filter_overlay_key_events(self, snapshot: InputSnapshot) -> InputSnapshot:
+        filtered_key_events = tuple(
+            key_event
+            for key_event in snapshot.key_events
+            if not self._is_overlay_toggle_event(key_event)
+        )
+        if len(filtered_key_events) == len(snapshot.key_events):
+            return snapshot
+        return replace(snapshot, key_events=filtered_key_events)
 
     def frame(self) -> None:
         """Execute one frame callback."""

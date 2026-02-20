@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from engine.api.input_events import KeyEvent, PointerEvent
-from engine.api.input_snapshot import InputSnapshot
+from engine.api.input_snapshot import ActionSnapshot, ControllerSnapshot, InputSnapshot
 from engine.runtime.host import EngineHost
 from engine.runtime.metrics import MetricsSnapshot
 
@@ -172,6 +172,55 @@ def test_engine_host_handles_input_snapshot() -> None:
     assert host.handle_input_snapshot(snapshot) is False
     assert module.pointer_events == 0
     assert module.key_events == 0
+
+
+def test_engine_host_replay_records_logical_actions_from_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    host = EngineHost(module=FakeModule())
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(
+            just_started=frozenset({"action.confirm"}),
+            just_ended=frozenset({"action.cancel"}),
+        ),
+        key_events=(KeyEvent(event_type="key_down", value="a"),),
+    )
+    host.handle_input_snapshot(snapshot)
+    replay = host.diagnostics_replay_snapshot
+    commands = list(replay.get("commands", []))
+    types = [str(item.get("type", "")) for item in commands]
+    assert types.count("input.action") == 2
+    assert "input.key" not in types
+
+
+def test_engine_host_snapshot_overlay_toggle_uses_logical_action(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    renderer = _FakeRenderer()
+    host = EngineHost(module=FakeModule(), render_api=renderer)
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
+        key_events=(KeyEvent(event_type="key_down", value="f3"),),
+    )
+    assert host.handle_input_snapshot(snapshot) is True
+    assert renderer.invalidates == 1
+
+
+def test_engine_host_emits_input_diagnostics_for_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    host = EngineHost(module=FakeModule())
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(values=(("meta.mapping_conflicts", 1.0),)),
+        controllers=(ControllerSnapshot(device_id="pad-1", connected=True),),
+    )
+    host.handle_input_snapshot(snapshot)
+    freq = host.diagnostics_hub.snapshot(category="input", name="input.event_frequency")
+    assert freq
+    conflicts = host.diagnostics_hub.snapshot(category="input", name="input.mapping_conflict")
+    assert conflicts
+    connected = host.diagnostics_hub.snapshot(category="input", name="input.device_connected")
+    assert connected
 
 
 def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:

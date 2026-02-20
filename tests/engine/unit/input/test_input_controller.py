@@ -153,3 +153,12 @@ def test_action_binding_validation() -> None:
         controller.bind_action_pointer_down(-1, "a")
     with pytest.raises(ValueError):
         controller.bind_action_char("", "a")
+
+
+def test_action_binding_conflicts_are_reported_in_snapshot_values() -> None:
+    controller = InputController()
+    controller.bind_action_key_down("k", "action.one")
+    controller.bind_action_key_down("k", "action.two")
+    snapshot = controller.build_input_snapshot(frame_index=1)
+    values = dict(snapshot.actions.values)
+    assert values.get("meta.mapping_conflicts", 0.0) >= 1.0
