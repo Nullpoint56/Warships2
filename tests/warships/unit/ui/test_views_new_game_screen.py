@@ -43,3 +43,4 @@ def test_draw_new_game_setup_random_button_text_is_fitted() -> None:
             break
     else:
         raise AssertionError("newgame:random:text was not rendered")
+

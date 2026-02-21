@@ -7,18 +7,93 @@ from engine.api.ui_primitives import Rect, fit_text_to_rect
 from engine.api.ui_projection import TextFitSpec, project_text_fit
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
+    draw_gradient_rect,
     draw_rounded_rect,
     draw_shadow_rect,
     draw_stroke_rect,
 )
+from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import PRESET_PANEL
+from warships.game.ui.scene_theme import SceneTheme, theme_for_state
 from warships.game.ui.views.common import draw_preset_preview
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
-def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
+def _draw_action_button(
+    renderer: Render2D,
+    *,
+    key: str,
+    text: str,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    fill: str,
+    border: str,
+    highlight: str,
+    z: float,
+) -> None:
+    radius = 5.0
+    draw_rounded_rect(renderer, key=f"{key}:bg", x=x, y=y, w=w, h=h, radius=radius, color=fill, z=z)
+    draw_rounded_rect(
+        renderer,
+        key=f"{key}:border",
+        x=x,
+        y=y,
+        w=w,
+        h=h,
+        radius=radius,
+        color=border,
+        z=z + 0.01,
+    )
+    draw_rounded_rect(
+        renderer,
+        key=f"{key}:inner",
+        x=x + 1.0,
+        y=y + 1.0,
+        w=max(1.0, w - 2.0),
+        h=max(1.0, h - 2.0),
+        radius=max(0.0, radius - 1.0),
+        color=fill,
+        z=z + 0.011,
+    )
+    draw_rounded_rect(
+        renderer,
+        key=f"{key}:highlight",
+        x=x + 1.0,
+        y=y + 1.0,
+        w=max(1.0, w - 2.0),
+        h=max(1.0, (h * 0.45) - 1.0),
+        radius=max(0.0, radius - 1.0),
+        color=highlight,
+        z=z + 0.02,
+    )
+    label, font = fit_text_to_rect(
+        text,
+        rect_w=w,
+        rect_h=h,
+        base_font_size=14.0,
+        min_font_size=10.0,
+        overflow_policy="ellipsis",
+    )
+    renderer.add_text(
+        key=f"{key}:text",
+        text=label,
+        x=x + w / 2.0,
+        y=y + h / 2.0,
+        font_size=font,
+        color=TOKENS.text_on_accent,
+        anchor="middle-center",
+        z=z + 0.03,
+    )
+
+
+def draw_preset_manage(
+    renderer: Render2D, ui: AppUIState, theme: SceneTheme | None = None
+) -> None:
+    active_theme = theme or theme_for_state(AppState.PRESET_MANAGE)
     panel = PRESET_PANEL.panel_rect()
     panel_x = panel.x
     panel_y = panel.y
@@ -31,7 +106,8 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
         y=panel_y + 2.0,
         w=panel_w,
         h=panel_h,
-        color=TOKENS.shadow_strong,
+        color=TOKENS.shadow_soft,
+        corner_radius=10.0,
         z=0.82,
     )
     draw_rounded_rect(
@@ -42,9 +118,31 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
         w=panel_w,
         h=panel_h,
         radius=10.0,
-        color=TOKENS.surface_base,
+        color=active_theme.panel_bg,
         z=0.85,
     )
+    draw_gradient_rect(
+        renderer,
+        key="presets:panel:glow",
+        x=panel_x + 2.0,
+        y=panel_y + 2.0,
+        w=max(1.0, panel_w - 4.0),
+        h=max(1.0, panel_h * 0.14),
+        top_color=active_theme.panel_glow_top,
+        bottom_color=TOKENS.highlight_bottom_clear,
+        z=0.855,
+        steps=4,
+    )
+    for idx in range(6):
+        renderer.add_rect(
+            f"presets:panel:pattern:{idx}",
+            panel_x + 14.0 + idx * 26.0,
+            panel_y + 14.0,
+            14.0,
+            2.0,
+            active_theme.panel_pattern,
+            z=0.856,
+        )
     draw_stroke_rect(
         renderer,
         key="presets:panel:border",
@@ -52,7 +150,7 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
         y=panel_y,
         w=panel_w,
         h=panel_h,
-        color=TOKENS.border_subtle,
+        color=active_theme.panel_border,
         z=0.86,
     )
     title_text, title_font_size = fit_text_to_rect(
@@ -132,37 +230,43 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
             cell=PRESET_PANEL.preview_cell,
         )
         edit_rect, rename_rect, delete_rect = PRESET_PANEL.action_button_rects(idx)
-        draw_rounded_rect(
+        _draw_action_button(
             renderer,
-            key=f"preset:btnbg:edit:{row.name}",
+            key=f"preset:btn:edit:{row.name}",
+            text="Edit",
             x=edit_rect.x,
             y=edit_rect.y,
             w=edit_rect.w,
             h=edit_rect.h,
-            radius=5.0,
-            color=TOKENS.accent,
+            fill=active_theme.primary_button_bg,
+            border=active_theme.primary_button_border,
+            highlight=active_theme.primary_button_highlight,
             z=1.0,
         )
-        draw_rounded_rect(
+        _draw_action_button(
             renderer,
-            key=f"preset:btnbg:rename:{row.name}",
+            key=f"preset:btn:rename:{row.name}",
+            text="Rename",
             x=rename_rect.x,
             y=rename_rect.y,
             w=rename_rect.w,
             h=rename_rect.h,
-            radius=5.0,
-            color=TOKENS.accent,
+            fill=active_theme.primary_button_bg,
+            border=active_theme.primary_button_border,
+            highlight=active_theme.primary_button_highlight,
             z=1.0,
         )
-        draw_rounded_rect(
+        _draw_action_button(
             renderer,
-            key=f"preset:btnbg:delete:{row.name}",
+            key=f"preset:btn:delete:{row.name}",
+            text="Delete",
             x=delete_rect.x,
             y=delete_rect.y,
             w=delete_rect.w,
             h=delete_rect.h,
-            radius=5.0,
-            color=TOKENS.danger,
+            fill=active_theme.danger_button_bg,
+            border=active_theme.danger_button_border,
+            highlight=TOKENS.highlight_top_subtle,
             z=1.0,
         )
     if ui.preset_manage_can_scroll_up:

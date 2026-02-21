@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 from engine.api.ui_primitives import (
     Button,
+    ButtonStyle,
     Rect,
     TextOverflowPolicy,
     clamp_child_rect_to_parent,
@@ -25,6 +26,7 @@ class ButtonSpec:
     h: float
     visible: bool = True
     enabled: bool = True
+    style: ButtonStyle | dict[str, object] | None = None
     when: bool = True
 
 
@@ -64,6 +66,7 @@ def project_buttons(
             h=rect.h,
             visible=spec.visible,
             enabled=spec.enabled,
+            style=spec.style,
         )
     return [
         _project(spec)

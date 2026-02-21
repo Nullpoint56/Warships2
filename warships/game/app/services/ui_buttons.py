@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from engine.api.ui_projection import ButtonSpec, project_buttons
+from engine.api.ui_primitives import ButtonStyle
+from engine.api.ui_style import DEFAULT_UI_STYLE_TOKENS
 from warships.game.app.ports.runtime_primitives import Button, PromptView
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.preset_flow import PresetFlowService
@@ -10,6 +12,8 @@ from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import PresetRowView
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL, PROMPT
 from warships.game.ui.overlays import buttons_for_state
+
+TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
 def prompt_buttons(prompt: PromptView) -> list[Button]:
@@ -48,6 +52,15 @@ def preset_row_buttons(rows: list[PresetRowView]) -> list[Button]:
                 delete_rect.y,
                 delete_rect.w,
                 delete_rect.h,
+                style=ButtonStyle(
+                    bg_color=TOKENS.danger,
+                    border_color=TOKENS.danger,
+                    highlight_color=TOKENS.highlight_top_subtle,
+                    text_color=TOKENS.text_on_accent,
+                    radius=8.0,
+                    border_thickness=1.0,
+                    glossy=True,
+                ),
             )
         )
     return project_buttons(tuple(specs))

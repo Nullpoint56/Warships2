@@ -13,25 +13,25 @@ from engine.api.render import RenderAPI
 class UIStyleTokens:
     """Deterministic default style tokens for 2D UI scenes."""
 
-    window_bg: str = "#0b132b"
-    surface_base: str = "#0f172a"
-    surface_elevated: str = "#1e293b"
-    surface_overlay: str = "#111827"
-    border_subtle: str = "#334155"
-    border_accent: str = "#60a5fa"
-    accent: str = "#1f6feb"
-    accent_hover: str = "#2563eb"
-    accent_muted: str = "#384151"
-    danger: str = "#b91c1c"
-    success: str = "#10b981"
-    success_muted: str = "#059669"
+    window_bg: str = "#0a1220"
+    surface_base: str = "#111a2b"
+    surface_elevated: str = "#18243a"
+    surface_overlay: str = "#0d1626"
+    border_subtle: str = "#2e3e57"
+    border_accent: str = "#4f8cff"
+    accent: str = "#0e66f2"
+    accent_hover: str = "#2a7bff"
+    accent_muted: str = "#2b3f66"
+    danger: str = "#d14343"
+    success: str = "#14b86a"
+    success_muted: str = "#0f8c53"
     warning: str = "#f59e0b"
-    board_bg: str = "#1e3a8a"
-    board_grid: str = "#60a5fa"
-    text_primary: str = "#f9fafb"
-    text_secondary: str = "#dbeafe"
-    text_muted: str = "#bfdbfe"
-    text_on_accent: str = "#e5e7eb"
+    board_bg: str = "#163e8a"
+    board_grid: str = "#73a7ff"
+    text_primary: str = "#f7faff"
+    text_secondary: str = "#c7d5ec"
+    text_muted: str = "#92a8c8"
+    text_on_accent: str = "#ffffff"
     shadow_soft: str = "#00000055"
     shadow_strong: str = "#00000088"
     highlight_top_soft: str = "#ffffff1f"
@@ -161,6 +161,7 @@ def draw_shadow_rect(
     color: str = "#00000055",
     layers: int = 2,
     spread: float = 2.0,
+    corner_radius: float = 0.0,
     z: float = 0.0,
     static: bool = False,
 ) -> None:
@@ -179,7 +180,8 @@ def draw_shadow_rect(
         z=z,
         static=static,
         thickness=spread,
-        radius=float(layers),
+        radius=corner_radius,
+        shadow_layers=float(layers),
     ):
         return
     if w <= 0.0 or h <= 0.0:
@@ -323,6 +325,7 @@ def _add_style_rect(
     radius: float = 0.0,
     thickness: float = 1.0,
     color_secondary: str = "",
+    shadow_layers: float = 0.0,
 ) -> bool:
     add_style_rect = getattr(renderer, "add_style_rect", None)
     if not callable(add_style_rect):
@@ -340,5 +343,6 @@ def _add_style_rect(
         radius=float(radius),
         thickness=float(thickness),
         color_secondary=str(color_secondary),
+        shadow_layers=float(shadow_layers),
     )
     return True

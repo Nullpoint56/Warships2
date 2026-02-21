@@ -148,6 +148,7 @@ class _GlyphPlacement:
 class _GlyphRunLayout:
     width: float
     height: float
+    baseline: float
     placements: tuple[_GlyphPlacement, ...]
 
 
@@ -158,6 +159,13 @@ class _ShapedGlyph:
     y_offset: float
     x_advance: float
     y_advance: float
+
+
+@dataclass(frozen=True, slots=True)
+class _FontVerticalMetrics:
+    ascent: float
+    descent: float
+    line_height: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -359,6 +367,7 @@ class WgpuRenderer:
         radius: float = 0.0,
         thickness: float = 1.0,
         color_secondary: str = "",
+        shadow_layers: float = 0.0,
     ) -> None:
         command = RenderCommand(
             kind=str(style_kind),
@@ -375,6 +384,7 @@ class WgpuRenderer:
                 ("radius", float(radius)),
                 ("thickness", float(thickness)),
                 ("color_secondary", str(color_secondary)),
+                ("shadow_layers", float(shadow_layers)),
             ),
         )
         self._submit_command(command)
@@ -991,12 +1001,20 @@ def _command_to_packet(command: RenderCommand) -> _DrawPacket:
     payload = _normalized_payload(command.data)
     srgb_rgba = _extract_srgb_rgba(payload)
     linear_rgba = _srgb_to_linear_rgba_cached(srgb_rgba)
+    srgb_secondary_rgba = _extract_srgb_secondary_rgba(payload, default=srgb_rgba)
+    linear_secondary_rgba = _srgb_to_linear_rgba_cached(srgb_secondary_rgba)
     return _DrawPacket(
         kind=str(command.kind),
         layer=int(command.layer),
         sort_key=str(command.sort_key),
         transform=_transform_values_tuple(command.transform.values),
-        data=payload + (("srgb_rgba", srgb_rgba), ("linear_rgba", linear_rgba)),
+        data=payload
+        + (
+            ("srgb_rgba", srgb_rgba),
+            ("linear_rgba", linear_rgba),
+            ("srgb_secondary_rgba", srgb_secondary_rgba),
+            ("linear_secondary_rgba", linear_secondary_rgba),
+        ),
     )
 
 
@@ -1115,6 +1133,30 @@ def _extract_srgb_rgba(payload: tuple[tuple[str, object], ...]) -> tuple[float, 
     return fallback
 
 
+def _extract_srgb_secondary_rgba(
+    payload: tuple[tuple[str, object], ...],
+    *,
+    default: tuple[float, float, float, float],
+) -> tuple[float, float, float, float]:
+    color_value: object | None = None
+    for key, value in payload:
+        if str(key) == "color_secondary":
+            color_value = value
+            break
+    if isinstance(color_value, str):
+        cached = _COMMAND_COLOR_CACHE.get(color_value)
+        if cached is not None:
+            return cached
+        parsed = _parse_hex_color(color_value)
+        if parsed is not None:
+            _COMMAND_COLOR_CACHE[color_value] = parsed
+            if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
+                _COMMAND_COLOR_CACHE.clear()
+                _COMMAND_COLOR_CACHE[color_value] = parsed
+            return parsed
+    return default
+
+
 def _parse_hex_color(raw: str) -> tuple[float, float, float, float] | None:
     normalized = raw.strip().lower()
     if not normalized.startswith("#"):
@@ -1176,6 +1218,90 @@ def _normalize_rgba(value: object) -> tuple[float, float, float, float]:
         else:
             rgba.append(1.0)
     return (rgba[0], rgba[1], rgba[2], rgba[3])
+
+
+def _snap_to_pixel(value: float) -> float:
+    return float(round(float(value)))
+
+
+def _stroke_px(thickness_design: float, axis_scale: float) -> float:
+    t = max(1.0, float(thickness_design) * max(0.01, abs(float(axis_scale))))
+    return float(max(1, int(round(t))))
+
+
+def _rounded_rect_draw_rects(
+    *,
+    layer: int,
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+    radius: float,
+    color: tuple[float, float, float, float],
+    max_steps: int = 32,
+) -> tuple[_DrawRect, ...]:
+    x0 = _snap_to_pixel(x)
+    y0 = _snap_to_pixel(y)
+    rw = max(1.0, _snap_to_pixel(w))
+    rh = max(1.0, _snap_to_pixel(h))
+    r = min(max(0.0, float(radius)), rw * 0.5, rh * 0.5)
+    if r < 1.0:
+        return (
+            _DrawRect(
+                layer=layer,
+                x=x0,
+                y=y0,
+                w=rw,
+                h=rh,
+                color=color,
+            ),
+        )
+    rows = max(1, min(max(1, int(max_steps)), int(round(r))))
+    out: list[_DrawRect] = []
+    mid_h = max(0.0, rh - (2.0 * float(rows)))
+    if mid_h > 0.0:
+        out.append(
+            _DrawRect(
+                layer=layer,
+                x=x0,
+                y=y0 + float(rows),
+                w=rw,
+                h=mid_h,
+                color=color,
+            )
+        )
+    for i in range(rows):
+        # Distance from top-corner center; larger at top rows, smaller toward the body.
+        dy = min(float(rows) - 0.0001, float(rows) - (float(i) + 0.5))
+        inset = max(
+            0.0,
+            float(rows) - ((max(0.0, (float(rows) * float(rows)) - (dy * dy))) ** 0.5),
+        )
+        seg_w = max(1.0, rw - (2.0 * inset))
+        sx = x0 + inset
+        ty = y0 + float(i)
+        by = y0 + rh - float(i) - 1.0
+        out.append(
+            _DrawRect(
+                layer=layer,
+                x=sx,
+                y=ty,
+                w=seg_w,
+                h=1.0,
+                color=color,
+            )
+        )
+        out.append(
+            _DrawRect(
+                layer=layer,
+                x=sx,
+                y=by,
+                w=seg_w,
+                h=1.0,
+                color=color,
+            )
+        )
+    return tuple(out)
 
 
 def _lerp(a: float, b: float, t: float) -> float:
@@ -1455,6 +1581,18 @@ def _anchor_to_origin(anchor: str, x: float, y: float, width: float, height: flo
     return ox, oy
 
 
+def _safe_uv_bounds(*, start_px: int, size_px: int, atlas_size_px: int) -> tuple[float, float]:
+    atlas = float(max(1, int(atlas_size_px)))
+    start = int(max(0, start_px))
+    size = int(max(1, size_px))
+    if size <= 1:
+        center = (float(start) + 0.5) / atlas
+        return (center, center)
+    u0 = (float(start) + 0.5) / atlas
+    u1 = (float(start + size) - 0.5) / atlas
+    return (u0, u1)
+
+
 _BITMAP_FONT_5X7: dict[str, tuple[str, ...]] = {
     " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
     "!": ("00100", "00100", "00100", "00100", "00100", "00000", "00100"),
@@ -1564,10 +1702,13 @@ class _WgpuBackend:
     _glyph_index_atlas_cache: dict[tuple[int, int], _GlyphAtlasEntry] = field(
         init=False, default_factory=dict
     )
-    _glyph_run_cache: dict[tuple[str, int, str], _GlyphRunLayout] = field(
+    _glyph_run_cache: dict[tuple[str, int, int, str], _GlyphRunLayout] = field(
         init=False, default_factory=dict
     )
     _hb_font_cache: dict[int, object] = field(init=False, default_factory=dict)
+    _font_vertical_metrics_cache: dict[int, _FontVerticalMetrics] = field(
+        init=False, default_factory=dict
+    )
     _draw_text_vertex_buffer_static: object | None = field(init=False, default=None)
     _draw_text_vertex_buffer_static_capacity: int = field(init=False, default=0)
     _draw_text_vertex_buffer_dynamic: object | None = field(init=False, default=None)
@@ -2168,6 +2309,7 @@ class _WgpuBackend:
         self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
         self._hb_font_cache.clear()
+        self._font_vertical_metrics_cache.clear()
         self._upload_stream_buffer = None
         self._upload_stream_buffer_capacity = 0
         self._draw_vertex_buffer_static = None
@@ -2229,6 +2371,7 @@ class _WgpuBackend:
         self._static_text_bundle_key = None
         self._glyph_index_atlas_cache.clear()
         self._hb_font_cache.clear()
+        self._font_vertical_metrics_cache.clear()
         return
 
     def resize_telemetry(self) -> dict[str, object]:
@@ -2515,6 +2658,7 @@ class _WgpuBackend:
         self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
         self._hb_font_cache.clear()
+        self._font_vertical_metrics_cache.clear()
         self._static_packet_text_quad_cache.clear()
         self._static_pass_expand_cache.clear()
         self._text_face = _try_create_freetype_face(self._font_path)
@@ -2884,13 +3028,27 @@ class _WgpuBackend:
             mapped = self._map_design_rect(
                 _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
             )
-            return (self._with_layer(mapped, layer),)
+            radius_design = _payload_float(payload, "radius", 0.0)
+            radius_px = max(0.0, float(radius_design) * max(abs(float(sx)), abs(float(sy))))
+            if 0.0 < radius_px < 2.5:
+                return (self._with_layer(mapped, layer),)
+            return tuple(
+                self._with_layer(rect, layer)
+                for rect in _rounded_rect_draw_rects(
+                    layer=layer,
+                    x=mapped.x,
+                    y=mapped.y,
+                    w=mapped.w,
+                    h=mapped.h,
+                    radius=radius_px,
+                    color=color,
+                )
+            )
         if kind == "gradient_rect":
             if not payload:
                 return ()
-            top_color = _normalize_rgba(_parse_hex_color(str(payload.get("color", "#ffffff"))))
-            secondary_raw = payload.get("color_secondary", payload.get("color", "#ffffff"))
-            bottom_color = _normalize_rgba(_parse_hex_color(str(secondary_raw)))
+            top_color = _normalize_rgba(payload.get("linear_rgba", (1.0, 1.0, 1.0, 1.0)))
+            bottom_color = _normalize_rgba(payload.get("linear_secondary_rgba", top_color))
             mapped = self._map_design_rect(
                 _rect_from_payload(payload, color=top_color), sx=sx, sy=sy, ox=ox, oy=oy
             )
@@ -2925,15 +3083,21 @@ class _WgpuBackend:
             mapped = self._map_design_rect(
                 _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
             )
-            thickness = max(1.0, _payload_float(payload, "thickness", 1.0))
+            thickness_design = _payload_float(payload, "thickness", 1.0)
+            thickness_h = _stroke_px(thickness_design, sy)
+            thickness_v = _stroke_px(thickness_design, sx)
+            x0 = _snap_to_pixel(mapped.x)
+            y0 = _snap_to_pixel(mapped.y)
+            w0 = max(1.0, _snap_to_pixel(mapped.w))
+            h0 = max(1.0, _snap_to_pixel(mapped.h))
             return (
                 self._with_layer(
                     _DrawRect(
                         layer=layer,
-                        x=mapped.x,
-                        y=mapped.y,
-                        w=mapped.w,
-                        h=thickness,
+                        x=x0,
+                        y=y0,
+                        w=w0,
+                        h=thickness_h,
                         color=color,
                     ),
                     layer,
@@ -2941,10 +3105,10 @@ class _WgpuBackend:
                 self._with_layer(
                     _DrawRect(
                         layer=layer,
-                        x=mapped.x,
-                        y=mapped.y + mapped.h - thickness,
-                        w=mapped.w,
-                        h=thickness,
+                        x=x0,
+                        y=y0 + h0 - thickness_h,
+                        w=w0,
+                        h=thickness_h,
                         color=color,
                     ),
                     layer,
@@ -2952,10 +3116,10 @@ class _WgpuBackend:
                 self._with_layer(
                     _DrawRect(
                         layer=layer,
-                        x=mapped.x,
-                        y=mapped.y,
-                        w=thickness,
-                        h=mapped.h,
+                        x=x0,
+                        y=y0,
+                        w=thickness_v,
+                        h=h0,
                         color=color,
                     ),
                     layer,
@@ -2963,10 +3127,10 @@ class _WgpuBackend:
                 self._with_layer(
                     _DrawRect(
                         layer=layer,
-                        x=mapped.x + mapped.w - thickness,
-                        y=mapped.y,
-                        w=thickness,
-                        h=mapped.h,
+                        x=x0 + w0 - thickness_v,
+                        y=y0,
+                        w=thickness_v,
+                        h=h0,
                         color=color,
                     ),
                     layer,
@@ -2978,30 +3142,39 @@ class _WgpuBackend:
             mapped = self._map_design_rect(
                 _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
             )
-            spread = max(1.0, _payload_float(payload, "thickness", 2.0))
-            layers = max(1, min(2, int(round(_payload_float(payload, "radius", 2.0)))))
+            spread_design = max(1.0, _payload_float(payload, "thickness", 2.0))
+            spread = max(1.0, spread_design * max(abs(float(sx)), abs(float(sy))))
+            layers = max(1, min(2, int(round(_payload_float(payload, "shadow_layers", 2.0)))))
+            corner_radius_design = max(0.0, _payload_float(payload, "radius", 0.0))
+            corner_radius_px = corner_radius_design * max(abs(float(sx)), abs(float(sy)))
+            x0 = _snap_to_pixel(mapped.x)
+            y0 = _snap_to_pixel(mapped.y)
+            w0 = max(1.0, _snap_to_pixel(mapped.w))
+            h0 = max(1.0, _snap_to_pixel(mapped.h))
             shadow_rects: list[_DrawRect] = []
             for idx in range(layers, 0, -1):
                 t = float(idx) / float(layers)
                 pad = spread * t
+                drop_y = pad * 0.6
                 rgba = (
                     color[0],
                     color[1],
                     color[2],
-                    color[3] * (0.35 * t),
+                    color[3] * (0.50 * (0.60 + (0.40 * t))),
                 )
-                shadow_rects.append(
-                    self._with_layer(
-                        _DrawRect(
-                            layer=layer,
-                            x=mapped.x - pad,
-                            y=mapped.y - pad,
-                            w=mapped.w + (2.0 * pad),
-                            h=mapped.h + (2.0 * pad),
-                            color=rgba,
-                        ),
-                        layer,
-                    )
+                rounded = _rounded_rect_draw_rects(
+                    layer=layer,
+                    x=float(x0 - pad),
+                    y=float(y0 - pad + drop_y),
+                    w=float(w0 + (2.0 * pad)),
+                    h=float(h0 + (2.0 * pad)),
+                    radius=max(0.0, corner_radius_px + (pad * 0.9)),
+                    color=rgba,
+                    max_steps=8,
+                )
+                shadow_rects.extend(
+                    self._with_layer(rect, layer)
+                    for rect in rounded
                 )
             return tuple(shadow_rects)
         if kind == "grid":
@@ -3152,7 +3325,16 @@ class _WgpuBackend:
         font_size_px = 18
         if isinstance(font_size_raw, (int, float)):
             font_size_px = max(6, int(round(float(font_size_raw))))
-        run = self._layout_glyph_run(text=text, font_size_px=font_size_px)
+        viewport_scale = max(
+            1.0,
+            abs(float(sx)),
+            abs(float(sy)),
+        )
+        run = self._layout_glyph_run(
+            text=text,
+            font_size_px=font_size_px,
+            raster_scale=viewport_scale,
+        )
         if run is None or not run.placements:
             return ()
         x = float(x_raw) if isinstance(x_raw, (int, float)) else 0.0
@@ -3167,6 +3349,11 @@ class _WgpuBackend:
             my = (float(origin_y) + placement.y) * sy + oy
             mw = max(1.0, placement.width * sx)
             mh = max(1.0, placement.height * sy)
+            # Snap quads to pixel grid to avoid fractional UV sampling blur.
+            mx = float(round(mx))
+            my = float(round(my))
+            mw = float(max(1.0, round(mw)))
+            mh = float(max(1.0, round(mh)))
             out.append(
                 _DrawTextQuad(
                     layer=layer,
@@ -3186,19 +3373,32 @@ class _WgpuBackend:
             self._static_packet_text_quad_cache[cache_key] = quads
         return quads
 
-    def _layout_glyph_run(self, *, text: str, font_size_px: int) -> _GlyphRunLayout | None:
+    def _layout_glyph_run(
+        self,
+        *,
+        text: str,
+        font_size_px: int,
+        raster_scale: float = 1.0,
+    ) -> _GlyphRunLayout | None:
         layout_started = time.perf_counter()
         try:
             if self._text_face is None:
                 return None
-            run_key = (self._font_path, int(font_size_px), str(text))
+            design_size_px = int(max(1, font_size_px))
+            scale = max(1.0, float(raster_scale))
+            raster_size_px = max(1, int(round(float(design_size_px) * scale)))
+            run_key = (self._font_path, design_size_px, raster_size_px, str(text))
             cached = self._glyph_run_cache.get(run_key)
             if cached is not None:
                 return cached
-            shaped = self._shape_text_run(text=text, font_size_px=font_size_px)
+            shaped = self._shape_text_run(text=text, font_size_px=raster_size_px)
             if not shaped:
                 raise RuntimeError("native text shaping returned no glyphs for non-empty text")
-            layout = self._layout_shaped_glyph_run(shaped=shaped, font_size_px=font_size_px)
+            layout = self._layout_shaped_glyph_run(
+                shaped=shaped,
+                font_size_px=raster_size_px,
+                output_size_px=design_size_px,
+            )
             if layout is None:
                 raise RuntimeError("native shaped glyph layout produced no drawable placements")
             self._glyph_run_cache[run_key] = layout
@@ -3263,8 +3463,17 @@ class _WgpuBackend:
             return None
 
     def _layout_shaped_glyph_run(
-        self, *, shaped: tuple[_ShapedGlyph, ...], font_size_px: int
+        self,
+        *,
+        shaped: tuple[_ShapedGlyph, ...],
+        font_size_px: int,
+        output_size_px: int,
     ) -> _GlyphRunLayout | None:
+        source_size_px = int(max(1, font_size_px))
+        output_size = float(max(1, output_size_px))
+        source_size = float(source_size_px)
+        scale_to_output = output_size / source_size
+        metrics = self._font_vertical_metrics_for_size(font_size_px=source_size_px)
         pen_x = 0.0
         pen_y = 0.0
         placements_raw: list[tuple[float, float, float, float, float, float, float, float]] = []
@@ -3275,7 +3484,7 @@ class _WgpuBackend:
         for glyph in shaped:
             entry = self._glyph_atlas_entry_by_index(
                 glyph_index=glyph.glyph_index,
-                font_size_px=font_size_px,
+                font_size_px=source_size_px,
             )
             if entry is None:
                 pen_x += max(1.0, float(glyph.x_advance))
@@ -3295,14 +3504,19 @@ class _WgpuBackend:
             pen_y += float(glyph.y_advance)
         if not placements_raw:
             return None
+        nominal_ascent = float(metrics.ascent)
+        nominal_descent = max(float(metrics.descent), float(metrics.line_height) - nominal_ascent)
+        line_top = min(-nominal_ascent, min_y)
+        line_bottom = max(nominal_descent, max_y)
         width = max(1.0, max_x - min_x)
-        height = max(1.0, max_y - min_y)
+        height = max(1.0, line_bottom - line_top)
+        baseline = max(0.0, -line_top)
         placements = tuple(
             _GlyphPlacement(
-                x=(gx - min_x),
-                y=(gy - min_y),
-                width=gw,
-                height=gh,
+                x=(gx - min_x) * scale_to_output,
+                y=(gy - line_top) * scale_to_output,
+                width=gw * scale_to_output,
+                height=gh * scale_to_output,
                 u0=u0,
                 v0=v0,
                 u1=u1,
@@ -3310,9 +3524,64 @@ class _WgpuBackend:
             )
             for gx, gy, gw, gh, u0, v0, u1, v1 in placements_raw
         )
-        return _GlyphRunLayout(width=width, height=height, placements=placements)
+        return _GlyphRunLayout(
+            width=width * scale_to_output,
+            height=height * scale_to_output,
+            baseline=baseline * scale_to_output,
+            placements=placements,
+        )
+
+    def _font_vertical_metrics_for_size(self, *, font_size_px: int) -> _FontVerticalMetrics:
+        size_px = int(max(1, font_size_px))
+        cached = self._font_vertical_metrics_cache.get(size_px)
+        if cached is not None:
+            return cached
+        face = self._text_face
+        if face is None:
+            metrics = _FontVerticalMetrics(
+                ascent=float(size_px) * 0.8,
+                descent=float(size_px) * 0.2,
+                line_height=float(size_px),
+            )
+            self._font_vertical_metrics_cache[size_px] = metrics
+            return metrics
+        try:
+            set_pixel_sizes = getattr(face, "set_pixel_sizes", None)
+            if callable(set_pixel_sizes):
+                set_pixel_sizes(0, size_px)
+            size_obj = getattr(face, "size", None)
+            raw_metrics = getattr(size_obj, "metrics", None)
+            asc_raw = getattr(raw_metrics, "ascender", 0)
+            desc_raw = getattr(raw_metrics, "descender", 0)
+            height_raw = getattr(raw_metrics, "height", 0)
+            asc = float(asc_raw) / 64.0 if isinstance(asc_raw, (int, float)) else 0.0
+            desc = -float(desc_raw) / 64.0 if isinstance(desc_raw, (int, float)) else 0.0
+            line_h = float(height_raw) / 64.0 if isinstance(height_raw, (int, float)) else 0.0
+            ascent = max(0.0, asc)
+            descent = max(0.0, desc)
+            line_height = max(ascent + descent, line_h)
+            if line_height <= 0.0:
+                line_height = float(size_px)
+            if ascent <= 0.0 and descent <= 0.0:
+                ascent = line_height * 0.8
+                descent = max(1.0, line_height - ascent)
+            metrics = _FontVerticalMetrics(
+                ascent=ascent,
+                descent=descent,
+                line_height=line_height,
+            )
+        except Exception:
+            line_height = float(size_px)
+            metrics = _FontVerticalMetrics(
+                ascent=line_height * 0.8,
+                descent=max(1.0, line_height * 0.2),
+                line_height=line_height,
+            )
+        self._font_vertical_metrics_cache[size_px] = metrics
+        return metrics
 
     def _glyph_atlas_entry(self, *, ch: str, font_size_px: int) -> _GlyphAtlasEntry | None:
+        atlas_pad = 1
         key = (int(font_size_px), str(ch))
         cached = self._glyph_atlas_cache.get(key)
         if cached is not None:
@@ -3339,24 +3608,32 @@ class _WgpuBackend:
             )
             self._glyph_atlas_cache[key] = entry
             return entry
-        atlas_xy = self._pack_atlas_region(width=width, height=rows)
+        atlas_xy = self._pack_atlas_region(
+            width=width + (atlas_pad * 2),
+            height=rows + (atlas_pad * 2),
+        )
         if atlas_xy is None:
             return None
         dst_x, dst_y = atlas_xy
+        inner_x = dst_x + atlas_pad
+        inner_y = dst_y + atlas_pad
         self._blit_alpha_to_atlas(
-            x=dst_x,
-            y=dst_y,
+            x=inner_x,
+            y=inner_y,
             width=width,
             height=rows,
             data=alpha_bytes,
+            pad=atlas_pad,
         )
         atlas_w = max(1, int(self._text_atlas_width))
         atlas_h = max(1, int(self._text_atlas_height))
+        u0, u1 = _safe_uv_bounds(start_px=inner_x, size_px=width, atlas_size_px=atlas_w)
+        v0, v1 = _safe_uv_bounds(start_px=inner_y, size_px=rows, atlas_size_px=atlas_h)
         entry = _GlyphAtlasEntry(
-            u0=float(dst_x) / float(atlas_w),
-            v0=float(dst_y) / float(atlas_h),
-            u1=float(dst_x + width) / float(atlas_w),
-            v1=float(dst_y + rows) / float(atlas_h),
+            u0=u0,
+            v0=v0,
+            u1=u1,
+            v1=v1,
             width=float(max(1, width)),
             height=float(max(1, rows)),
             bearing_x=float(left),
@@ -3369,6 +3646,7 @@ class _WgpuBackend:
     def _glyph_atlas_entry_by_index(
         self, *, glyph_index: int, font_size_px: int
     ) -> _GlyphAtlasEntry | None:
+        atlas_pad = 1
         size_px = int(max(1, font_size_px))
         key = (size_px, int(max(0, glyph_index)))
         cached = self._glyph_index_atlas_cache.get(key)
@@ -3396,24 +3674,32 @@ class _WgpuBackend:
             )
             self._glyph_index_atlas_cache[key] = entry
             return entry
-        atlas_xy = self._pack_atlas_region(width=width, height=rows)
+        atlas_xy = self._pack_atlas_region(
+            width=width + (atlas_pad * 2),
+            height=rows + (atlas_pad * 2),
+        )
         if atlas_xy is None:
             return None
         dst_x, dst_y = atlas_xy
+        inner_x = dst_x + atlas_pad
+        inner_y = dst_y + atlas_pad
         self._blit_alpha_to_atlas(
-            x=dst_x,
-            y=dst_y,
+            x=inner_x,
+            y=inner_y,
             width=width,
             height=rows,
             data=alpha_bytes,
+            pad=atlas_pad,
         )
         atlas_w = max(1, int(self._text_atlas_width))
         atlas_h = max(1, int(self._text_atlas_height))
+        u0, u1 = _safe_uv_bounds(start_px=inner_x, size_px=width, atlas_size_px=atlas_w)
+        v0, v1 = _safe_uv_bounds(start_px=inner_y, size_px=rows, atlas_size_px=atlas_h)
         entry = _GlyphAtlasEntry(
-            u0=float(dst_x) / float(atlas_w),
-            v0=float(dst_y) / float(atlas_h),
-            u1=float(dst_x + width) / float(atlas_w),
-            v1=float(dst_y + rows) / float(atlas_h),
+            u0=u0,
+            v0=v0,
+            u1=u1,
+            v1=v1,
             width=float(max(1, width)),
             height=float(max(1, rows)),
             bearing_x=float(left),
@@ -3452,12 +3738,19 @@ class _WgpuBackend:
         width: int,
         height: int,
         data: bytes,
+        pad: int = 0,
     ) -> None:
         atlas_w = max(1, int(self._text_atlas_width))
         atlas_h = max(1, int(self._text_atlas_height))
         if not self._text_atlas_pixels:
             return
-        if x < 0 or y < 0 or x + width > atlas_w or y + height > atlas_h:
+        pad_px = int(max(0, pad))
+        if (
+            x - pad_px < 0
+            or y - pad_px < 0
+            or x + width + pad_px > atlas_w
+            or y + height + pad_px > atlas_h
+        ):
             return
         index = 0
         for row in range(height):
@@ -3466,6 +3759,29 @@ class _WgpuBackend:
             row_end = index + width
             self._text_atlas_pixels[dst_offset : dst_offset + width] = data[index:row_end]
             index = row_end
+        if pad_px > 0 and width > 0 and height > 0:
+            x0 = int(x)
+            x1 = int(x + width - 1)
+            for row in range(y, y + height):
+                row_offset = row * atlas_w
+                left_px = self._text_atlas_pixels[row_offset + x0]
+                right_px = self._text_atlas_pixels[row_offset + x1]
+                for i in range(1, pad_px + 1):
+                    self._text_atlas_pixels[row_offset + x0 - i] = left_px
+                    self._text_atlas_pixels[row_offset + x1 + i] = right_px
+            span_from = x - pad_px
+            span_to = x + width + pad_px
+            top_row_offset = y * atlas_w
+            bottom_row_offset = (y + height - 1) * atlas_w
+            top_span = self._text_atlas_pixels[top_row_offset + span_from : top_row_offset + span_to]
+            bottom_span = self._text_atlas_pixels[
+                bottom_row_offset + span_from : bottom_row_offset + span_to
+            ]
+            for i in range(1, pad_px + 1):
+                dst_top = (y - i) * atlas_w
+                dst_bottom = (y + height - 1 + i) * atlas_w
+                self._text_atlas_pixels[dst_top + span_from : dst_top + span_to] = top_span
+                self._text_atlas_pixels[dst_bottom + span_from : dst_bottom + span_to] = bottom_span
         self._text_atlas_dirty = True
 
     def _map_design_rect(

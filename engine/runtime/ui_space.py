@@ -186,6 +186,7 @@ class _ScaledRenderAPI:
         radius: float = 0.0,
         thickness: float = 1.0,
         color_secondary: str = "",
+        shadow_layers: float = 0.0,
     ) -> None:
         add_style_rect = getattr(self._inner, "add_style_rect", None)
         if not callable(add_style_rect):
@@ -205,6 +206,7 @@ class _ScaledRenderAPI:
             radius=float(radius) * min(self._transform.scale_x, self._transform.scale_y),
             thickness=float(thickness) * min(self._transform.scale_x, self._transform.scale_y),
             color_secondary=str(color_secondary),
+            shadow_layers=float(shadow_layers),
         )
 
     def add_grid(

@@ -7,6 +7,7 @@ from engine.api.ui_primitives import fit_text_to_rect
 from engine.api.ui_style import DEFAULT_UI_STYLE_TOKENS, draw_rounded_rect, draw_stroke_rect
 from warships.game.app.state_machine import AppState
 from warships.game.core.models import Orientation, ShipPlacement, ShipType
+from warships.game.ui.scene_theme import SceneTheme, theme_for_state
 from warships.game.ui.layout_metrics import status_rect
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
@@ -19,9 +20,11 @@ def draw_status_bar(
     placement_orientation: Orientation,
     placements: list[ShipPlacement],
     ship_order: list[ShipType],
+    theme: SceneTheme | None = None,
 ) -> None:
     if state is AppState.MAIN_MENU:
         return
+    active_theme = theme or theme_for_state(state)
     status_box = status_rect()
     draw_rounded_rect(
         renderer,
@@ -31,7 +34,7 @@ def draw_status_bar(
         w=status_box.w,
         h=status_box.h,
         radius=6.0,
-        color=TOKENS.board_bg,
+        color=active_theme.status_bg,
         z=1.0,
     )
     draw_stroke_rect(
@@ -41,7 +44,7 @@ def draw_status_bar(
         y=status_box.y,
         w=status_box.w,
         h=status_box.h,
-        color=TOKENS.border_accent,
+        color=active_theme.status_border,
         z=1.01,
     )
     show_placement_hint = state is AppState.PLACEMENT_EDIT and len(placements) < len(ship_order)

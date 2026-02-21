@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     draw_gradient_rect,
@@ -27,9 +29,9 @@ class _StyleRenderer(_Renderer):
 
 
 def test_default_ui_style_tokens_are_deterministic() -> None:
-    assert DEFAULT_UI_STYLE_TOKENS.window_bg == "#0b132b"
-    assert DEFAULT_UI_STYLE_TOKENS.accent == "#1f6feb"
-    assert DEFAULT_UI_STYLE_TOKENS.text_primary == "#f9fafb"
+    assert DEFAULT_UI_STYLE_TOKENS.window_bg == "#0a1220"
+    assert DEFAULT_UI_STYLE_TOKENS.accent == "#0e66f2"
+    assert DEFAULT_UI_STYLE_TOKENS.text_primary == "#f7faff"
 
 
 def test_draw_stroke_rect_emits_four_rects(monkeypatch) -> None:
@@ -77,6 +79,27 @@ def test_draw_shadow_rect_emits_layered_rects(monkeypatch) -> None:
         layers=3,
     )
     assert len(renderer.rects) == 3
+
+
+def test_draw_shadow_rect_style_payload_includes_corner_radius_and_layers(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_UI_STYLE_EFFECTS", "1")
+    renderer = _StyleRenderer()
+    draw_shadow_rect(
+        renderer,
+        key="shadow",
+        x=0.0,
+        y=0.0,
+        w=30.0,
+        h=12.0,
+        layers=2,
+        spread=3.0,
+        corner_radius=8.0,
+    )
+    assert len(renderer.style_calls) == 1
+    call = renderer.style_calls[0]
+    assert call["style_kind"] == "shadow_rect"
+    assert float(call["radius"]) == pytest.approx(8.0)
+    assert float(call["shadow_layers"]) == pytest.approx(2.0)
 
 
 def test_draw_rounded_rect_emits_multiple_segments_for_radius(monkeypatch) -> None:

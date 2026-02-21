@@ -436,6 +436,137 @@ def test_text_draw_rects_merges_pixel_runs_for_fewer_quads() -> None:
     assert all(rect.w >= 3.0 for rect in rects)
 
 
+def test_safe_uv_bounds_insets_by_half_texel() -> None:
+    u0, u1 = wgpu_renderer._safe_uv_bounds(start_px=10, size_px=4, atlas_size_px=256)  # noqa: SLF001
+    center0, center1 = wgpu_renderer._safe_uv_bounds(start_px=10, size_px=1, atlas_size_px=256)  # noqa: SLF001
+
+    assert u0 == pytest.approx(10.5 / 256.0)
+    assert u1 == pytest.approx(13.5 / 256.0)
+    assert center0 == pytest.approx(center1)
+    assert center0 == pytest.approx(10.5 / 256.0)
+
+
+def test_wgpu_backend_blit_alpha_to_atlas_pad_extends_edges(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._text_atlas_width = 8  # noqa: SLF001
+    backend._text_atlas_height = 8  # noqa: SLF001
+    backend._text_atlas_pixels = bytearray(64)  # noqa: SLF001
+
+    backend._blit_alpha_to_atlas(  # noqa: SLF001
+        x=3,
+        y=3,
+        width=2,
+        height=2,
+        data=bytes((10, 20, 30, 40)),
+        pad=1,
+    )
+
+    pixels = backend._text_atlas_pixels  # noqa: SLF001
+
+    def _at(x: int, y: int) -> int:
+        return int(pixels[(y * 8) + x])
+
+    assert _at(3, 3) == 10
+    assert _at(4, 3) == 20
+    assert _at(3, 4) == 30
+    assert _at(4, 4) == 40
+    assert _at(2, 3) == 10
+    assert _at(5, 3) == 20
+    assert _at(2, 2) == 10
+    assert _at(5, 5) == 40
+
+
+def test_wgpu_backend_layout_shaped_run_uses_vertical_metrics_for_baseline(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+
+    def _fake_metrics(self, *, font_size_px: int):
+        _ = (self, font_size_px)
+        return wgpu_renderer._FontVerticalMetrics(ascent=12.0, descent=4.0, line_height=16.0)  # noqa: SLF001
+
+    def _fake_entry(self, *, glyph_index: int, font_size_px: int):
+        _ = (self, glyph_index, font_size_px)
+        return wgpu_renderer._GlyphAtlasEntry(  # noqa: SLF001
+            u0=0.0,
+            v0=0.0,
+            u1=1.0,
+            v1=1.0,
+            width=6.0,
+            height=6.0,
+            bearing_x=0.0,
+            bearing_y=6.0,
+            advance=6.0,
+        )
+
+    monkeypatch.setattr(_WgpuBackend, "_font_vertical_metrics_for_size", _fake_metrics)  # noqa: SLF001
+    monkeypatch.setattr(_WgpuBackend, "_glyph_atlas_entry_by_index", _fake_entry)  # noqa: SLF001
+
+    layout = backend._layout_shaped_glyph_run(  # noqa: SLF001
+        shaped=(wgpu_renderer._ShapedGlyph(glyph_index=1, x_offset=0.0, y_offset=0.0, x_advance=6.0, y_advance=0.0),),  # noqa: SLF001
+        font_size_px=16,
+        output_size_px=16,
+    )
+
+    assert layout is not None
+    assert layout.height == pytest.approx(16.0)
+    assert layout.baseline == pytest.approx(12.0)
+
+
+def test_wgpu_backend_layout_glyph_run_keeps_logical_size_across_raster_scales(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._text_face = object()  # noqa: SLF001
+
+    def _fake_shape(self, *, text: str, font_size_px: int):
+        _ = self
+        return tuple(
+            wgpu_renderer._ShapedGlyph(  # noqa: SLF001
+                glyph_index=idx + 1,
+                x_offset=0.0,
+                y_offset=0.0,
+                x_advance=float(font_size_px) * 0.5,
+                y_advance=0.0,
+            )
+            for idx, _ch in enumerate(text)
+        )
+
+    def _fake_entry(self, *, glyph_index: int, font_size_px: int):
+        _ = (self, glyph_index)
+        size = float(font_size_px)
+        return wgpu_renderer._GlyphAtlasEntry(  # noqa: SLF001
+            u0=0.0,
+            v0=0.0,
+            u1=1.0,
+            v1=1.0,
+            width=size * 0.3,
+            height=size * 0.6,
+            bearing_x=0.0,
+            bearing_y=size * 0.6,
+            advance=size * 0.5,
+        )
+
+    def _fake_metrics(self, *, font_size_px: int):
+        size = float(font_size_px)
+        return wgpu_renderer._FontVerticalMetrics(  # noqa: SLF001
+            ascent=size * 0.75,
+            descent=size * 0.25,
+            line_height=size,
+        )
+
+    monkeypatch.setattr(_WgpuBackend, "_shape_text_run", _fake_shape)  # noqa: SLF001
+    monkeypatch.setattr(_WgpuBackend, "_glyph_atlas_entry_by_index", _fake_entry)  # noqa: SLF001
+    monkeypatch.setattr(_WgpuBackend, "_font_vertical_metrics_for_size", _fake_metrics)  # noqa: SLF001
+
+    lo = backend._layout_glyph_run(text="Menu", font_size_px=16, raster_scale=1.0)  # noqa: SLF001
+    hi = backend._layout_glyph_run(text="Menu", font_size_px=16, raster_scale=2.0)  # noqa: SLF001
+
+    assert lo is not None
+    assert hi is not None
+    assert hi.width == pytest.approx(lo.width)
+    assert hi.height == pytest.approx(lo.height)
+
+
 def test_system_font_candidates_env_is_explicit_only(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("ENGINE_WGPU_FONT_PATHS", "X:\\missing1.ttf;X:\\missing2.ttf")
 
@@ -738,6 +869,142 @@ def test_wgpu_backend_color_policy_uses_srgb_surface_and_linear_payload(monkeypa
     assert float(linear[0]) == pytest.approx(0.21586, rel=1e-3)
 
 
+def test_wgpu_backend_color_policy_converts_secondary_gradient_color_to_linear(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    command = RenderCommand(
+        kind="gradient_rect",
+        layer=1,
+        sort_key="k",
+        data=(("color", "#808080"), ("color_secondary", "#404040")),
+    )
+
+    packet = wgpu_renderer._command_to_packet(command)  # noqa: SLF001
+    payload = dict(packet.data)
+    linear_top = payload["linear_rgba"]
+    linear_bottom = payload["linear_secondary_rgba"]
+    srgb_bottom = payload["srgb_secondary_rgba"]
+
+    assert isinstance(linear_top, tuple)
+    assert isinstance(linear_bottom, tuple)
+    assert isinstance(srgb_bottom, tuple)
+    assert float(linear_bottom[0]) < float(linear_top[0])
+    assert float(linear_bottom[0]) == pytest.approx(0.05127, rel=1e-3)
+
+
+def test_wgpu_backend_gradient_rect_uses_linear_payload_colors(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="gradient_rect",
+        layer=2,
+        sort_key="g",
+        transform=(),
+        data=(
+            ("x", 0.0),
+            ("y", 0.0),
+            ("w", 50.0),
+            ("h", 30.0),
+            ("thickness", 3.0),
+            ("color", "#ffffff"),
+            ("color_secondary", "#000000"),
+            ("linear_rgba", (0.2, 0.3, 0.4, 1.0)),
+            ("linear_secondary_rgba", (0.7, 0.6, 0.5, 1.0)),
+        ),
+    )
+
+    rects = backend._packet_draw_rects(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+
+    assert len(rects) >= 2
+    assert rects[0].color[:3] == pytest.approx((0.2, 0.3, 0.4))
+    assert rects[-1].color[:3] == pytest.approx((0.7, 0.6, 0.5))
+
+
+def test_wgpu_backend_rounded_rect_generates_corner_inset_segments(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="rounded_rect",
+        layer=1,
+        sort_key="r",
+        transform=(),
+        data=(
+            ("x", 10.0),
+            ("y", 20.0),
+            ("w", 120.0),
+            ("h", 40.0),
+            ("radius", 10.0),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+
+    rects = backend._packet_draw_rects(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+
+    assert 3 <= len(rects) <= 65
+    full_width = max(float(rect.w) for rect in rects)
+    top_band = [rect for rect in rects if float(rect.y) <= 24.0]
+    assert top_band
+    assert min(float(rect.w) for rect in top_band) < full_width
+    very_top = [rect for rect in rects if float(rect.y) <= 20.5]
+    lower_top = [rect for rect in rects if 23.5 <= float(rect.y) <= 24.5]
+    assert very_top
+    assert lower_top
+    assert min(float(rect.w) for rect in very_top) < min(float(rect.w) for rect in lower_top)
+
+
+def test_wgpu_backend_stroke_rect_thickness_scales_to_1px_and_2px(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="stroke_rect",
+        layer=1,
+        sort_key="s",
+        transform=(),
+        data=(
+            ("x", 10.0),
+            ("y", 10.0),
+            ("w", 100.0),
+            ("h", 40.0),
+            ("thickness", 1.0),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+
+    rects_1x = backend._packet_draw_rects(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+    rects_2x = backend._packet_draw_rects(packet, sx=2.0, sy=2.0, ox=0.0, oy=0.0)  # noqa: SLF001
+
+    assert len(rects_1x) == 4
+    assert len(rects_2x) == 4
+    assert float(rects_1x[0].h) == pytest.approx(1.0)
+    assert float(rects_1x[2].w) == pytest.approx(1.0)
+    assert float(rects_2x[0].h) == pytest.approx(2.0)
+    assert float(rects_2x[2].w) == pytest.approx(2.0)
+
+
+def test_wgpu_backend_shadow_rect_is_tuned_without_draw_explosion(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="shadow_rect",
+        layer=1,
+        sort_key="sh",
+        transform=(),
+        data=(
+            ("x", 20.0),
+            ("y", 20.0),
+            ("w", 80.0),
+            ("h", 30.0),
+            ("thickness", 3.0),
+            ("radius", 4.0),
+            ("linear_rgba", (0.0, 0.0, 0.0, 0.5)),
+        ),
+    )
+
+    rects = backend._packet_draw_rects(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+
+    assert 1 <= len(rects) <= 34
+    assert all(float(rect.color[3]) < 0.5 for rect in rects)
+
+
 def test_wgpu_backend_rejects_non_srgb_surface_format(monkeypatch) -> None:
     _install_fake_wgpu_module(monkeypatch)
     backend = _WgpuBackend()
@@ -925,6 +1192,58 @@ def test_wgpu_backend_text_layout_skips_zero_bitmap_glyphs(monkeypatch) -> None:
     quads = backend._packet_text_quads(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
     assert quads
     assert all(float(quad.w) > 0.0 and float(quad.h) > 0.0 for quad in quads)
+
+
+def test_wgpu_backend_packet_text_quads_snaps_to_pixel_grid(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._text_pipeline = object()  # noqa: SLF001
+    backend._text_bind_group = object()  # noqa: SLF001
+    backend._text_atlas_texture = object()  # noqa: SLF001
+
+    def _fake_layout(self, *, text: str, font_size_px: int, raster_scale: float = 1.0):
+        _ = (self, text, font_size_px, raster_scale)
+        return wgpu_renderer._GlyphRunLayout(  # noqa: SLF001
+            width=10.0,
+            height=8.0,
+            baseline=6.0,
+            placements=(
+                wgpu_renderer._GlyphPlacement(  # noqa: SLF001
+                    x=0.35,
+                    y=1.6,
+                    width=5.49,
+                    height=7.51,
+                    u0=0.1,
+                    v0=0.2,
+                    u1=0.3,
+                    v1=0.4,
+                ),
+            ),
+        )
+
+    monkeypatch.setattr(_WgpuBackend, "_layout_glyph_run", _fake_layout)  # noqa: SLF001
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="text",
+        layer=1,
+        sort_key="s",
+        transform=(),
+        data=(
+            ("text", "A"),
+            ("x", 10.2),
+            ("y", 20.3),
+            ("font_size", 16.0),
+            ("anchor", "top-left"),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+
+    quads = backend._packet_text_quads(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+    assert quads
+    quad = quads[0]
+    assert quad.x == pytest.approx(round(quad.x))
+    assert quad.y == pytest.approx(round(quad.y))
+    assert quad.w == pytest.approx(round(quad.w))
+    assert quad.h == pytest.approx(round(quad.h))
 
 
 def test_wgpu_backend_acquire_frame_view_recovers_after_one_failure(monkeypatch) -> None:

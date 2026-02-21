@@ -15,3 +15,7 @@ def test_draw_preset_manage_renders_rows_and_buttons() -> None:
     draw_preset_manage(renderer, ui)
     assert renderer.rects
     assert renderer.texts
+    texts = [kwargs.get("text") for _args, kwargs in renderer.texts]
+    assert "Edit" in texts
+    assert "Rename" in texts
+    assert "Delete" in texts

@@ -44,10 +44,31 @@ class Button:
     h: float
     visible: bool = True
     enabled: bool = True
+    style: "ButtonStyle | dict[str, object] | None" = None
 
     def contains(self, px: float, py: float) -> bool:
         """Return whether this button contains the point."""
         return self.visible and self.x <= px <= self.x + self.w and self.y <= py <= self.y + self.h
+
+
+@dataclass(frozen=True, slots=True)
+class ButtonStyle:
+    """Optional per-button style overrides supplied by app-side code."""
+
+    bg_color: str | None = None
+    border_color: str | None = None
+    highlight_color: str | None = None
+    text_color: str | None = None
+    radius: float | None = None
+    border_thickness: float | None = None
+    glossy: bool | None = None
+    highlight_height_ratio: float | None = None
+    shadow_enabled: bool | None = None
+    shadow_color: str | None = None
+    shadow_layers: int | None = None
+    shadow_spread: float | None = None
+    shadow_offset_x: float | None = None
+    shadow_offset_y: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

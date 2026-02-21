@@ -7,18 +7,24 @@ from engine.api.ui_primitives import Rect, fit_text_to_rect
 from engine.api.ui_projection import TextFitSpec, project_text_fit
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
+    draw_gradient_rect,
     draw_rounded_rect,
     draw_shadow_rect,
     draw_stroke_rect,
 )
+from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP
+from warships.game.ui.scene_theme import SceneTheme, theme_for_state
 from warships.game.ui.views.common import draw_preset_preview
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
-def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
+def draw_new_game_setup(
+    renderer: Render2D, ui: AppUIState, theme: SceneTheme | None = None
+) -> None:
+    active_theme = theme or theme_for_state(AppState.NEW_GAME_SETUP)
     panel = NEW_GAME_SETUP.panel_rect()
     draw_shadow_rect(
         renderer,
@@ -27,7 +33,8 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         y=panel.y + 2.0,
         w=panel.w,
         h=panel.h,
-        color=TOKENS.shadow_strong,
+        color=TOKENS.shadow_soft,
+        corner_radius=10.0,
         z=0.82,
     )
     draw_rounded_rect(
@@ -38,9 +45,31 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         w=panel.w,
         h=panel.h,
         radius=10.0,
-        color=TOKENS.surface_base,
+        color=active_theme.panel_bg,
         z=0.85,
     )
+    draw_gradient_rect(
+        renderer,
+        key="newgame:panel:glow",
+        x=panel.x + 2.0,
+        y=panel.y + 2.0,
+        w=max(1.0, panel.w - 4.0),
+        h=max(1.0, panel.h * 0.16),
+        top_color=active_theme.panel_glow_top,
+        bottom_color=TOKENS.highlight_bottom_clear,
+        z=0.855,
+        steps=4,
+    )
+    for idx in range(5):
+        renderer.add_rect(
+            f"newgame:panel:pattern:{idx}",
+            panel.x + 18.0 + idx * 36.0,
+            panel.y + 16.0,
+            20.0,
+            2.0,
+            active_theme.panel_pattern,
+            z=0.856,
+        )
     draw_stroke_rect(
         renderer,
         key="newgame:panel:border",
@@ -48,7 +77,7 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         y=panel.y,
         w=panel.w,
         h=panel.h,
-        color=TOKENS.border_subtle,
+        color=active_theme.panel_border,
         z=0.86,
     )
     title_text, title_font_size = fit_text_to_rect(
@@ -133,7 +162,11 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
     if ui.new_game_difficulty_open:
         for idx, name in enumerate(ui.new_game_difficulty_options):
             option = NEW_GAME_SETUP.difficulty_option_rect(idx)
-            color = TOKENS.accent_hover if name == ui.new_game_difficulty else TOKENS.border_subtle
+            color = (
+                active_theme.primary_button_border
+                if name == ui.new_game_difficulty
+                else active_theme.panel_border
+            )
             draw_rounded_rect(
                 renderer,
                 key=f"newgame:diff:opt:bg:{name}",
@@ -185,7 +218,7 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         y=list_rect.y,
         w=list_rect.w,
         h=list_rect.h,
-        color=TOKENS.border_subtle,
+        color=active_theme.panel_border,
         z=0.89,
     )
     presets_title_text, presets_title_size = fit_text_to_rect(
@@ -210,7 +243,11 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
     )
     for idx, name in enumerate(ui.new_game_visible_presets):
         row = NEW_GAME_SETUP.preset_row_rect(idx)
-        color = TOKENS.accent_hover if name == ui.new_game_selected_preset else TOKENS.surface_elevated
+        color = (
+            active_theme.primary_button_border
+            if name == ui.new_game_selected_preset
+            else TOKENS.surface_elevated
+        )
         draw_rounded_rect(
             renderer,
             key=f"newgame:preset:row:{name}",
@@ -251,18 +288,41 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         w=random_btn.w,
         h=random_btn.h,
         radius=7.0,
-        color=TOKENS.accent,
+        color=active_theme.primary_button_bg,
         z=0.9,
     )
-    draw_stroke_rect(
+    draw_rounded_rect(
         renderer,
         key="newgame:random:border",
         x=random_btn.x,
         y=random_btn.y,
         w=random_btn.w,
         h=random_btn.h,
-        color=TOKENS.border_accent,
+        radius=7.0,
+        color=active_theme.primary_button_border,
         z=0.91,
+    )
+    draw_rounded_rect(
+        renderer,
+        key="newgame:random:border:inner",
+        x=random_btn.x + 1.0,
+        y=random_btn.y + 1.0,
+        w=max(1.0, random_btn.w - 2.0),
+        h=max(1.0, random_btn.h - 2.0),
+        radius=6.0,
+        color=active_theme.primary_button_bg,
+        z=0.911,
+    )
+    draw_rounded_rect(
+        renderer,
+        key="newgame:random:highlight",
+        x=random_btn.x + 1.0,
+        y=random_btn.y + 1.0,
+        w=max(1.0, random_btn.w - 2.0),
+        h=max(1.0, (random_btn.h * 0.45) - 1.0),
+        radius=6.0,
+        color=active_theme.primary_button_highlight,
+        z=0.912,
     )
     random_text, random_font_size = fit_text_to_rect(
         "Generate Random Fleet",

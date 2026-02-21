@@ -71,6 +71,7 @@ def render_modal_text_input_widget(renderer: Render2D, widget: ModalTextInputWid
         w=widget.panel_rect.w,
         h=widget.panel_rect.h,
         color=TOKENS.shadow_strong,
+        corner_radius=10.0,
         z=10.05,
     )
     draw_rounded_rect(
@@ -104,7 +105,9 @@ def render_modal_text_input_widget(renderer: Render2D, widget: ModalTextInputWid
                 28.0,
             ),
             base_font_size=24.0,
-            min_font_size=14.0,
+            min_font_size=12.0,
+            pad_x=4.0,
+            pad_y=1.0,
             overflow_policy="ellipsis",
             parent=widget.panel_rect,
             enforce_parent=True,

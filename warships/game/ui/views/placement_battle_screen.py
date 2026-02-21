@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
-from engine.api.ui_primitives import GridLayout, fit_text_to_rect
+from engine.api.ui_primitives import GridLayout, Rect, fit_text_to_rect
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     draw_rounded_rect,
     draw_stroke_rect,
 )
+from warships.game.app.state_machine import AppState
 from warships.game.core.board import BoardState
 from warships.game.core.models import (
     Coord,
@@ -19,13 +20,18 @@ from warships.game.core.models import (
 )
 from warships.game.core.rules import GameSession
 from warships.game.ui.layout_metrics import PLACEMENT_PANEL
+from warships.game.ui.scene_theme import SceneTheme, theme_for_state
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
 def draw_placement_panel(
-    renderer: Render2D, placements: list[ShipPlacement], ship_order: list[ShipType]
+    renderer: Render2D,
+    placements: list[ShipPlacement],
+    ship_order: list[ShipType],
+    theme: SceneTheme | None = None,
 ) -> None:
+    active_theme = theme or theme_for_state(AppState.PLACEMENT_EDIT)
     panel = PLACEMENT_PANEL.panel_rect()
     panel_x = panel.x
     panel_y = panel.y
@@ -39,7 +45,7 @@ def draw_placement_panel(
         w=panel_w,
         h=panel_h,
         radius=8.0,
-        color=TOKENS.surface_base,
+        color=active_theme.panel_bg,
         z=1.0,
     )
     draw_stroke_rect(
@@ -49,7 +55,7 @@ def draw_placement_panel(
         y=panel_y,
         w=panel_w,
         h=panel_h,
-        color=TOKENS.border_subtle,
+        color=active_theme.panel_border,
         z=1.01,
     )
     title_text, title_font_size = fit_text_to_rect(
@@ -120,8 +126,9 @@ def draw_player_board(
     hover_cell: Coord | None,
     hover_x: float | None,
     hover_y: float | None,
+    theme: SceneTheme | None = None,
 ) -> None:
-    draw_board_frame(renderer, layout, is_ai=False)
+    draw_board_frame(renderer, layout, is_ai=False, theme=theme)
     player_board = session.player_board if session else None
     if player_board is not None:
         draw_ships_from_board(renderer, layout, player_board, is_ai=False)
@@ -142,14 +149,22 @@ def draw_player_board(
         )
 
 
-def draw_ai_board(renderer: Render2D, layout: GridLayout, session: GameSession | None) -> None:
-    draw_board_frame(renderer, layout, is_ai=True)
+def draw_ai_board(
+    renderer: Render2D,
+    layout: GridLayout,
+    session: GameSession | None,
+    theme: SceneTheme | None = None,
+) -> None:
+    draw_board_frame(renderer, layout, is_ai=True, theme=theme)
     if session is None:
         return
     draw_shots(renderer, layout, session.ai_board, is_ai=True)
 
 
-def draw_board_frame(renderer: Render2D, layout: GridLayout, is_ai: bool) -> None:
+def draw_board_frame(
+    renderer: Render2D, layout: GridLayout, is_ai: bool, theme: SceneTheme | None = None
+) -> None:
+    active_theme = theme or theme_for_state(AppState.PLACEMENT_EDIT)
     board_key = "ai" if is_ai else "player"
     target = "secondary" if is_ai else "primary"
     rect = layout.rect_for_target(target)
@@ -161,7 +176,7 @@ def draw_board_frame(renderer: Render2D, layout: GridLayout, is_ai: bool) -> Non
         w=rect.w,
         h=rect.h,
         radius=6.0,
-        color=TOKENS.board_bg,
+        color=active_theme.board_bg,
         z=0.1,
     )
     draw_stroke_rect(
@@ -171,7 +186,7 @@ def draw_board_frame(renderer: Render2D, layout: GridLayout, is_ai: bool) -> Non
         y=rect.y,
         w=rect.w,
         h=rect.h,
-        color=TOKENS.border_accent,
+        color=active_theme.board_border,
         z=0.15,
     )
     renderer.add_grid(
@@ -181,7 +196,7 @@ def draw_board_frame(renderer: Render2D, layout: GridLayout, is_ai: bool) -> Non
         width=rect.w,
         height=rect.h,
         lines=11,
-        color=TOKENS.board_grid,
+        color=active_theme.board_grid,
         z=0.2,
     )
 
@@ -243,6 +258,77 @@ def draw_shots(renderer: Render2D, layout: GridLayout, board: BoardState, is_ai:
                 color,
                 z=0.4,
             )
+            _draw_shot_impact_fx(
+                renderer=renderer,
+                board_key=board_key,
+                row=row,
+                col=col,
+                cell_rect=cell_rect,
+                value=value,
+            )
+
+
+def _draw_shot_impact_fx(
+    *,
+    renderer: Render2D,
+    board_key: str,
+    row: int,
+    col: int,
+    cell_rect: Rect,
+    value: int,
+) -> None:
+    x = float(getattr(cell_rect, "x", 0.0))
+    y = float(getattr(cell_rect, "y", 0.0))
+    w = float(getattr(cell_rect, "w", 1.0))
+    h = float(getattr(cell_rect, "h", 1.0))
+    cx = x + (w * 0.5)
+    cy = y + (h * 0.5)
+    if value == 2:
+        core = TOKENS.danger
+        halo = "#ff6b6b55"
+        spark = "#ffd7d788"
+    else:
+        core = TOKENS.text_primary
+        halo = "#c7d5ec33"
+        spark = "#dbeafe66"
+    renderer.add_rect(
+        f"shotfx:halo:{board_key}:{row}:{col}",
+        cx - (w * 0.25),
+        cy - (h * 0.25),
+        w * 0.5,
+        h * 0.5,
+        halo,
+        z=0.38,
+    )
+    ray_t = max(1.0, w * 0.06)
+    ray_l = w * 0.18
+    renderer.add_rect(
+        f"shotfx:ray:h:{board_key}:{row}:{col}",
+        cx - ray_l,
+        cy - (ray_t * 0.5),
+        ray_l * 2.0,
+        ray_t,
+        spark,
+        z=0.41,
+    )
+    renderer.add_rect(
+        f"shotfx:ray:v:{board_key}:{row}:{col}",
+        cx - (ray_t * 0.5),
+        cy - ray_l,
+        ray_t,
+        ray_l * 2.0,
+        spark,
+        z=0.41,
+    )
+    renderer.add_rect(
+        f"shotfx:core:{board_key}:{row}:{col}",
+        cx - (w * 0.08),
+        cy - (h * 0.08),
+        w * 0.16,
+        h * 0.16,
+        core,
+        z=0.42,
+    )
 
 
 def draw_held_ship_preview(

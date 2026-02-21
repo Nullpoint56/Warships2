@@ -183,6 +183,7 @@ class _HeadlessRenderer(RenderAPI):
         radius: float = 0.0,
         thickness: float = 1.0,
         color_secondary: str = "",
+        shadow_layers: float = 0.0,
     ) -> None:
         _ = (
             style_kind,
@@ -197,6 +198,7 @@ class _HeadlessRenderer(RenderAPI):
             radius,
             thickness,
             color_secondary,
+            shadow_layers,
         )
         return
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from engine.api.ui_primitives import Rect
+from engine.api.ui_primitives import ButtonStyle, Rect
 from engine.api.ui_projection import ButtonSpec, TextFitSpec, project_buttons, project_text_fit
 
 
@@ -46,3 +46,10 @@ def test_project_text_fit_enforces_parent_and_overflow_policy() -> None:
     assert text != "VeryLongLabelText"
     assert len(text) <= 4
     assert size <= 14.0
+
+
+def test_project_buttons_preserves_style_object() -> None:
+    style = ButtonStyle(bg_color="#ff0000", glossy=False, shadow_enabled=True)
+    buttons = project_buttons((ButtonSpec("a", 0, 0, 10, 10, style=style),))
+    assert len(buttons) == 1
+    assert buttons[0].style is style
