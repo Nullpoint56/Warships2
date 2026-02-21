@@ -104,6 +104,7 @@ $engineProduction = @{
     ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED = '0'
     ENGINE_DIAGNOSTICS_HTTP_ENABLED = '0'
     ENGINE_RENDER_VSYNC = '1'
+    ENGINE_RENDER_LOOP_MODE='continuous'
 }
 
 $appProduction = @{
