@@ -134,6 +134,7 @@ def draw_player_board(
         draw_ships_from_board(renderer, layout, player_board, is_ai=False)
         if session:
             draw_shots(renderer, layout, player_board, is_ai=False)
+            draw_sunk_ship_overlays(renderer, layout, player_board, is_ai=False)
         return
     draw_ships_from_placements(renderer, layout, placements)
     if held_ship_type is not None and held_orientation is not None:
@@ -159,6 +160,7 @@ def draw_ai_board(
     if session is None:
         return
     draw_shots(renderer, layout, session.ai_board, is_ai=True)
+    draw_sunk_ship_overlays(renderer, layout, session.ai_board, is_ai=True)
 
 
 def draw_board_frame(
@@ -266,6 +268,74 @@ def draw_shots(renderer: Render2D, layout: GridLayout, board: BoardState, is_ai:
                 cell_rect=cell_rect,
                 value=value,
             )
+
+
+def draw_sunk_ship_overlays(
+    renderer: Render2D, layout: GridLayout, board: BoardState, is_ai: bool
+) -> None:
+    board_key = "ai" if is_ai else "player"
+    target = "secondary" if is_ai else "primary"
+    for ship_id, remaining in board.ship_remaining.items():
+        if int(remaining) != 0:
+            continue
+        cells = board.ship_cells.get(int(ship_id), [])
+        if not cells:
+            continue
+        rows = [int(cell.row) for cell in cells]
+        cols = [int(cell.col) for cell in cells]
+        min_row = min(rows)
+        max_row = max(rows)
+        min_col = min(cols)
+        max_col = max(cols)
+        first = layout.cell_rect_for_target(target, row=min_row, col=min_col)
+        last = layout.cell_rect_for_target(target, row=max_row, col=max_col)
+        is_horizontal = min_row == max_row
+        outline = max(2.0, layout.cell_size * 0.14)
+        fill = max(1.0, layout.cell_size * 0.08)
+        if is_horizontal:
+            x = first.x + 2.0
+            y = first.y + (first.h * 0.5)
+            w = (last.x + last.w - 2.0) - x
+            renderer.add_rect(
+                f"sunkline:outline:{board_key}:{ship_id}",
+                x,
+                y - (outline * 0.5),
+                max(1.0, w),
+                outline,
+                TOKENS.shadow_strong,
+                z=0.48,
+            )
+            renderer.add_rect(
+                f"sunkline:fill:{board_key}:{ship_id}",
+                x,
+                y - (fill * 0.5),
+                max(1.0, w),
+                fill,
+                TOKENS.warning,
+                z=0.49,
+            )
+            continue
+        x = first.x + (first.w * 0.5)
+        y = first.y + 2.0
+        h = (last.y + last.h - 2.0) - y
+        renderer.add_rect(
+            f"sunkline:outline:{board_key}:{ship_id}",
+            x - (outline * 0.5),
+            y,
+            outline,
+            max(1.0, h),
+            TOKENS.shadow_strong,
+            z=0.48,
+        )
+        renderer.add_rect(
+            f"sunkline:fill:{board_key}:{ship_id}",
+            x - (fill * 0.5),
+            y,
+            fill,
+            max(1.0, h),
+            TOKENS.warning,
+            z=0.49,
+        )
 
 
 def _draw_shot_impact_fx(

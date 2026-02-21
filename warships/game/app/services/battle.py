@@ -92,8 +92,12 @@ def resolve_player_turn(
             shot_result=result, status=session.last_message, winner=session.winner
         )
 
+    player_feedback = str(session.last_message)
     _run_ai_turn(session, ai_strategy)
-    return PlayerTurnResult(shot_result=result, status=session.last_message, winner=session.winner)
+    combined_status = str(session.last_message)
+    if result is ShotResult.SUNK and player_feedback and player_feedback != combined_status:
+        combined_status = f"{player_feedback} | {combined_status}"
+    return PlayerTurnResult(shot_result=result, status=combined_status, winner=session.winner)
 
 
 def _run_ai_turn(session: GameSession, ai_strategy: AIStrategy) -> None:

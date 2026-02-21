@@ -39,3 +39,28 @@ def test_draw_status_bar_renders_for_placement_and_battle() -> None:
         ship_order=[],
     )
     assert renderer2.texts
+
+
+def test_draw_status_bar_renders_sink_alert_when_status_mentions_sunk() -> None:
+    renderer = FakeRenderer()
+    draw_status_bar(
+        renderer=renderer,
+        state=AppState.BATTLE,
+        status="You fired at (2, 3): sunk DESTROYER.",
+        placement_orientation=Orientation.HORIZONTAL,
+        placements=[],
+        ship_order=[],
+    )
+
+    text_keys = {
+        str(kwargs.get("key"))
+        for _args, kwargs in renderer.texts
+        if isinstance(kwargs, dict)
+    }
+    rect_keys = {
+        str(args[0])
+        for args, _kwargs in renderer.rects
+        if args
+    }
+    assert "status:alert" in text_keys
+    assert any(key.startswith("status:alert:bg") for key in rect_keys)
