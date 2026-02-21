@@ -358,7 +358,7 @@ class EngineHost(HostControl):
                     exc,
                     tick=self._frame_index,
                     diagnostics_hub=self._diagnostics_hub,
-                    runtime_metadata=self._runtime_metadata(),
+                    runtime_metadata=self._runtime_metadata(self._runtime_name),
                     profiling_snapshot={
                         "frame_profile": self._frame_profiler.latest_payload or {},
                         "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),

@@ -2718,8 +2718,7 @@ class _WgpuBackend:
 
     def _supports_text_atlas(self) -> bool:
         return (
-            self._text_face is not None
-            and self._text_pipeline is not None
+            self._text_pipeline is not None
             and self._text_bind_group is not None
             and self._text_atlas_texture is not None
         )
@@ -4843,7 +4842,9 @@ def _iter_system_font_candidates() -> tuple[str, ...]:
     candidates: list[str] = []
     env_value = os.getenv("ENGINE_WGPU_FONT_PATHS", "").strip()
     if env_value:
-        for raw in env_value.split(os.pathsep):
+        # Accept explicit Windows-style ';' separator even on POSIX CI.
+        separator = ";" if ";" in env_value else os.pathsep
+        for raw in env_value.split(separator):
             item = raw.strip()
             if item:
                 candidates.append(item)

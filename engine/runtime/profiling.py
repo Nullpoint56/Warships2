@@ -538,8 +538,11 @@ def _process_rss_mb() -> float | None:
                     ("PeakPagefileUsage", ctypes.c_size_t),
                 ]
 
-            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            win_dll = getattr(ctypes, "WinDLL", None)
+            if not callable(win_dll):
+                return None
+            kernel32 = win_dll("kernel32", use_last_error=True)
+            psapi = win_dll("psapi", use_last_error=True)
             get_current_process = getattr(kernel32, "GetCurrentProcess", None)
             get_process_memory_info = getattr(psapi, "GetProcessMemoryInfo", None)
             if not callable(get_process_memory_info):
