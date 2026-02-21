@@ -58,12 +58,8 @@ jobs:
         shell: pwsh
         run: .\scripts\build_exe.ps1
 
-      - name: Archive build output
-        shell: pwsh
-        run: Compress-Archive -Path .\dist\Warships\* -DestinationPath .\dist\Warships-windows.zip -Force
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Warships-windows
-          path: dist/Warships-windows.zip
+          path: dist/Warships/
