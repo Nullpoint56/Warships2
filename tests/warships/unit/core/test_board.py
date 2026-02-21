@@ -11,6 +11,8 @@ def test_board_can_place_and_reject_overlap_or_oob() -> None:
         ShipPlacement(ShipType.DESTROYER, Coord(0, 0), Orientation.HORIZONTAL)
     )
     assert not board.can_place(ShipPlacement(ShipType.CARRIER, Coord(0, 8), Orientation.HORIZONTAL))
+    # Ships cannot touch, including diagonally.
+    assert not board.can_place(ShipPlacement(ShipType.DESTROYER, Coord(1, 5), Orientation.HORIZONTAL))
 
 
 def test_board_apply_shot_states() -> None:

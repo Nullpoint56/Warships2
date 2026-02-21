@@ -143,6 +143,9 @@ class GameController:
             hover_cell=self._state_data.hover_cell,
             hover_x=self._state_data.hover_x,
             hover_y=self._state_data.hover_y,
+            held_preview_valid=self._state_data.held_preview_valid,
+            held_preview_reason=self._state_data.held_preview_reason,
+            placement_popup_message=self._state_data.placement_popup_message,
             new_game_difficulty=self._current_difficulty(),
             new_game_difficulty_open=self._state_data.new_game_difficulty_open,
             new_game_preset_scroll=self._state_data.new_game_preset_scroll,
@@ -271,6 +274,31 @@ class GameController:
         self._state_data.hover_cell = PlacementEditorService.to_primary_grid_cell(
             _GRID_LAYOUT, event.x, event.y
         )
+        self._state_data.placement_popup_message = None
+        self._state_data.held_preview_valid = True
+        self._state_data.held_preview_reason = None
+        if (
+            self._state_data.held_ship_type is not None
+            and self._state_data.held_orientation is not None
+            and self._state_data.hover_cell is not None
+        ):
+            from warships.game.app.flows.placement_math import bow_from_grab_index
+
+            bow = bow_from_grab_index(
+                self._state_data.hover_cell,
+                self._state_data.held_orientation,
+                self._state_data.held_grab_index,
+            )
+            candidate = ShipPlacement(
+                self._state_data.held_ship_type,
+                bow,
+                self._state_data.held_orientation,
+            )
+            is_valid, reason = PlacementEditorService.can_place_with_reason(
+                self._state_data.placements_by_type, candidate
+            )
+            self._state_data.held_preview_valid = is_valid
+            self._state_data.held_preview_reason = reason or None
         return self._state_data.held_ship_type is not None
 
     def handle_pointer_release(self, event: PointerReleased) -> bool:
@@ -413,6 +441,7 @@ class GameController:
         action = pointer_down_action(button)
         if action is None:
             return False
+        self._state_data.placement_popup_message = None
         if action == "right":
             outcome = PlacementFlowService.on_right_pointer_down(
                 placements_by_type=self._state_data.placements_by_type,
@@ -429,6 +458,8 @@ class GameController:
 
         self._state_data.hover_x = x
         self._state_data.hover_y = y
+        self._state_data.held_preview_valid = True
+        self._state_data.held_preview_reason = None
         outcome = PlacementFlowService.on_left_pointer_down(
             ship_order=_SHIP_ORDER,
             placements_by_type=self._state_data.placements_by_type,

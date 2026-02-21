@@ -32,6 +32,9 @@ class ControllerState:
     hover_cell: Coord | None = None
     hover_x: float | None = None
     hover_y: float | None = None
+    held_preview_valid: bool = True
+    held_preview_reason: str | None = None
+    placement_popup_message: str | None = None
 
     preset_rows: list[PresetRowView] = field(default_factory=list)
     preset_manage_scroll: int = 0

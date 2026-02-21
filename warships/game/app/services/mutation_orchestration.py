@@ -22,6 +22,8 @@ def apply_placement_outcome(
     if not outcome.handled:
         return False
     _apply_held_state(state, outcome.held_state)
+    state.placement_popup_message = outcome.popup_message
+    state.held_preview_reason = outcome.invalid_reason
     if outcome.status is not None:
         state.status = outcome.status
     if outcome.refresh_buttons:
@@ -71,3 +73,6 @@ def _apply_held_state(state: ControllerState, held: HeldShipState) -> None:
     state.held_orientation = held.orientation
     state.held_previous = held.previous
     state.held_grab_index = held.grab_index
+    if held.ship_type is None:
+        state.held_preview_valid = True
+        state.held_preview_reason = None

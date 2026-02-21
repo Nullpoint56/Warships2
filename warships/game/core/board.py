@@ -43,6 +43,54 @@ class BoardState:
 
     def can_place(self, placement: ShipPlacement) -> bool:
         """Return whether a placement is valid and non-overlapping."""
+        ok, _reason = self.can_place_with_reason(placement)
+        return bool(ok)
+
+    def can_place_with_reason(self, placement: ShipPlacement) -> tuple[bool, str]:
+        """Return whether placement is legal with a human-readable failure reason."""
+        cells = cells_for_placement(placement)
+        candidate = {(cell.row, cell.col) for cell in cells}
+        for cell in cells:
+            if not self.in_bounds(cell):
+                return False, "out_of_bounds"
+            if self.ships[cell.row, cell.col] != 0:
+                return False, "overlap"
+        for row, col in candidate:
+            for dr in (-1, 0, 1):
+                for dc in (-1, 0, 1):
+                    rr = row + dr
+                    cc = col + dc
+                    if not (0 <= rr < self.size and 0 <= cc < self.size):
+                        continue
+                    if (rr, cc) in candidate:
+                        continue
+                    if int(self.ships[rr, cc]) != 0:
+                        return False, "touching"
+        return True, ""
+
+    def placement_error_message(self, placement: ShipPlacement) -> str:
+        """Return stable placement-validation error text."""
+        ok, reason = self.can_place_with_reason(placement)
+        if ok:
+            return ""
+        if reason == "out_of_bounds":
+            return f"{placement.ship_type.value} extends outside the board."
+        if reason == "overlap":
+            return f"{placement.ship_type.value} overlaps another ship."
+        if reason == "touching":
+            return (
+                f"{placement.ship_type.value} cannot touch another ship "
+                "(one-cell gap required)."
+            )
+        return f"Invalid placement for {placement.ship_type.value}."
+
+    def placement_error_code(self, placement: ShipPlacement) -> str:
+        """Return stable machine-readable placement-validation code."""
+        _ok, reason = self.can_place_with_reason(placement)
+        return reason
+
+    def _legacy_can_place(self, placement: ShipPlacement) -> bool:
+        """Backward-compatible helper kept for transition safety."""
         for cell in cells_for_placement(placement):
             if not self.in_bounds(cell):
                 return False
@@ -53,7 +101,7 @@ class BoardState:
     def place_ship(self, ship_id: int, placement: ShipPlacement) -> None:
         """Place a ship on the board."""
         if not self.can_place(placement):
-            raise ValueError(f"Invalid placement for {placement.ship_type.value}.")
+            raise ValueError(self.placement_error_message(placement))
         cells = cells_for_placement(placement)
         for cell in cells:
             self.ships[cell.row, cell.col] = ship_id

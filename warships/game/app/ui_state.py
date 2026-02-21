@@ -38,6 +38,9 @@ class AppUIState:
     hover_cell: Coord | None
     hover_x: float | None
     hover_y: float | None
+    held_preview_valid: bool
+    held_preview_reason: str | None
+    placement_popup_message: str | None
     new_game_difficulty: str | None
     new_game_difficulty_open: bool
     new_game_difficulty_options: list[str]

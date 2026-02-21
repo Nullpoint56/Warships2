@@ -33,6 +33,7 @@ from warships.game.ui.views import (
     draw_ai_board,
     draw_new_game_setup,
     draw_placement_panel,
+    draw_placement_rule_popup,
     draw_player_board,
     draw_preset_manage,
     draw_status_bar,
@@ -93,6 +94,7 @@ class GameView:
                 hover_cell=ui.hover_cell,
                 hover_x=ui.hover_x,
                 hover_y=ui.hover_y,
+                held_preview_valid=ui.held_preview_valid,
                 theme=self._theme,
             )
         if ui.state in (AppState.BATTLE, AppState.RESULT):
@@ -104,6 +106,8 @@ class GameView:
             )
         if ui.state is AppState.PLACEMENT_EDIT:
             draw_placement_panel(self._renderer, ui.placements, ui.ship_order, theme=self._theme)
+            if ui.placement_popup_message:
+                draw_placement_rule_popup(self._renderer, ui.placement_popup_message)
         if ui.state is AppState.PRESET_MANAGE:
             draw_preset_manage(self._renderer, ui, theme=self._theme)
         if ui.state is AppState.NEW_GAME_SETUP:
