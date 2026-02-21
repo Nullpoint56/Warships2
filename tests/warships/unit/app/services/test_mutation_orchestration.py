@@ -40,6 +40,25 @@ def test_apply_placement_outcome_paths() -> None:
     assert refreshed["count"] == 1
 
 
+def test_apply_placement_outcome_sets_popup_message() -> None:
+    state = ControllerState()
+
+    handled = apply_placement_outcome(
+        PlacementActionResult(
+            True,
+            HeldShipState(None, None, None, 0),
+            status="invalid",
+            popup_message="Ships must have a one-cell gap.",
+            invalid_reason="touching",
+        ),
+        state=state,
+        refresh_buttons=lambda: None,
+    )
+    assert handled
+    assert state.placement_popup_message == "Ships must have a one-cell gap."
+    assert state.held_preview_reason == "touching"
+
+
 def test_apply_battle_turn_outcome_sets_result_state_on_winner() -> None:
     state = ControllerState()
     refreshed = {"count": 0}

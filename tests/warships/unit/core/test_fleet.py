@@ -23,6 +23,21 @@ def test_validate_fleet_rejects_duplicate_ship_type() -> None:
     assert "Duplicate ship type" in reason
 
 
+def test_validate_fleet_rejects_touching_ships() -> None:
+    fleet = FleetPlacement(
+        ships=[
+            ShipPlacement(ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.BATTLESHIP, Coord(1, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.CRUISER, Coord(4, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.SUBMARINE, Coord(6, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.DESTROYER, Coord(8, 0), Orientation.HORIZONTAL),
+        ]
+    )
+    valid, reason = validate_fleet(fleet)
+    assert not valid
+    assert "cannot touch" in reason
+
+
 def test_build_board_from_fleet_raises_on_invalid() -> None:
     invalid = FleetPlacement(
         ships=[ShipPlacement(ShipType.DESTROYER, Coord(0, 9), Orientation.HORIZONTAL)]

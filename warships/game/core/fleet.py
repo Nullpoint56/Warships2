@@ -30,7 +30,7 @@ def validate_fleet(fleet: FleetPlacement, size: int = BOARD_SIZE) -> tuple[bool,
             return False, f"Duplicate ship type: {placement.ship_type.value}."
         seen.add(placement.ship_type)
         if not board.can_place(placement):
-            return False, f"Invalid placement for {placement.ship_type.value}."
+            return False, board.placement_error_message(placement)
         board.place_ship(len(seen), placement)
 
     missing = [ship for ship in DEFAULT_FLEET if ship not in seen]
@@ -114,7 +114,7 @@ def _build_forbidden_zone(occupied: set[tuple[int, int]], size: int) -> set[tupl
 
 
 def _generate_relaxed_fleet(rng: random.Random, size: int) -> FleetPlacement:
-    """Legacy overlap-only generator used as a last resort."""
+    """Legacy fallback generator used as a last resort."""
     board = BoardState(size=size)
     placements: list[ShipPlacement] = []
 

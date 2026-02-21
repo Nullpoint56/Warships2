@@ -19,7 +19,7 @@ from warships.game.core.models import (
     cells_for_placement,
 )
 from warships.game.core.rules import GameSession
-from warships.game.ui.layout_metrics import PLACEMENT_PANEL
+from warships.game.ui.layout_metrics import PLACEMENT_PANEL, root_rect
 from warships.game.ui.scene_theme import SceneTheme, theme_for_state
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
@@ -126,6 +126,7 @@ def draw_player_board(
     hover_cell: Coord | None,
     hover_x: float | None,
     hover_y: float | None,
+    held_preview_valid: bool = True,
     theme: SceneTheme | None = None,
 ) -> None:
     draw_board_frame(renderer, layout, is_ai=False, theme=theme)
@@ -138,6 +139,7 @@ def draw_player_board(
         return
     draw_ships_from_placements(renderer, layout, placements)
     if held_ship_type is not None and held_orientation is not None:
+        draw_forbidden_neighbor_cells(renderer, layout, placements)
         draw_held_ship_preview(
             renderer,
             layout,
@@ -147,6 +149,7 @@ def draw_player_board(
             hover_cell,
             hover_x,
             hover_y,
+            is_valid=held_preview_valid,
         )
 
 
@@ -268,6 +271,44 @@ def draw_shots(renderer: Render2D, layout: GridLayout, board: BoardState, is_ai:
                 cell_rect=cell_rect,
                 value=value,
             )
+
+
+def draw_forbidden_neighbor_cells(
+    renderer: Render2D, layout: GridLayout, placements: list[ShipPlacement]
+) -> None:
+    occupied = {(cell.row, cell.col) for p in placements for cell in cells_for_placement(p)}
+    forbidden: set[tuple[int, int]] = set()
+    for row, col in occupied:
+        for dr in (-1, 0, 1):
+            for dc in (-1, 0, 1):
+                rr = row + dr
+                cc = col + dc
+                if rr < 0 or rr >= 10 or cc < 0 or cc >= 10:
+                    continue
+                if (rr, cc) in occupied:
+                    continue
+                forbidden.add((rr, cc))
+    for row, col in sorted(forbidden):
+        cell_rect = layout.cell_rect_for_target("primary", row=row, col=col)
+        renderer.add_rect(
+            f"forbidden:bg:{row}:{col}",
+            cell_rect.x + 1.0,
+            cell_rect.y + 1.0,
+            cell_rect.w - 2.0,
+            cell_rect.h - 2.0,
+            "#cc334499",
+            z=0.34,
+        )
+        renderer.add_text(
+            key=f"forbidden:x:{row}:{col}",
+            text="X",
+            x=cell_rect.x + (cell_rect.w / 2.0),
+            y=cell_rect.y + (cell_rect.h / 2.0),
+            font_size=max(11.0, layout.cell_size * 0.62),
+            color="#ffe5e8",
+            anchor="middle-center",
+            z=0.345,
+        )
 
 
 def draw_sunk_ship_overlays(
@@ -410,7 +451,9 @@ def draw_held_ship_preview(
     hover_cell: Coord | None,
     hover_x: float | None,
     hover_y: float | None,
+    is_valid: bool = True,
 ) -> None:
+    preview_color = TOKENS.warning if is_valid else TOKENS.danger
     if hover_cell is not None:
         bow_row = hover_cell.row - (grab_index if orientation is Orientation.VERTICAL else 0)
         bow_col = hover_cell.col - (grab_index if orientation is Orientation.HORIZONTAL else 0)
@@ -426,7 +469,7 @@ def draw_held_ship_preview(
                 cell_rect.y + 2.0,
                 cell_rect.w - 4.0,
                 cell_rect.h - 4.0,
-                TOKENS.warning,
+                preview_color,
                 z=0.35,
             )
         return
@@ -441,6 +484,53 @@ def draw_held_ship_preview(
             hover_y + dy - 9.0,
             18.0,
             18.0,
-            TOKENS.warning,
+            preview_color,
             z=1.2,
         )
+
+
+def draw_placement_rule_popup(renderer: Render2D, message: str) -> None:
+    root = root_rect()
+    popup_w = 560.0
+    popup_h = 88.0
+    popup_x = root.x + ((root.w - popup_w) / 2.0)
+    popup_y = root.y + ((root.h - popup_h) / 2.0)
+    draw_rounded_rect(
+        renderer,
+        key="placement:popup:bg",
+        x=popup_x,
+        y=popup_y,
+        w=popup_w,
+        h=popup_h,
+        radius=10.0,
+        color="#2a1016ee",
+        z=20.0,
+    )
+    draw_stroke_rect(
+        renderer,
+        key="placement:popup:border",
+        x=popup_x,
+        y=popup_y,
+        w=popup_w,
+        h=popup_h,
+        color=TOKENS.danger,
+        z=20.01,
+    )
+    text, size = fit_text_to_rect(
+        message,
+        rect_w=popup_w - 24.0,
+        rect_h=popup_h - 18.0,
+        base_font_size=20.0,
+        min_font_size=12.0,
+        overflow_policy="ellipsis",
+    )
+    renderer.add_text(
+        key="placement:popup:text",
+        text=text,
+        x=popup_x + (popup_w / 2.0),
+        y=popup_y + (popup_h / 2.0),
+        font_size=size,
+        color="#ffe9ed",
+        anchor="middle-center",
+        z=20.02,
+    )

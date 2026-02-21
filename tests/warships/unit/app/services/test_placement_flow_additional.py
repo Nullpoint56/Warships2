@@ -83,7 +83,7 @@ def test_pointer_release_invalid_drop_and_right_click_non_hit_paths() -> None:
         y=layout.origin_y + 1,
     )
     assert invalid_drop.handled
-    assert invalid_drop.status == "Invalid drop position."
+    assert invalid_drop.status == "Ship overlaps another ship."
 
     outside_board = PlacementFlowService.on_right_pointer_down(
         placements_by_type=placements,
@@ -102,6 +102,32 @@ def test_pointer_release_invalid_drop_and_right_click_non_hit_paths() -> None:
         y=layout.origin_y + (9 * layout.cell_size) + 1,
     )
     assert not inside_but_no_ship.handled
+
+
+def test_pointer_release_invalid_drop_restores_previous_board_position() -> None:
+    placements = _placements()
+    layout = GridLayout()
+    original = ShipPlacement(ShipType.DESTROYER, Coord(6, 6), Orientation.HORIZONTAL)
+    placements[ShipType.DESTROYER] = None
+    placements[ShipType.CARRIER] = ShipPlacement(
+        ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL
+    )
+
+    invalid_drop = PlacementFlowService.on_pointer_release(
+        placements_by_type=placements,
+        held_state=HeldShipState(
+            ShipType.DESTROYER,
+            Orientation.HORIZONTAL,
+            original,
+            0,
+        ),
+        layout=layout,
+        x=layout.primary_origin_x + 1,
+        y=layout.origin_y + 1,
+    )
+    assert invalid_drop.handled
+    assert invalid_drop.status == "Ship overlaps another ship."
+    assert placements[ShipType.DESTROYER] == original
 
 
 def test_key_and_right_click_when_holding_ship() -> None:

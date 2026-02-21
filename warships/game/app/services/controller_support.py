@@ -40,6 +40,9 @@ class ControllerSupport:
         self._state.hover_cell = None
         self._state.hover_x = None
         self._state.hover_y = None
+        self._state.held_preview_valid = True
+        self._state.held_preview_reason = None
+        self._state.placement_popup_message = None
 
     def apply_loaded_placements(self, placements: list[ShipPlacement]) -> None:
         for placement in placements:

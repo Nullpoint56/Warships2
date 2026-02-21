@@ -28,6 +28,8 @@ class PlacementActionResult:
     held_state: HeldShipState
     status: str | None = None
     refresh_buttons: bool = False
+    popup_message: str | None = None
+    invalid_reason: str | None = None
 
 
 class PlacementFlowService:
@@ -62,7 +64,8 @@ class PlacementFlowService:
             )
         bow = bow_from_grab_index(target, held_state.orientation, held_state.grab_index)
         candidate = ShipPlacement(held_state.ship_type, bow, held_state.orientation)
-        if PlacementEditorService.can_place(placements_by_type, candidate):
+        can_place, reason = PlacementEditorService.can_place_with_reason(placements_by_type, candidate)
+        if can_place:
             placements_by_type[held_state.ship_type] = candidate
             return PlacementActionResult(
                 handled=True,
@@ -72,11 +75,25 @@ class PlacementFlowService:
                 status=f"Placed {held_state.ship_type.value}.",
                 refresh_buttons=True,
             )
+        if reason == "touching":
+            status = "Ships cannot touch, even diagonally. Leave one-cell gap."
+        elif reason == "overlap":
+            status = "Ship overlaps another ship."
+        elif reason == "out_of_bounds":
+            status = "Ship must stay fully on the board."
+        else:
+            status = "Invalid drop position."
         return PlacementActionResult(
             handled=True,
             held_state=PlacementFlowService.restore_held_ship(placements_by_type, held_state),
-            status="Invalid drop position.",
+            status=status,
             refresh_buttons=True,
+            popup_message=(
+                "Ships cannot touch. Leave a one-cell gap."
+                if reason == "touching"
+                else None
+            ),
+            invalid_reason=reason or None,
         )
 
     @staticmethod

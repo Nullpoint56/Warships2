@@ -35,18 +35,26 @@ class PlacementEditorService:
         placements_by_type: dict[ShipType, ShipPlacement | None],
         candidate: ShipPlacement,
     ) -> bool:
+        ok, _reason = PlacementEditorService.can_place_with_reason(placements_by_type, candidate)
+        return bool(ok)
+
+    @staticmethod
+    def can_place_with_reason(
+        placements_by_type: dict[ShipType, ShipPlacement | None],
+        candidate: ShipPlacement,
+    ) -> tuple[bool, str]:
         board = BoardState()
         temp: list[ShipPlacement] = [p for p in placements_by_type.values() if p is not None]
         temp.append(candidate)
         seen: set[ShipType] = set()
         for idx, placement in enumerate(temp, start=1):
             if placement.ship_type in seen:
-                return False
+                return False, "duplicate_ship_type"
             seen.add(placement.ship_type)
             if not board.can_place(placement):
-                return False
+                return False, board.placement_error_code(placement)
             board.place_ship(idx, placement)
-        return True
+        return True, ""
 
     @staticmethod
     def to_primary_grid_cell(layout: GridLayout, x: float, y: float) -> Coord | None:

@@ -69,6 +69,28 @@ def test_on_pointer_release_places_ship_or_restores() -> None:
     assert placements[ShipType.DESTROYER] == previous
 
 
+def test_on_pointer_release_reports_touching_rule_violation() -> None:
+    placements = _empty_placements()
+    layout = GridLayout()
+    placements[ShipType.CARRIER] = ShipPlacement(ShipType.CARRIER, Coord(0, 0), Orientation.HORIZONTAL)
+    held = HeldShipState(
+        ship_type=ShipType.DESTROYER,
+        orientation=Orientation.HORIZONTAL,
+        previous=None,
+        grab_index=0,
+    )
+    # Drop DESTROYER adjacent to CARRIER with diagonal/edge contact.
+    result = PlacementFlowService.on_pointer_release(
+        placements_by_type=placements,
+        held_state=held,
+        layout=layout,
+        x=layout.primary_origin_x + (5 * layout.cell_size) + 1,
+        y=layout.origin_y + 1,
+    )
+    assert result.handled
+    assert result.status == "Ships cannot touch, even diagonally. Leave one-cell gap."
+
+
 def test_pointer_down_paths_pick_palette_and_right_click_remove() -> None:
     placements = _empty_placements()
     layout = GridLayout()
