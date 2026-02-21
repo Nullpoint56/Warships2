@@ -1,4 +1,6 @@
 from engine.api.ui_primitives import (
+    apply_text_overflow,
+    clip_text,
     Rect,
     clamp_child_rect_to_parent,
     fit_text_to_rect,
@@ -13,16 +15,46 @@ def test_truncate_text_uses_ellipsis_when_possible() -> None:
     assert truncate_text("abcdef", 5) == "ab..."
 
 
-def test_fit_text_to_rect_enforces_bounds_with_truncation() -> None:
+def test_fit_text_to_rect_prefers_shrink_before_overflow() -> None:
     text, size = fit_text_to_rect(
         "Generate Random Fleet",
         rect_w=180.0,
         rect_h=44.0,
         base_font_size=14.0,
     )
-    assert len(text) < len("Generate Random Fleet")
-    assert text.endswith("...")
-    assert size <= 16.0
+    assert text == "Generate Random Fleet"
+    assert size <= 14.0
+
+
+def test_fit_text_to_rect_supports_clip_policy() -> None:
+    text, _size = fit_text_to_rect(
+        "Generate Random Fleet",
+        rect_w=120.0,
+        rect_h=24.0,
+        base_font_size=14.0,
+        overflow_policy="clip",
+    )
+    assert not text.endswith("...")
+    assert len(text) <= len("Generate Random Fleet")
+
+
+def test_fit_text_to_rect_supports_wrap_none_policy() -> None:
+    source = "Generate Random Fleet"
+    text, _size = fit_text_to_rect(
+        source,
+        rect_w=80.0,
+        rect_h=20.0,
+        base_font_size=14.0,
+        overflow_policy="wrap-none",
+    )
+    assert text == source
+
+
+def test_apply_text_overflow_variants() -> None:
+    assert clip_text("abcdef", 3) == "abc"
+    assert apply_text_overflow("abcdef", 3, "clip") == "abc"
+    assert apply_text_overflow("abcdef", 5, "ellipsis") == "ab..."
+    assert apply_text_overflow("abcdef", 3, "wrap-none") == "abcdef"
 
 
 def test_clamp_child_rect_to_parent_enforces_bounds() -> None:

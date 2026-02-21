@@ -4,8 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Collection, Sequence
 from dataclasses import dataclass
+from typing import Literal
 
 from engine.api.app_port import InteractionPlanView, ModalWidgetView
+
+type TextOverflowPolicy = Literal["clip", "ellipsis", "wrap-none"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +194,24 @@ def truncate_text(text: str, max_len: int) -> str:
     return text[: max_len - 3] + "..."
 
 
+def clip_text(text: str, max_len: int) -> str:
+    """Clip text to max length without ellipsis."""
+    return str(text)[: max(0, int(max_len))]
+
+
+def apply_text_overflow(text: str, max_len: int, policy: TextOverflowPolicy) -> str:
+    """Apply overflow policy to one-line text."""
+    normalized = str(text)
+    max_chars = max(0, int(max_len))
+    if len(normalized) <= max_chars:
+        return normalized
+    if policy == "clip":
+        return clip_text(normalized, max_chars)
+    if policy == "wrap-none":
+        return normalized
+    return truncate_text(normalized, max_chars)
+
+
 def fit_text_to_rect(
     text: str,
     *,
@@ -200,8 +221,9 @@ def fit_text_to_rect(
     min_font_size: float = 8.0,
     pad_x: float = 10.0,
     pad_y: float = 6.0,
+    overflow_policy: TextOverflowPolicy = "ellipsis",
 ) -> tuple[str, float]:
-    """Fit label text inside a rectangle using conservative glyph-atlas-friendly estimates."""
+    """Fit one-line text by shrinking first; apply overflow only at minimum size."""
     normalized = str(text)
     if not normalized:
         return "", float(base_font_size)
@@ -222,9 +244,13 @@ def fit_text_to_rect(
         if max_chars >= len(normalized):
             return normalized, float(size)
         if max_chars > 0:
-            return truncate_text(normalized, max_chars), float(size)
+            if overflow_policy == "wrap-none":
+                if len(normalized) <= max_chars:
+                    return normalized, float(size)
+            elif size <= min_size:
+                return apply_text_overflow(normalized, max_chars, overflow_policy), float(size)
         size -= 1.0
-    return truncate_text(normalized, 1), float(min_size)
+    return apply_text_overflow(normalized, 1, overflow_policy), float(min_size)
 
 
 def clamp_child_rect_to_parent(
@@ -526,9 +552,12 @@ __all__ = [
     "PromptView",
     "Rect",
     "ScrollOutcome",
+    "TextOverflowPolicy",
     "apply_wheel_scroll",
+    "apply_text_overflow",
     "can_scroll_list_down",
     "can_scroll_with_wheel",
+    "clip_text",
     "clamp_child_rect_to_parent",
     "clamp_scroll",
     "close_prompt",

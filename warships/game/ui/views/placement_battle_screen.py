@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
-from engine.api.ui_primitives import GridLayout
+from engine.api.ui_primitives import GridLayout, fit_text_to_rect
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     draw_rounded_rect,
@@ -52,12 +52,22 @@ def draw_placement_panel(
         color=TOKENS.border_subtle,
         z=1.01,
     )
+    title_text, title_font_size = fit_text_to_rect(
+        "Ships",
+        rect_w=panel_w - 12.0,
+        rect_h=24.0,
+        base_font_size=16.0,
+        min_font_size=11.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="placement:fleet_title",
-        text="Ships",
+        text=title_text,
         x=panel_x + panel_w / 2.0,
         y=panel_y + 18.0,
-        font_size=16.0,
+        font_size=title_font_size,
         color=TOKENS.text_secondary,
         anchor="top-center",
     )
@@ -78,12 +88,22 @@ def draw_placement_panel(
             color=color,
             z=1.1,
         )
+        ship_label, ship_font_size = fit_text_to_rect(
+            f"{ship_type.value[:3]} ({ship_type.size})",
+            rect_w=row.w - 8.0,
+            rect_h=row.h - 4.0,
+            base_font_size=13.0,
+            min_font_size=10.0,
+            pad_x=3.0,
+            pad_y=1.0,
+            overflow_policy="ellipsis",
+        )
         renderer.add_text(
             key=f"placement:ship:{ship_type.value}",
-            text=f"{ship_type.value[:3]} ({ship_type.size})",
+            text=ship_label,
             x=panel_x + panel_w / 2.0,
             y=row.y + row.h / 2.0,
-            font_size=13.0,
+            font_size=ship_font_size,
             anchor="middle-center",
             color=TOKENS.text_primary,
         )

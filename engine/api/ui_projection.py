@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from engine.api.ui_primitives import Button, Rect, clamp_child_rect_to_parent
+from engine.api.ui_primitives import (
+    Button,
+    Rect,
+    TextOverflowPolicy,
+    clamp_child_rect_to_parent,
+    fit_text_to_rect,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,6 +26,21 @@ class ButtonSpec:
     visible: bool = True
     enabled: bool = True
     when: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TextFitSpec:
+    """Declarative one-line text fit spec with optional parent constraints."""
+
+    text: str
+    rect: Rect
+    base_font_size: float
+    min_font_size: float = 8.0
+    pad_x: float = 10.0
+    pad_y: float = 6.0
+    overflow_policy: TextOverflowPolicy = "ellipsis"
+    parent: Rect | None = None
+    enforce_parent: bool = False
 
 
 def project_buttons(
@@ -49,3 +70,21 @@ def project_buttons(
         for spec in specs
         if spec.when
     ]
+
+
+def project_text_fit(spec: TextFitSpec) -> tuple[str, float, Rect]:
+    """Project fitted one-line text and effective rect using shared policies."""
+    rect = spec.rect
+    if spec.enforce_parent and spec.parent is not None:
+        rect = clamp_child_rect_to_parent(rect, spec.parent, pad_x=0.0, pad_y=0.0)
+    text, size = fit_text_to_rect(
+        spec.text,
+        rect_w=rect.w,
+        rect_h=rect.h,
+        base_font_size=spec.base_font_size,
+        min_font_size=spec.min_font_size,
+        pad_x=spec.pad_x,
+        pad_y=spec.pad_y,
+        overflow_policy=spec.overflow_policy,
+    )
+    return text, size, rect

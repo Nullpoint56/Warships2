@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
+from engine.api.ui_primitives import Rect, fit_text_to_rect
+from engine.api.ui_projection import TextFitSpec, project_text_fit
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     draw_rounded_rect,
@@ -11,7 +13,7 @@ from engine.api.ui_style import (
 )
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import PRESET_PANEL
-from warships.game.ui.views.common import draw_preset_preview, truncate
+from warships.game.ui.views.common import draw_preset_preview
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
@@ -53,12 +55,20 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
         color=TOKENS.border_subtle,
         z=0.86,
     )
+    title_text, title_font_size = fit_text_to_rect(
+        "Preset Manager",
+        rect_w=panel_w - 32.0,
+        rect_h=34.0,
+        base_font_size=28.0,
+        min_font_size=16.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="presets:title",
-        text="Preset Manager",
+        text=title_text,
         x=panel_x + 16.0,
         y=panel_y + 16.0,
-        font_size=28.0,
+        font_size=title_font_size,
         color=TOKENS.text_secondary,
         anchor="top-left",
     )
@@ -85,12 +95,30 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
             color=TOKENS.border_subtle,
             z=0.91,
         )
+        name_text, name_font_size, _ = project_text_fit(
+            TextFitSpec(
+                text=row.name,
+                rect=Rect(
+                    row_rect.x + PRESET_PANEL.name_x_pad,
+                    row_rect.y + PRESET_PANEL.name_y_pad,
+                    row_rect.w - (PRESET_PANEL.name_x_pad + 8.0),
+                    28.0,
+                ),
+                base_font_size=18.0,
+                min_font_size=12.0,
+                pad_x=4.0,
+                pad_y=0.0,
+                overflow_policy="ellipsis",
+                parent=row_rect,
+                enforce_parent=True,
+            )
+        )
         renderer.add_text(
             key=f"preset:name:{row.name}",
-            text=truncate(row.name, PRESET_PANEL.name_max_len),
+            text=name_text,
             x=row_rect.x + PRESET_PANEL.name_x_pad,
             y=row_rect.y + PRESET_PANEL.name_y_pad,
-            font_size=18.0,
+            font_size=name_font_size,
             color=TOKENS.text_primary,
             anchor="top-left",
         )
@@ -138,23 +166,39 @@ def draw_preset_manage(renderer: Render2D, ui: AppUIState) -> None:
             z=1.0,
         )
     if ui.preset_manage_can_scroll_up:
+        scroll_up_text, scroll_up_size = fit_text_to_rect(
+            "^ more",
+            rect_w=70.0,
+            rect_h=18.0,
+            base_font_size=14.0,
+            min_font_size=10.0,
+            overflow_policy="ellipsis",
+        )
         renderer.add_text(
             key="presets:scroll:up",
-            text="^ more",
+            text=scroll_up_text,
             x=panel_x + panel_w - 78.0,
             y=panel_y + 28.0,
-            font_size=14.0,
+            font_size=scroll_up_size,
             color=TOKENS.text_muted,
             anchor="middle-left",
             z=1.05,
         )
     if ui.preset_manage_can_scroll_down:
+        scroll_down_text, scroll_down_size = fit_text_to_rect(
+            "v more",
+            rect_w=70.0,
+            rect_h=18.0,
+            base_font_size=14.0,
+            min_font_size=10.0,
+            overflow_policy="ellipsis",
+        )
         renderer.add_text(
             key="presets:scroll:down",
-            text="v more",
+            text=scroll_down_text,
             x=panel_x + panel_w - 78.0,
             y=panel_y + panel_h - 14.0,
-            font_size=14.0,
+            font_size=scroll_down_size,
             color=TOKENS.text_muted,
             anchor="middle-left",
             z=1.05,

@@ -299,6 +299,7 @@ Phase 4 execution note (2026-02-21):
 3. Result: visible artifacts (partial white overlays/unstable composite look) and major FPS regression (~40 FPS class drop in user validation).
 4. Emergency mitigation: style effects were gated behind `ENGINE_UI_STYLE_EFFECTS` and defaulted off, restoring stable visuals/performance.
 5. Conclusion: architectural migration is present, but Phase 4 visual acceptance is not satisfied in production runtime path yet.
+6. Status: Phase 4 marked failed by acceptance gate (performance regression and visual artifact regressions in user validation).
 
 ### Phase 4b: Style Primitive Recovery (GPU-Native)
 
@@ -340,6 +341,16 @@ User-visible result:
 
 Exit:
 1. All button/text widgets use shared layout policy APIs.
+
+Phase 5 execution note (2026-02-21):
+1. Added engine-level text overflow policy surface in `engine.api.ui_primitives.fit_text_to_rect`:
+- `ellipsis`
+- `clip`
+- `wrap-none`
+2. Added shared projection helper `project_text_fit(...)` + `TextFitSpec` in `engine.api.ui_projection`.
+3. Removed Warships ad hoc `truncate(...)` view helper and migrated affected call sites to shared engine policies/helpers.
+4. Parent-content constraint enforcement is now applied centrally in text projection through optional parent clamp in `project_text_fit`.
+5. Completed migration of remaining direct text widgets (new-game, preset-manage, status overlay, placement panel, prompt widget) to shared text fit/projection policies.
 
 ### Phase 6: Resize/Present Burst Hardening
 

@@ -38,8 +38,8 @@ def test_draw_new_game_setup_random_button_text_is_fitted() -> None:
 
     for _args, kwargs in renderer.texts:
         if kwargs.get("key") == "newgame:random:text":
-            assert kwargs.get("text", "").endswith("...")
-            assert float(kwargs.get("font_size", 99.0)) <= 16.0
+            assert kwargs.get("text", "") == "Generate Random Fleet"
+            assert float(kwargs.get("font_size", 99.0)) <= 14.0
             break
     else:
         raise AssertionError("newgame:random:text was not rendered")

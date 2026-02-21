@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
-from engine.api.ui_primitives import fit_text_to_rect
+from engine.api.ui_primitives import Rect, fit_text_to_rect
+from engine.api.ui_projection import TextFitSpec, project_text_fit
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     draw_rounded_rect,
@@ -12,7 +13,7 @@ from engine.api.ui_style import (
 )
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import NEW_GAME_SETUP
-from warships.game.ui.views.common import draw_preset_preview, truncate
+from warships.game.ui.views.common import draw_preset_preview
 
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
@@ -50,21 +51,41 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         color=TOKENS.border_subtle,
         z=0.86,
     )
+    title_text, title_font_size = fit_text_to_rect(
+        "New Game Setup",
+        rect_w=panel.w - 40.0,
+        rect_h=36.0,
+        base_font_size=30.0,
+        min_font_size=16.0,
+        pad_x=6.0,
+        pad_y=2.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="newgame:title",
-        text="New Game Setup",
+        text=title_text,
         x=panel.x + 20.0,
         y=panel.y + 20.0,
-        font_size=30.0,
+        font_size=title_font_size,
         color=TOKENS.text_secondary,
         anchor="top-left",
     )
+    difficulty_label_text, difficulty_label_size = fit_text_to_rect(
+        "Difficulty",
+        rect_w=160.0,
+        rect_h=22.0,
+        base_font_size=16.0,
+        min_font_size=10.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="newgame:difficulty_label",
-        text="Difficulty",
+        text=difficulty_label_text,
         x=panel.x + 20.0,
         y=panel.y + NEW_GAME_SETUP.difficulty_label_y,
-        font_size=16.0,
+        font_size=difficulty_label_size,
         color=TOKENS.text_muted,
         anchor="top-left",
     )
@@ -90,12 +111,22 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         color=TOKENS.border_subtle,
         z=0.91,
     )
+    difficulty_text, difficulty_font_size = fit_text_to_rect(
+        ui.new_game_difficulty or "Normal",
+        rect_w=diff_rect.w - 20.0,
+        rect_h=diff_rect.h - 4.0,
+        base_font_size=20.0,
+        min_font_size=12.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="newgame:difficulty",
-        text=ui.new_game_difficulty or "Normal",
+        text=difficulty_text,
         x=diff_rect.x + 12.0,
         y=diff_rect.y + diff_rect.h / 2.0,
-        font_size=20.0,
+        font_size=difficulty_font_size,
         color=TOKENS.text_primary,
         anchor="middle-left",
     )
@@ -119,6 +150,10 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
                 rect_w=option.w,
                 rect_h=option.h,
                 base_font_size=16.0,
+                min_font_size=10.0,
+                pad_x=4.0,
+                pad_y=1.0,
+                overflow_policy="ellipsis",
             )
             renderer.add_text(
                 key=f"newgame:diff:opt:text:{name}",
@@ -153,12 +188,22 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         color=TOKENS.border_subtle,
         z=0.89,
     )
+    presets_title_text, presets_title_size = fit_text_to_rect(
+        "Available Presets",
+        rect_w=list_rect.w - 24.0,
+        rect_h=24.0,
+        base_font_size=16.0,
+        min_font_size=10.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="newgame:presets:title",
-        text="Available Presets",
+        text=presets_title_text,
         x=list_rect.x + 12.0,
         y=list_rect.y + 10.0,
-        font_size=16.0,
+        font_size=presets_title_size,
         color=TOKENS.text_muted,
         anchor="top-left",
         z=0.9,
@@ -177,12 +222,22 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
             color=color,
             z=0.9,
         )
+        row_text, row_font_size, _ = project_text_fit(
+            TextFitSpec(
+                text=name,
+                rect=Rect(row.x + 8.0, row.y + 2.0, row.w - 16.0, row.h - 4.0),
+                base_font_size=16.0,
+                overflow_policy="ellipsis",
+                parent=row,
+                enforce_parent=True,
+            )
+        )
         renderer.add_text(
             key=f"newgame:preset:text:{name}",
-            text=truncate(name, 36),
+            text=row_text,
             x=row.x + 12.0,
             y=row.y + row.h / 2.0,
-            font_size=16.0,
+            font_size=row_font_size,
             color=TOKENS.text_on_accent if name == ui.new_game_selected_preset else TOKENS.text_primary,
             anchor="middle-left",
             z=0.92,
@@ -214,6 +269,10 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         rect_w=random_btn.w,
         rect_h=random_btn.h,
         base_font_size=14.0,
+        min_font_size=10.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
     )
     renderer.add_text(
         key="newgame:random:text",
@@ -226,12 +285,22 @@ def draw_new_game_setup(renderer: Render2D, ui: AppUIState) -> None:
         z=0.92,
     )
 
+    preview_title_text, preview_title_size = fit_text_to_rect(
+        f"Selected Setup: {ui.new_game_source or 'None'}",
+        rect_w=panel.w - NEW_GAME_SETUP.preview_x - 20.0,
+        rect_h=28.0,
+        base_font_size=20.0,
+        min_font_size=12.0,
+        pad_x=4.0,
+        pad_y=1.0,
+        overflow_policy="ellipsis",
+    )
     renderer.add_text(
         key="newgame:preview_title",
-        text=f"Selected Setup: {ui.new_game_source or 'None'}",
+        text=preview_title_text,
         x=panel.x + NEW_GAME_SETUP.preview_x,
         y=panel.y + NEW_GAME_SETUP.preview_title_y,
-        font_size=20.0,
+        font_size=preview_title_size,
         color=TOKENS.text_muted,
         anchor="top-left",
     )

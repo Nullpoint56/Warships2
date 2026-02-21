@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from engine.api.ui_primitives import Rect
-from engine.api.ui_projection import ButtonSpec, project_buttons
+from engine.api.ui_projection import ButtonSpec, TextFitSpec, project_buttons, project_text_fit
 
 
 def test_project_buttons_filters_by_condition() -> None:
@@ -29,3 +29,20 @@ def test_project_buttons_can_clamp_to_container() -> None:
     assert buttons[0].x >= 4.0 and buttons[0].y >= 4.0
     assert buttons[1].x + buttons[1].w <= 96.0
     assert buttons[1].y + buttons[1].h <= 96.0
+
+
+def test_project_text_fit_enforces_parent_and_overflow_policy() -> None:
+    text, size, rect = project_text_fit(
+        TextFitSpec(
+            text="VeryLongLabelText",
+            rect=Rect(-5.0, 0.0, 40.0, 18.0),
+            base_font_size=14.0,
+            overflow_policy="ellipsis",
+            parent=Rect(0.0, 0.0, 100.0, 30.0),
+            enforce_parent=True,
+        )
+    )
+    assert rect.x >= 0.0
+    assert text != "VeryLongLabelText"
+    assert len(text) <= 4
+    assert size <= 14.0

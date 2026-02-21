@@ -134,6 +134,7 @@ class GameView:
                 rect_w=button.w,
                 rect_h=button.h,
                 base_font_size=17.0,
+                overflow_policy="ellipsis",
             )
             labels.append(fitted_label)
             self._renderer.add_text(

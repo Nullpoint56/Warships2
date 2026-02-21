@@ -1,13 +1,7 @@
 from tests.warships.unit.ui.helpers import FakeRenderer
 from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipType
-from warships.game.ui.views.common import draw_preset_preview, is_new_game_custom_button, truncate
+from warships.game.ui.views.common import draw_preset_preview, is_new_game_custom_button
 from engine.api.ui_primitives import fit_text_to_rect
-
-
-def test_truncate_behavior() -> None:
-    assert truncate("abc", 5) == "abc"
-    assert truncate("abcdef", 3) == "abc"
-    assert truncate("abcdef", 5) == "ab..."
 
 
 def test_draw_preset_preview_and_custom_button_detection() -> None:
@@ -29,6 +23,5 @@ def test_fit_text_to_rect_clamps_by_parent_bounds() -> None:
         rect_h=44.0,
         base_font_size=14.0,
     )
-    assert len(text) < len("Generate Random Fleet")
-    assert text.endswith("...")
-    assert size <= 16.0
+    assert text == "Generate Random Fleet"
+    assert size <= 14.0

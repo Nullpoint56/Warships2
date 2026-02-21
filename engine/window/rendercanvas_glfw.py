@@ -329,6 +329,7 @@ def create_rendercanvas_window(
     vsync: bool = True,
 ) -> RenderCanvasWindow:
     """Create window adapter over an existing or newly created rendercanvas canvas."""
+    _install_wgpu_physical_size_guard()
     if canvas is not None:
         return RenderCanvasWindow(canvas=canvas)
     try:
@@ -417,6 +418,30 @@ def _is_pointer_type_match(raw_type: str, expected_type: str) -> bool:
     }
     allowed = aliases.get(expected_type, (expected_type,))
     return raw_type in allowed
+
+
+def _install_wgpu_physical_size_guard() -> None:
+    """Clamp non-positive physical resize values to avoid backend resize crashes."""
+    try:
+        from wgpu import _classes as wgpu_classes
+    except Exception:
+        return
+    target_cls = getattr(wgpu_classes, "GPUCanvasContext", None)
+    if target_cls is None:
+        return
+    original = getattr(target_cls, "set_physical_size", None)
+    if not callable(original):
+        return
+    if getattr(target_cls, "_engine_physical_size_guard_installed", False):
+        return
+
+    def _guarded_set_physical_size(self: object, width: int, height: int) -> None:
+        safe_w = max(1, int(width))
+        safe_h = max(1, int(height))
+        original(self, safe_w, safe_h)
+
+    setattr(target_cls, "set_physical_size", _guarded_set_physical_size)
+    setattr(target_cls, "_engine_physical_size_guard_installed", True)
 
 
 _LOG = logging.getLogger("engine.window")

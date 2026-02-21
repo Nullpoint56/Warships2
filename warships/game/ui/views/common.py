@@ -9,15 +9,6 @@ from warships.game.core.models import ShipPlacement, cells_for_placement
 TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
-def truncate(text: str, max_len: int) -> str:
-    """Truncate text to fit fixed-width UI containers."""
-    if len(text) <= max_len:
-        return text
-    if max_len <= 3:
-        return text[:max_len]
-    return text[: max_len - 3] + "..."
-
-
 def draw_preset_preview(
     *,
     renderer: Render2D,
