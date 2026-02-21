@@ -82,6 +82,16 @@ def test_wgpu_renderer_renders_empty_snapshot() -> None:
     assert backend.passes == []
 
 
+def test_wgpu_renderer_default_design_space_is_not_window_size(monkeypatch) -> None:
+    monkeypatch.delenv("ENGINE_UI_RESOLUTION", raising=False)
+    monkeypatch.delenv("ENGINE_UI_DESIGN_WIDTH", raising=False)
+    monkeypatch.delenv("ENGINE_UI_DESIGN_HEIGHT", raising=False)
+    backend = _FakeBackend()
+    renderer = WgpuRenderer(width=1920, height=1080, _backend_factory=lambda _surface: backend)
+
+    assert renderer.design_space_size() == (1200.0, 720.0)
+
+
 def test_wgpu_renderer_renders_simple_rect_grid_text_snapshot() -> None:
     backend = _FakeBackend()
     renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
