@@ -121,6 +121,10 @@ class WgpuRenderer:
     _diag_stage_events_enabled: bool = field(init=False, default=True)
     _diag_stage_sampling_n: int = field(init=False, default=1)
     _diag_profile_sampling_n: int = field(init=False, default=1)
+    _auto_static_min_stable_frames: int = field(init=False, default=3)
+    _auto_static_state: dict[str, tuple[object, int, int]] = field(
+        init=False, default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
@@ -135,6 +139,9 @@ class WgpuRenderer:
         )
         self._diag_profile_sampling_n = _env_int(
             "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N", 1, minimum=1
+        )
+        self._auto_static_min_stable_frames = _env_int(
+            "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES", 3, minimum=1
         )
         self._canvas = self.surface.provider if self.surface is not None else None
         factory = self._backend_factory or _create_wgpu_backend
@@ -449,8 +456,13 @@ class WgpuRenderer:
         execute_pass_packet_counts: dict[str, int] = {}
         execute_kind_packet_counts: dict[str, int] = {}
         execute_packet_count = 0
+        execute_static_packet_count = 0
+        execute_dynamic_packet_count = 0
         for batch in batches:
-            packets = tuple(_command_to_packet(command) for command in batch.commands)
+            packets = tuple(
+                self._annotate_packet_static_mode(_command_to_packet(command))
+                for command in batch.commands
+            )
             packet_count = int(len(packets))
             execute_packet_count += packet_count
             execute_pass_packet_counts[batch.name] = (
@@ -459,6 +471,10 @@ class WgpuRenderer:
             for packet in packets:
                 kind = str(getattr(packet, "kind", "")) or "unknown"
                 execute_kind_packet_counts[kind] = int(execute_kind_packet_counts.get(kind, 0)) + 1
+                if _packet_is_static(packet):
+                    execute_static_packet_count += 1
+                else:
+                    execute_dynamic_packet_count += 1
             self._emit_render_stage(
                 "execute_pass.begin",
                 metadata={"pass_name": batch.name, "packet_count": packet_count},
@@ -468,12 +484,63 @@ class WgpuRenderer:
                 "execute_pass.end",
                 metadata={"pass_name": batch.name, "packet_count": packet_count},
             )
-        return {
+        summary = {
             "execute_packet_count": int(execute_packet_count),
             "execute_pass_count": int(len(batches)),
+            "execute_static_packet_count": int(execute_static_packet_count),
+            "execute_dynamic_packet_count": int(execute_dynamic_packet_count),
             "execute_pass_packet_counts": dict(sorted(execute_pass_packet_counts.items())),
             "execute_kind_packet_counts": dict(sorted(execute_kind_packet_counts.items())),
         }
+        consume_execute_telemetry = getattr(self._backend, "consume_execute_telemetry", None)
+        if callable(consume_execute_telemetry):
+            payload = consume_execute_telemetry()
+            if isinstance(payload, dict):
+                summary.update(payload)
+        return summary
+
+    def _annotate_packet_static_mode(self, packet: _DrawPacket) -> _DrawPacket:
+        override = _packet_static_override(packet)
+        if override == "force_static":
+            effective_static = True
+        elif override == "force_dynamic":
+            effective_static = False
+        else:
+            effective_static = self._resolve_auto_static(packet)
+        data = tuple(packet.data) + (("_engine_static", bool(effective_static)),)
+        return _DrawPacket(
+            kind=str(packet.kind),
+            layer=int(packet.layer),
+            sort_key=str(packet.sort_key),
+            transform=tuple(packet.transform),
+            data=data,
+        )
+
+    def _resolve_auto_static(self, packet: _DrawPacket) -> bool:
+        key = _packet_key(packet)
+        if key is None:
+            return False
+        fingerprint = _packet_fingerprint(packet)
+        frame = int(self._frame_index)
+        state = self._auto_static_state.get(key)
+        if state is None:
+            self._auto_static_state[key] = (fingerprint, 1, frame)
+            return False
+        prev_fingerprint, stable_count, _last_seen = state
+        if prev_fingerprint == fingerprint:
+            stable_count = int(stable_count) + 1
+        else:
+            stable_count = 1
+        self._auto_static_state[key] = (fingerprint, stable_count, frame)
+        if frame % 120 == 0:
+            self._prune_auto_static_state(frame)
+        return stable_count >= int(self._auto_static_min_stable_frames)
+
+    def _prune_auto_static_state(self, frame: int) -> None:
+        cutoff = int(frame) - 300
+        stale_keys = [key for key, (_, _, seen) in self._auto_static_state.items() if int(seen) < cutoff]
+        for key in stale_keys:
+            self._auto_static_state.pop(key, None)
 
     def _emit_render_stage(
         self,
@@ -970,6 +1037,25 @@ class _WgpuBackend:
     _upload_mode_last: str = field(init=False, default="none")
     _uploaded_packet_count: int = field(init=False, default=0)
     _stream_write_cursor: int = field(init=False, default=0)
+    _upload_stream_buffer: object | None = field(init=False, default=None)
+    _upload_stream_buffer_capacity: int = field(init=False, default=0)
+    _draw_vertex_buffer_static: object | None = field(init=False, default=None)
+    _draw_vertex_buffer_static_capacity: int = field(init=False, default=0)
+    _draw_vertex_buffer_dynamic: object | None = field(init=False, default=None)
+    _draw_vertex_buffer_dynamic_capacity: int = field(init=False, default=0)
+    _static_draw_cache_key: tuple[object, ...] | None = field(init=False, default=None)
+    _static_draw_runs: tuple[tuple[tuple[float, float, float, float], int, int], ...] = field(
+        init=False, default_factory=tuple
+    )
+    _static_render_bundle: object | None = field(init=False, default=None)
+    _static_render_bundle_key: tuple[object, ...] | None = field(init=False, default=None)
+    _execute_static_reused_frame: bool = field(init=False, default=False)
+    _execute_static_bundle_replayed_frame: bool = field(init=False, default=False)
+    _execute_static_upload_bytes_frame: int = field(init=False, default=0)
+    _execute_dynamic_upload_bytes_frame: int = field(init=False, default=0)
+    _execute_static_rebuild_count_frame: int = field(init=False, default=0)
+    _execute_static_run_count_frame: int = field(init=False, default=0)
+    _execute_dynamic_run_count_frame: int = field(init=False, default=0)
     _reconfigure_retry_limit: int = field(init=False, default=2)
     _reconfigure_attempts_last: int = field(init=False, default=0)
     _reconfigure_failures: int = field(init=False, default=0)
@@ -1000,6 +1086,9 @@ class _WgpuBackend:
     _last_present_error: str = field(init=False, default="")
     _vsync_enabled: bool = field(init=False, default=True)
     _present_mode_supported: tuple[str, ...] = field(init=False, default=("fifo", "mailbox", "immediate"))
+    _static_packet_rect_cache: dict[tuple[object, ...], tuple[_DrawRect, ...]] = field(
+        init=False, default_factory=dict
+    )
 
     def __post_init__(self) -> None:
         self._preserve_aspect = resolve_preserve_aspect()
@@ -1054,6 +1143,13 @@ class _WgpuBackend:
         self._frame_color_view = self._acquire_frame_color_view()
         self._clear_pending = True
         self._queued_packets.clear()
+        self._execute_static_reused_frame = False
+        self._execute_static_bundle_replayed_frame = False
+        self._execute_static_upload_bytes_frame = 0
+        self._execute_dynamic_upload_bytes_frame = 0
+        self._execute_static_rebuild_count_frame = 0
+        self._execute_static_run_count_frame = 0
+        self._execute_dynamic_run_count_frame = 0
 
     def draw_packets(self, pass_name: str, packets: tuple[_DrawPacket, ...]) -> None:
         self._queued_packets.append((str(pass_name), tuple(packets)))
@@ -1067,7 +1163,8 @@ class _WgpuBackend:
         target_view = self._frame_color_view or self._frame_texture_view
         if target_view is None:
             return
-        draw_rects: list[_DrawRect] = []
+        static_draw_rects: list[_DrawRect] = []
+        dynamic_draw_rects: list[_DrawRect] = []
         sx, sy, ox, oy = viewport_transform(
             width=max(1, int(self._target_width)),
             height=max(1, int(self._target_height)),
@@ -1076,8 +1173,14 @@ class _WgpuBackend:
             preserve_aspect=bool(self._preserve_aspect),
         )
         for packet in packets:
-            draw_rects.extend(self._packet_draw_rects(packet, sx=sx, sy=sy, ox=ox, oy=oy))
-        if not draw_rects:
+            packet_rects = self._packet_draw_rects_cached(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+            if not packet_rects:
+                continue
+            if _packet_is_static(packet):
+                static_draw_rects.extend(packet_rects)
+            else:
+                dynamic_draw_rects.extend(packet_rects)
+        if not static_draw_rects and not dynamic_draw_rects:
             return
         color_attachments = [
             {
@@ -1090,7 +1193,18 @@ class _WgpuBackend:
         self._clear_pending = False
         render_pass = begin_render_pass(color_attachments=color_attachments)
         try:
-            self._draw_rect_batches(render_pass, tuple(draw_rects))
+            if static_draw_rects:
+                self._draw_rect_batches(
+                    render_pass,
+                    tuple(static_draw_rects),
+                    stream_kind="static",
+                )
+            if dynamic_draw_rects:
+                self._draw_rect_batches(
+                    render_pass,
+                    tuple(dynamic_draw_rects),
+                    stream_kind="dynamic",
+                )
         finally:
             end = getattr(render_pass, "end", None)
             if callable(end):
@@ -1136,6 +1250,17 @@ class _WgpuBackend:
 
     def close(self) -> None:
         self._queued_packets.clear()
+        self._static_packet_rect_cache.clear()
+        self._upload_stream_buffer = None
+        self._upload_stream_buffer_capacity = 0
+        self._draw_vertex_buffer_static = None
+        self._draw_vertex_buffer_static_capacity = 0
+        self._draw_vertex_buffer_dynamic = None
+        self._draw_vertex_buffer_dynamic_capacity = 0
+        self._static_draw_cache_key = None
+        self._static_draw_runs = ()
+        self._static_render_bundle = None
+        self._static_render_bundle_key = None
         self._frame_texture = None
         self._frame_texture_view = None
         self._frame_color_view = None
@@ -1153,6 +1278,11 @@ class _WgpuBackend:
         self._surface_state["dpi_scale"] = float(event.dpi_scale)
         self._configure_canvas_context()
         self._rebuild_frame_targets_with_retry()
+        self._static_packet_rect_cache.clear()
+        self._static_draw_cache_key = None
+        self._static_draw_runs = ()
+        self._static_render_bundle = None
+        self._static_render_bundle_key = None
         return
 
     def resize_telemetry(self) -> dict[str, object]:
@@ -1381,26 +1511,35 @@ class _WgpuBackend:
         self._upload_ring_buffer(packet_count)
 
     def _upload_full_rewrite(self, packet_count: int) -> None:
-        create_buffer = getattr(self._device, "create_buffer", None)
-        if not callable(create_buffer):
-            return
         size = max(256, int(packet_count * 64))
-        usage = _resolve_buffer_usage(self._wgpu)
-        try:
-            create_buffer(size=size, usage=usage, mapped_at_creation=False)
-        except Exception:
-            return
+        self._ensure_upload_stream_capacity(size)
 
     def _upload_ring_buffer(self, packet_count: int) -> None:
-        create_buffer = getattr(self._device, "create_buffer", None)
-        if callable(create_buffer):
-            size = max(1024, int(packet_count * 64))
-            usage = _resolve_buffer_usage(self._wgpu)
-            try:
-                create_buffer(size=size, usage=usage, mapped_at_creation=False)
-            except Exception:
-                pass
+        size = max(1024, int(packet_count * 64))
+        self._ensure_upload_stream_capacity(size)
         self._stream_write_cursor = (self._stream_write_cursor + packet_count) % 1_000_000
+
+    def _ensure_upload_stream_capacity(self, minimum_bytes: int) -> object | None:
+        required = max(256, int(minimum_bytes))
+        if (
+            self._upload_stream_buffer is not None
+            and self._upload_stream_buffer_capacity >= required
+        ):
+            return self._upload_stream_buffer
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if not callable(create_buffer):
+            return None
+        usage = _resolve_buffer_usage(self._wgpu)
+        capacity = 4096
+        while capacity < required:
+            capacity *= 2
+        try:
+            buffer = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
+        except Exception:
+            return None
+        self._upload_stream_buffer = cast(object, buffer)
+        self._upload_stream_buffer_capacity = int(capacity)
+        return cast(object, buffer)
 
     def _init_canvas_surface_context(self) -> None:
         provider = self.surface.provider if self.surface is not None else None
@@ -1587,6 +1726,51 @@ class _WgpuBackend:
             )
         return ()
 
+    def _packet_draw_rects_cached(
+        self,
+        packet: _DrawPacket,
+        *,
+        sx: float,
+        sy: float,
+        ox: float,
+        oy: float,
+    ) -> tuple["_DrawRect", ...]:
+        if not _packet_is_static(packet):
+            return self._packet_draw_rects(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+        cache_key = self._build_static_packet_cache_key(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+        cached = self._static_packet_rect_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        rects = self._packet_draw_rects(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+        self._static_packet_rect_cache[cache_key] = rects
+        return rects
+
+    def _build_static_packet_cache_key(
+        self,
+        packet: _DrawPacket,
+        *,
+        sx: float,
+        sy: float,
+        ox: float,
+        oy: float,
+    ) -> tuple[object, ...]:
+        return (
+            str(packet.kind),
+            int(packet.layer),
+            str(packet.sort_key),
+            _freeze_packet_value(packet.transform),
+            _freeze_packet_value(packet.data),
+            round(float(sx), 6),
+            round(float(sy), 6),
+            round(float(ox), 6),
+            round(float(oy), 6),
+            int(self._target_width),
+            int(self._target_height),
+            int(self._design_width),
+            int(self._design_height),
+            bool(self._preserve_aspect),
+        )
+
     def _map_design_rect(
         self,
         rect: "_DrawRect",
@@ -1616,7 +1800,13 @@ class _WgpuBackend:
             color=rect.color,
         )
 
-    def _draw_rect_batches(self, render_pass: object, draw_rects: tuple["_DrawRect", ...]) -> None:
+    def _draw_rect_batches(
+        self,
+        render_pass: object,
+        draw_rects: tuple["_DrawRect", ...],
+        *,
+        stream_kind: str,
+    ) -> None:
         set_pipeline = getattr(render_pass, "set_pipeline", None)
         set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
         draw = getattr(render_pass, "draw", None)
@@ -1624,9 +1814,40 @@ class _WgpuBackend:
             active_pipeline: object | None = None
             for rect in draw_rects:
                 active_pipeline = self._apply_draw_rect(
-                    render_pass, rect, active_pipeline=active_pipeline
+                    render_pass,
+                    rect,
+                    active_pipeline=active_pipeline,
+                    stream_kind=stream_kind,
                 )
             return
+        if stream_kind == "static":
+            cache_key = _draw_rects_cache_key(draw_rects)
+            if (
+                cache_key == self._static_draw_cache_key
+                and self._draw_vertex_buffer_static is not None
+                and self._static_draw_runs
+            ):
+                self._execute_static_reused_frame = True
+                execute_bundles = getattr(render_pass, "execute_bundles", None)
+                if (
+                    callable(execute_bundles)
+                    and self._static_render_bundle is not None
+                    and self._static_render_bundle_key == cache_key
+                ):
+                    execute_bundles([self._static_render_bundle])
+                    self._execute_static_bundle_replayed_frame = True
+                    self._execute_static_run_count_frame += int(len(self._static_draw_runs))
+                    return
+                set_vertex_buffer(0, self._draw_vertex_buffer_static)
+                self._execute_static_run_count_frame += int(len(self._static_draw_runs))
+                for color, run_first_vertex, run_vertex_count in self._static_draw_runs:
+                    pipeline = self._pipeline_for_color(color)
+                    if pipeline is None:
+                        continue
+                    set_pipeline(pipeline)
+                    draw(run_vertex_count, 1, run_first_vertex, 0)
+                return
+
         runs = self._iter_material_runs(draw_rects)
         if not runs:
             return
@@ -1641,7 +1862,27 @@ class _WgpuBackend:
             packed_vertices.extend(vertices)
             run_draws.append((color, first_vertex, vertex_count))
             first_vertex += vertex_count
-        vertex_buffer, total_vertex_count = self._create_vertex_buffer_from_positions(packed_vertices)
+        vertex_buffer, total_vertex_count, uploaded_bytes = self._create_vertex_buffer_from_positions(
+            packed_vertices,
+            stream_kind=stream_kind,
+        )
+        if stream_kind == "static":
+            self._execute_static_upload_bytes_frame += int(uploaded_bytes)
+            self._execute_static_rebuild_count_frame += 1
+            self._execute_static_run_count_frame += int(len(run_draws))
+            cache_key = _draw_rects_cache_key(draw_rects)
+            self._static_draw_cache_key = cache_key
+            self._static_draw_runs = tuple(run_draws)
+            self._static_render_bundle = self._build_static_render_bundle(
+                run_draws=tuple(run_draws),
+                vertex_buffer=vertex_buffer,
+            )
+            self._static_render_bundle_key = (
+                cache_key if self._static_render_bundle is not None else None
+            )
+        else:
+            self._execute_dynamic_upload_bytes_frame += int(uploaded_bytes)
+            self._execute_dynamic_run_count_frame += int(len(run_draws))
         if vertex_buffer is None or total_vertex_count <= 0:
             return
         set_vertex_buffer(0, vertex_buffer)
@@ -1651,6 +1892,43 @@ class _WgpuBackend:
                 continue
             set_pipeline(pipeline)
             draw(run_vertex_count, 1, run_first_vertex, 0)
+
+    def _build_static_render_bundle(
+        self,
+        *,
+        run_draws: tuple[tuple[tuple[float, float, float, float], int, int], ...],
+        vertex_buffer: object,
+    ) -> object | None:
+        create_bundle_encoder = getattr(self._device, "create_render_bundle_encoder", None)
+        if not callable(create_bundle_encoder):
+            return None
+        try:
+            bundle_encoder = create_bundle_encoder(
+                color_formats=[self._surface_format],
+                depth_stencil_format=None,
+                sample_count=1,
+            )
+        except Exception:
+            return None
+        set_pipeline = getattr(bundle_encoder, "set_pipeline", None)
+        set_vertex_buffer = getattr(bundle_encoder, "set_vertex_buffer", None)
+        draw = getattr(bundle_encoder, "draw", None)
+        finish = getattr(bundle_encoder, "finish", None)
+        if not callable(set_pipeline) or not callable(set_vertex_buffer) or not callable(draw):
+            return None
+        if not callable(finish):
+            return None
+        try:
+            set_vertex_buffer(0, vertex_buffer)
+            for color, run_first_vertex, run_vertex_count in run_draws:
+                pipeline = self._pipeline_for_color(color)
+                if pipeline is None:
+                    continue
+                set_pipeline(pipeline)
+                draw(run_vertex_count, 1, run_first_vertex, 0)
+            return cast(object, finish())
+        except Exception:
+            return None
 
     def _iter_material_runs(
         self, draw_rects: tuple["_DrawRect", ...]
@@ -1716,28 +1994,31 @@ class _WgpuBackend:
             y1,
         )
 
-    def _create_vertex_buffer_from_positions(self, values: list[float]) -> tuple[object | None, int]:
+    def _create_vertex_buffer_from_positions(
+        self,
+        values: list[float],
+        *,
+        stream_kind: str,
+    ) -> tuple[object | None, int, int]:
         if not values:
-            return None, 0
-        create_buffer = getattr(self._device, "create_buffer", None)
-        if not callable(create_buffer):
-            return None, 0
+            return None, 0, 0
         payload = array("f", values)
         raw = payload.tobytes()
-        usage = _resolve_buffer_usage(self._wgpu)
-        try:
-            buffer = create_buffer(size=len(raw), usage=usage, mapped_at_creation=False)
-        except Exception:
-            return None, 0
+        buffer = self._ensure_draw_vertex_buffer_capacity(
+            stream_kind=stream_kind,
+            minimum_bytes=len(raw),
+        )
+        if buffer is None:
+            return None, 0, 0
         write_buffer = getattr(self._queue, "write_buffer", None)
         if callable(write_buffer):
             try:
                 write_buffer(buffer, 0, raw)
             except Exception:
-                return None, 0
+                return None, 0, 0
         else:
-            return None, 0
-        return buffer, int(len(values) // 2)
+            return None, 0, 0
+        return buffer, int(len(values) // 2), int(len(raw))
 
     def _apply_draw_rect(
         self,
@@ -1745,6 +2026,7 @@ class _WgpuBackend:
         rect: "_DrawRect",
         *,
         active_pipeline: object | None = None,
+        stream_kind: str = "dynamic",
     ) -> object | None:
         set_pipeline = getattr(render_pass, "set_pipeline", None)
         set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
@@ -1755,12 +2037,60 @@ class _WgpuBackend:
         if callable(set_pipeline) and pipeline is not None and pipeline is not active_pipeline:
             set_pipeline(pipeline)
         vertices = self._clip_vertices_for_rect(rect)
-        vertex_buffer, vertex_count = self._create_vertex_buffer_from_positions(list(vertices))
+        vertex_buffer, vertex_count, _uploaded_bytes = self._create_vertex_buffer_from_positions(
+            list(vertices),
+            stream_kind=stream_kind,
+        )
         if vertex_buffer is None or vertex_count <= 0:
             return pipeline if pipeline is not None else active_pipeline
         set_vertex_buffer(0, vertex_buffer)
         draw(vertex_count, 1, 0, 0)
         return pipeline if pipeline is not None else active_pipeline
+
+    def consume_execute_telemetry(self) -> dict[str, object]:
+        return {
+            "execute_static_reused": bool(self._execute_static_reused_frame),
+            "execute_static_bundle_replayed": bool(self._execute_static_bundle_replayed_frame),
+            "execute_static_upload_bytes": int(self._execute_static_upload_bytes_frame),
+            "execute_dynamic_upload_bytes": int(self._execute_dynamic_upload_bytes_frame),
+            "execute_static_rebuild_count": int(self._execute_static_rebuild_count_frame),
+            "execute_static_run_count": int(self._execute_static_run_count_frame),
+            "execute_dynamic_run_count": int(self._execute_dynamic_run_count_frame),
+        }
+
+    def _ensure_draw_vertex_buffer_capacity(
+        self,
+        *,
+        stream_kind: str,
+        minimum_bytes: int,
+    ) -> object | None:
+        required = max(256, int(minimum_bytes))
+        if stream_kind == "static":
+            current_buffer = self._draw_vertex_buffer_static
+            current_capacity = int(self._draw_vertex_buffer_static_capacity)
+        else:
+            current_buffer = self._draw_vertex_buffer_dynamic
+            current_capacity = int(self._draw_vertex_buffer_dynamic_capacity)
+        if current_buffer is not None and current_capacity >= required:
+            return current_buffer
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if not callable(create_buffer):
+            return None
+        usage = _resolve_buffer_usage(self._wgpu)
+        capacity = 4096
+        while capacity < required:
+            capacity *= 2
+        try:
+            buffer = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
+        except Exception:
+            return None
+        if stream_kind == "static":
+            self._draw_vertex_buffer_static = cast(object, buffer)
+            self._draw_vertex_buffer_static_capacity = int(capacity)
+        else:
+            self._draw_vertex_buffer_dynamic = cast(object, buffer)
+            self._draw_vertex_buffer_dynamic_capacity = int(capacity)
+        return cast(object, buffer)
 
 
 def _resolve_texture_usage(wgpu_mod: object) -> int:
@@ -1770,6 +2100,123 @@ def _resolve_texture_usage(wgpu_mod: object) -> int:
     render_attachment = int(getattr(texture_usage, "RENDER_ATTACHMENT", 0x10))
     copy_src = int(getattr(texture_usage, "COPY_SRC", 0x04))
     return render_attachment | copy_src
+
+
+def _packet_is_static(packet: _DrawPacket) -> bool:
+    raw_data = getattr(packet, "data", ())
+    if not isinstance(raw_data, tuple):
+        return False
+    engine_static = _packet_data_value(raw_data, "_engine_static")
+    if isinstance(engine_static, bool):
+        return bool(engine_static)
+    for item in raw_data:
+        if not (isinstance(item, tuple) and len(item) == 2):
+            continue
+        key, value = item
+        if str(key) != "static":
+            continue
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return bool(value)
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return False
+    return False
+
+
+def _packet_static_override(packet: _DrawPacket) -> str:
+    raw_data = getattr(packet, "data", ())
+    if not isinstance(raw_data, tuple):
+        return "auto"
+    override_raw = _packet_data_value(raw_data, "static")
+    if isinstance(override_raw, bool):
+        return "force_static" if override_raw else "auto"
+    if isinstance(override_raw, (int, float)):
+        return "force_static" if bool(override_raw) else "auto"
+    if isinstance(override_raw, str):
+        value = override_raw.strip().lower()
+        if value in {"1", "true", "yes", "on", "static", "force_static"}:
+            return "force_static"
+        if value in {"dynamic", "force_dynamic", "0", "false", "off"}:
+            return "force_dynamic"
+    return "auto"
+
+
+def _packet_key(packet: _DrawPacket) -> str | None:
+    raw_data = getattr(packet, "data", ())
+    if not isinstance(raw_data, tuple):
+        return None
+    raw = _packet_data_value(raw_data, "key")
+    if raw is None:
+        return None
+    value = str(raw).strip()
+    return value if value else None
+
+
+def _packet_fingerprint(packet: _DrawPacket) -> tuple[object, ...]:
+    filtered_data: list[tuple[object, object]] = []
+    for item in tuple(getattr(packet, "data", ())):
+        if not (isinstance(item, tuple) and len(item) == 2):
+            continue
+        key = str(item[0])
+        if key in {"static", "_engine_static"}:
+            continue
+        filtered_data.append((key, item[1]))
+    return (
+        str(packet.kind),
+        int(packet.layer),
+        str(packet.sort_key),
+        _freeze_packet_value(packet.transform),
+        _freeze_packet_value(tuple(filtered_data)),
+    )
+
+
+def _packet_data_value(raw_data: tuple[tuple[str, object], ...], key_name: str) -> object | None:
+    for item in raw_data:
+        if not (isinstance(item, tuple) and len(item) == 2):
+            continue
+        key, value = item
+        if str(key) == key_name:
+            return value
+    return None
+
+
+def _freeze_packet_value(value: object) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, tuple):
+        return tuple(_freeze_packet_value(item) for item in value)
+    if isinstance(value, list):
+        return tuple(_freeze_packet_value(item) for item in value)
+    if isinstance(value, dict):
+        return tuple(
+            sorted((str(key), _freeze_packet_value(item)) for key, item in value.items())
+        )
+    if isinstance(value, (set, frozenset)):
+        return tuple(sorted((_freeze_packet_value(item) for item in value), key=str))
+    return repr(value)
+
+
+def _draw_rects_cache_key(draw_rects: tuple[_DrawRect, ...]) -> tuple[object, ...]:
+    if not draw_rects:
+        return ()
+    frozen: list[tuple[object, ...]] = []
+    for rect in draw_rects:
+        frozen.append(
+            (
+                int(rect.layer),
+                round(float(rect.x), 4),
+                round(float(rect.y), 4),
+                round(float(rect.w), 4),
+                round(float(rect.h), 4),
+                round(float(rect.color[0]), 4),
+                round(float(rect.color[1]), 4),
+                round(float(rect.color[2]), 4),
+                round(float(rect.color[3]), 4),
+            )
+        )
+    return tuple(frozen)
 
 
 def _resolve_buffer_usage(wgpu_mod: object) -> int:

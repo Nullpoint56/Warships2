@@ -215,6 +215,95 @@ def test_wgpu_renderer_normalized_golden_subset_for_packet_translation() -> None
     ]
 
 
+def test_wgpu_renderer_auto_static_classification_after_stability() -> None:
+    @dataclass(slots=True)
+    class _StaticProbeBackend(_FakeBackend):
+        static_counts: list[int] = field(default_factory=list)
+        dynamic_counts: list[int] = field(default_factory=list)
+
+        def draw_packets(self, pass_name: str, packets) -> None:
+            super().draw_packets(pass_name, packets)
+            static_count = 0
+            dynamic_count = 0
+            for packet in packets:
+                payload = dict(packet.data)
+                if bool(payload.get("_engine_static", False)):
+                    static_count += 1
+                else:
+                    dynamic_count += 1
+            self.static_counts.append(static_count)
+            self.dynamic_counts.append(dynamic_count)
+
+    backend = _StaticProbeBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    snapshot = RenderSnapshot(
+        frame_index=12,
+        passes=(
+            RenderPassSnapshot(
+                name="overlay",
+                commands=(
+                    RenderCommand(
+                        kind="rect",
+                        layer=1,
+                        sort_key="a",
+                        data=(("key", "panel:main"), ("x", 0.0), ("y", 0.0), ("w", 100.0), ("h", 40.0)),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+    renderer.render_snapshot(snapshot)
+    renderer.render_snapshot(snapshot)
+
+    assert backend.dynamic_counts[0] == 1
+    assert backend.dynamic_counts[1] == 1
+    assert backend.static_counts[2] == 1
+
+
+def test_wgpu_renderer_static_override_forces_static_immediately() -> None:
+    @dataclass(slots=True)
+    class _StaticOverrideBackend(_FakeBackend):
+        engine_static_values: list[bool] = field(default_factory=list)
+
+        def draw_packets(self, pass_name: str, packets) -> None:
+            super().draw_packets(pass_name, packets)
+            for packet in packets:
+                payload = dict(packet.data)
+                self.engine_static_values.append(bool(payload.get("_engine_static", False)))
+
+    backend = _StaticOverrideBackend()
+    renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)
+    snapshot = RenderSnapshot(
+        frame_index=13,
+        passes=(
+            RenderPassSnapshot(
+                name="overlay",
+                commands=(
+                    RenderCommand(
+                        kind="rect",
+                        layer=1,
+                        sort_key="a",
+                        data=(
+                            ("key", "panel:main"),
+                            ("x", 0.0),
+                            ("y", 0.0),
+                            ("w", 100.0),
+                            ("h", 40.0),
+                            ("static", True),
+                        ),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    renderer.render_snapshot(snapshot)
+
+    assert backend.engine_static_values == [True]
+
+
 def test_wgpu_renderer_immediate_mode_uses_common_batch_stage() -> None:
     backend = _FakeBackend()
     renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)

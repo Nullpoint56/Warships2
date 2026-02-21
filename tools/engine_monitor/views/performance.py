@@ -23,6 +23,15 @@ class PerformanceBreakdownModel:
     render_mem_delta_mb: float
     render_execute_packet_count: int
     render_execute_pass_count: int
+    render_execute_static_packet_count: int
+    render_execute_dynamic_packet_count: int
+    render_execute_static_reused: bool
+    render_execute_static_bundle_replayed: bool
+    render_execute_static_upload_bytes: int
+    render_execute_dynamic_upload_bytes: int
+    render_execute_static_rebuild_count: int
+    render_execute_static_run_count: int
+    render_execute_dynamic_run_count: int
     render_execute_pass_packet_counts: tuple[tuple[str, int], ...]
     render_execute_kind_packet_counts: tuple[tuple[str, int], ...]
     top_system_name: str
@@ -54,6 +63,15 @@ def build_performance_breakdown_model(
             render_mem_delta_mb=0.0,
             render_execute_packet_count=0,
             render_execute_pass_count=0,
+            render_execute_static_packet_count=0,
+            render_execute_dynamic_packet_count=0,
+            render_execute_static_reused=False,
+            render_execute_static_bundle_replayed=False,
+            render_execute_static_upload_bytes=0,
+            render_execute_dynamic_upload_bytes=0,
+            render_execute_static_rebuild_count=0,
+            render_execute_static_run_count=0,
+            render_execute_dynamic_run_count=0,
             render_execute_pass_packet_counts=(),
             render_execute_kind_packet_counts=(),
             top_system_name="n/a",
@@ -110,6 +128,31 @@ def build_performance_breakdown_model(
     render_mem_delta_mb = _safe_float(render_profile.get("mem_delta_mb"), 0.0)
     render_execute_packet_count = _safe_int(render_profile.get("execute_packet_count"), 0)
     render_execute_pass_count = _safe_int(render_profile.get("execute_pass_count"), 0)
+    render_execute_static_packet_count = _safe_int(
+        render_profile.get("execute_static_packet_count"), 0
+    )
+    render_execute_dynamic_packet_count = _safe_int(
+        render_profile.get("execute_dynamic_packet_count"), 0
+    )
+    render_execute_static_reused = bool(render_profile.get("execute_static_reused", False))
+    render_execute_static_bundle_replayed = bool(
+        render_profile.get("execute_static_bundle_replayed", False)
+    )
+    render_execute_static_upload_bytes = _safe_int(
+        render_profile.get("execute_static_upload_bytes"), 0
+    )
+    render_execute_dynamic_upload_bytes = _safe_int(
+        render_profile.get("execute_dynamic_upload_bytes"), 0
+    )
+    render_execute_static_rebuild_count = _safe_int(
+        render_profile.get("execute_static_rebuild_count"), 0
+    )
+    render_execute_static_run_count = _safe_int(
+        render_profile.get("execute_static_run_count"), 0
+    )
+    render_execute_dynamic_run_count = _safe_int(
+        render_profile.get("execute_dynamic_run_count"), 0
+    )
     render_execute_pass_packet_counts = _safe_sorted_counts(
         render_profile.get("execute_pass_packet_counts")
     )
@@ -159,6 +202,15 @@ def build_performance_breakdown_model(
         render_mem_delta_mb=render_mem_delta_mb,
         render_execute_packet_count=render_execute_packet_count,
         render_execute_pass_count=render_execute_pass_count,
+        render_execute_static_packet_count=render_execute_static_packet_count,
+        render_execute_dynamic_packet_count=render_execute_dynamic_packet_count,
+        render_execute_static_reused=render_execute_static_reused,
+        render_execute_static_bundle_replayed=render_execute_static_bundle_replayed,
+        render_execute_static_upload_bytes=render_execute_static_upload_bytes,
+        render_execute_dynamic_upload_bytes=render_execute_dynamic_upload_bytes,
+        render_execute_static_rebuild_count=render_execute_static_rebuild_count,
+        render_execute_static_run_count=render_execute_static_run_count,
+        render_execute_dynamic_run_count=render_execute_dynamic_run_count,
         render_execute_pass_packet_counts=render_execute_pass_packet_counts,
         render_execute_kind_packet_counts=render_execute_kind_packet_counts,
         top_system_name=top_system_name,

@@ -111,6 +111,55 @@ def _process_rss_mb() -> float | None:
     except Exception:
         pass
 
+    if os.name == "nt":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("PageFaultCount", wintypes.DWORD),
+                    ("PeakWorkingSetSize", ctypes.c_size_t),
+                    ("WorkingSetSize", ctypes.c_size_t),
+                    ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                    ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                    ("PagefileUsage", ctypes.c_size_t),
+                    ("PeakPagefileUsage", ctypes.c_size_t),
+                ]
+
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+            psapi = ctypes.WinDLL("psapi", use_last_error=True)
+            get_current_process = getattr(kernel32, "GetCurrentProcess", None)
+            get_process_memory_info = getattr(psapi, "GetProcessMemoryInfo", None)
+            if not callable(get_process_memory_info):
+                get_process_memory_info = getattr(kernel32, "K32GetProcessMemoryInfo", None)
+            if not callable(get_current_process) or not callable(get_process_memory_info):
+                return None
+            get_process_memory_info.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                wintypes.DWORD,
+            ]
+            get_process_memory_info.restype = wintypes.BOOL
+            counters = PROCESS_MEMORY_COUNTERS()
+            counters.cb = ctypes.sizeof(PROCESS_MEMORY_COUNTERS)
+            process_handle = get_current_process()
+            ok = bool(
+                get_process_memory_info(
+                    process_handle,
+                    ctypes.byref(counters),
+                    counters.cb,
+                )
+            )
+            if not ok:
+                return None
+            return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
+        except Exception:
+            pass
+
     try:
         resource_mod = import_module("resource")
         getrusage = getattr(resource_mod, "getrusage", None)

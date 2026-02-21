@@ -5,21 +5,36 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
+      <env name="ENGINE_DIAGNOSTICS_BUFFER_CAP" value="20000" />
+      <env name="ENGINE_DIAGNOSTICS_CRASH_DIR" value="../tools/data/crash" />
+      <env name="ENGINE_DIAGNOSTICS_CRASH_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_CRASH_RECENT_EVENTS" value="1000" />
+      <env name="ENGINE_DIAGNOSTICS_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_HTTP_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_HTTP_HOST" value="127.0.0.1" />
+      <env name="ENGINE_DIAGNOSTICS_HTTP_PORT" value="8765" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_EXPORT_DIR" value="../tools/data/profiles" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_MODE" value="timeline" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_SAMPLING_N" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_SPAN_CAP" value="20000" />
+      <env name="ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_REPLAY_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_REPLAY_EXPORT_DIR" value="../tools/data/replay" />
+      <env name="ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL" value="1" />
+      <env name="ENGINE_INPUT_TRACE_ENABLED" value="1" />
+      <env name="ENGINE_LOG_LEVEL" value="DEBUG" />
+      <env name="ENGINE_METRICS_ENABLED" value="1" />
+      <env name="ENGINE_MONITOR_REMOTE_HEAVY_POLL_EVERY" value="1" />
+      <env name="ENGINE_MONITOR_REMOTE_PROFILING_LIMIT" value="5000" />
+      <env name="ENGINE_MONITOR_REMOTE_SNAPSHOT_LIMIT" value="5000" />
+      <env name="ENGINE_PROFILING_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_SAMPLING_N" value="1" />
+      <env name="ENGINE_RUNTIME_GAME_NAME" value="warships" />
+      <env name="ENGINE_UI_OVERLAY_ENABLED" value="1" />
       <env name="PYTHONUNBUFFERED" value="1" />
-      <env name="ENGINE_DEBUG_METRICS" value="1" />
-      <env name="ENGINE_DEBUG_PROFILING" value="1" />
-      <env name="ENGINE_DEBUG_PROFILING_SAMPLING_N" value="1" />
-      <env name="ENGINE_DEBUG_UI_TRACE" value="1" />
-      <env name="ENGINE_DEBUG_RESIZE_TRACE" value="1" />
-      <env name="ENGINE_DEBUG_OVERLAY" value="1" />
-      <env name="ENGINE_DEBUG_OBS_HTTP" value="1" />
-      <env name="ENGINE_DEBUG_OBS_HTTP_HOST" value="127.0.0.1" />
-      <env name="ENGINE_DEBUG_OBS_HTTP_PORT" value="8765" />
-      <env name="ENGINE_DIAG_ENABLED" value="1" />
-      <env name="ENGINE_DIAG_PROFILE_MODE" value="timeline_sample" />
-      <env name="ENGINE_DIAG_PROFILE_SAMPLING_N" value="1" />
-      <env name="ENGINE_DIAG_REPLAY_CAPTURE" value="1" />
-      <env name="ENGINE_DIAG_REPLAY_EXPORT_DIR" value="../tools/data/replay" />
+      <env name="ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/warships" />
