@@ -36,6 +36,8 @@ _HB = _optional_import("uharfbuzz")
 _COMMAND_PAYLOAD_CACHE_MAX = 20_000
 _COLOR_CACHE_MAX = 512
 _TRANSFORM_CACHE_MAX = 20_000
+_DEFAULT_UI_DESIGN_WIDTH = 1200
+_DEFAULT_UI_DESIGN_HEIGHT = 720
 _COMMAND_COLOR_CACHE: dict[object, tuple[float, float, float, float]] = {}
 _COMMAND_LINEAR_COLOR_CACHE: dict[
     tuple[float, float, float, float], tuple[float, float, float, float]
@@ -247,8 +249,8 @@ class WgpuRenderer:
         self._owner_thread_id = int(threading.get_ident())
         profile = resolve_runtime_profile()
         design_w, design_h = _resolve_ui_design_dimensions(
-            default_width=max(1, int(self.width)),
-            default_height=max(1, int(self.height)),
+            default_width=int(_DEFAULT_UI_DESIGN_WIDTH),
+            default_height=int(_DEFAULT_UI_DESIGN_HEIGHT),
         )
         self._design_width = int(design_w)
         self._design_height = int(design_h)
@@ -1837,8 +1839,8 @@ class _WgpuBackend:
     def __post_init__(self) -> None:
         self._preserve_aspect = resolve_preserve_aspect()
         design_w, design_h = _resolve_ui_design_dimensions(
-            default_width=max(1, int(self._target_width)),
-            default_height=max(1, int(self._target_height)),
+            default_width=int(_DEFAULT_UI_DESIGN_WIDTH),
+            default_height=int(_DEFAULT_UI_DESIGN_HEIGHT),
         )
         self._design_width = int(design_w)
         self._design_height = int(design_h)
