@@ -6,37 +6,25 @@ Scope: Refactor `engine` package to remove domain leakage, reduce god modules/cl
 
 ## Problem
 
-Current engine architecture has several structural issues that will become expensive to evolve:
+Current engine architecture has gone through several feature additions. It is necessary to do a refactor audit to catch issues, before they cause serious problems.
 
-1. God module/class concentration (`engine/rendering/wgpu_renderer.py`, `engine/runtime/host.py`).
-2. Duplicated UI runtime logic split across `engine/ui_runtime` and `engine/api/ui_primitives.py`.
-3. API/runtime boundary blur and dynamic contracts (`Any`/`getattr` heavy paths).
-4. Warships-specific naming and semantics leaking into engine core.
-5. Hot-path inefficiencies (rebuilding maps, deep transforms/sanitization, clear-all caches).
+## Evaluation criterion
 
-## Goals
+1. Unclean architecture
+   - 
+2. Potentially unsustainable code or architecture
+   - 
+3. Engine API design issues (unusable, badly designed, overly verbose while lacking feature)
+   -
+4. Leaking specific game domain into the engine (non generalizable choices and implementations)
+   -
+5. God classes and god modules
+   -
+6. SRP violations, Clean and DRY coding paradigm ignoring code
+   -
+7. Potentially inefficient designs
+   -
 
-1. Enforce clear engine layering and stable contracts.
-2. Remove game-domain assumptions from engine internals and public API.
-3. Break down oversized modules into maintainable components.
-4. Reduce duplicated logic and establish single ownership for UI runtime primitives.
-5. Improve hot-path performance predictability and cache behavior.
-
-## Non-Goals
-
-1. Full rendering backend rewrite.
-2. Visual redesign of game UI.
-3. Immediate migration of every call site in one commit.
-
-## Findings Baseline (Evidence)
-
-1. `engine/rendering/wgpu_renderer.py` is 4885 LOC and mixes renderer API, backend lifecycle, batching, text shaping/atlas, diagnostics, and CFFI prewarm/fastpath logic.
-2. `engine/runtime/host.py` is 820 LOC and mixes frame orchestration, diagnostics, profiling, replay, crash export, HTTP diagnostics server, overlay composition, and render snapshot pipeline details.
-3. `engine/api/ui_primitives.py` duplicates functionality present in `engine/ui_runtime/*` (grid, prompt/modal runtime, keymap, list scroll, interaction routing).
-4. Warships-specific artifacts remain in engine: `WARSHIPS_RNG_SEED`, `warships_run_*`, `ui_diag_run_*`, and board-specific token names.
-5. `RenderAPI` protocol does not declare `add_style_rect`, but implementations and style helpers rely on it via duck typing.
-6. `engine/api/*` factories directly import `engine/runtime/*`, reducing contract/runtime separation.
-7. Shortcut routing rebuilds command map per key event in `EngineUIFramework`.
 
 ## Criteria Review: Unclean Architecture
 
@@ -69,12 +57,6 @@ Current engine architecture has several structural issues that will become expen
 9. Medium: config boundary fragmentation.
    - Env parsing and config shaping spread across `runtime`, `diagnostics`, `rendering`, and `ui-space` modules.
 
-### Architecture Decisions (Confirmed)
-
-1. `engine.api` is contracts/types only; runtime wiring moves to explicit composition modules.
-2. `engine.ui_runtime` is canonical runtime-UI owner; `engine.api.ui_primitives` becomes thin contracts/value types + compatibility shims.
-3. Protocol hardening is strict; required runtime capabilities must be explicit typed interfaces, not reflective probes.
-
 ### Audit Coverage and Outcome
 
 1. Static import audit: 96 modules, 211 internal edges.
@@ -102,23 +84,6 @@ Current engine architecture has several structural issues that will become expen
 16. `engine/runtime/window_frontend.py`
 17. `engine/ui_runtime/debug_overlay.py`
 
-### Criterion Backlog (Focused)
-
-1. Move all `engine.api` runtime/diagnostics factories and bindings to composition layer.
-2. Introduce typed boundary protocols for diagnostics host, style-capable render, resize-capable renderer/window, and explicit surface provider.
-3. Remove boundary reflection where capability is architecturally required.
-4. Consolidate UI runtime logic under `engine.ui_runtime`; reduce `engine.api.ui_primitives` to non-duplicated API-facing contracts/shims.
-5. Relocate fixed-step utility to neutral layer and remove gameplay->runtime dependency.
-6. Move window-backend helpers out of rendering helpers and into window/composition.
-7. Replace unbounded service-locator usage with typed context members and constrained extension slots.
-8. Split/trim mixed barrel exports (`engine/runtime/__init__.py`, `engine/api/__init__.py`).
-9. Centralize env/config parsing responsibilities.
-
-### Closure Pass (Unclean Architecture)
-
-Date: 2026-02-21  
-Method: static import-rule audit + runtime smoke checks + per-module verdicting.
-
 #### Static Audit Artifacts
 
 1. Import edge dump: `docs/architecture/audits/engine_import_edges.csv`
@@ -144,8 +109,6 @@ Method: static import-rule audit + runtime smoke checks + per-module verdicting.
 2. Headless hosted-runtime smoke: passed (`ENGINE_HEADLESS=1`, minimal dummy module, clean shutdown).
 3. API factory smoke: passed (`create_command_map`, `create_event_bus`, `create_flow_machine`, `create_runtime_context`, `create_module_graph`, `create_screen_stack`).
 4. Debug API smoke: passed with minimal host object.
-
-#### Final Verdict for Criterion: Unclean Architecture
 
 Criterion status: **confirmed present** (high confidence).
 
@@ -211,45 +174,7 @@ This pass covers all current `engine` modules for this criterion with static and
 15. Medium: direct module-test touch is uneven for wrapper/barrel modules.
    - Indirection-heavy modules have weaker direct references, raising regression risk during wiring refactors.
 
-### Criterion Outcome
-
-Status: **confirmed present** (high confidence).
-
-### Criterion Backlog (Focused)
-
-1. Define and enforce maintainability budgets:
-   - max file size,
-   - max function length/branch complexity,
-   - broad-exception budget with justified allowlist.
-2. Split sustainability hotspots first:
-   - `engine/rendering/wgpu_renderer.py`,
-   - `engine/runtime/host.py`,
-   - `engine/window/rendercanvas_glfw.py`,
-   - `engine/runtime/profiling.py`.
-3. Replace broad exception patterns with typed handling + explicit fallback telemetry.
-4. Reduce reflection in required paths by explicit typed extension interfaces and adapters.
-5. Isolate third-party/private API patching to a narrow compatibility module with version guards and tests.
-6. Consolidate duplicate runtime logic (`engine/api/ui_primitives.py` vs `engine/ui_runtime/*`).
-7. Centralize config parsing and publish one canonical engine config catalog.
-8. Align default design resolution policy across host/renderer/ui-space.
-9. Strengthen architecture tests:
-   - enforce API purity for all imports (not only top-level),
-   - add checks for broad exceptions and module budget thresholds.
-10. Add import-cycle guardrail in CI and target monotonic cycle reduction per phase.
-11. Reduce and tier public export surfaces (`engine.api`, `engine.runtime`) with explicit stability levels.
-12. Replace import-time env flag capture in runtime-critical modules with runtime-resolved config access or explicit refresh policy.
-13. Replace string-dispatch command handling with typed command registry/dispatcher where feasible.
-14. Promote private packet metadata keys to explicit typed fields/contracts (or isolate behind adapter boundary).
-15. Add targeted tests for currently low-direct-reference wrapper/barrel modules that encode critical wiring behavior.
-
-## Refactoring Principles
-
-1. Contracts first: define target interfaces before moving implementations.
-2. One owner per concern: no duplicate runtime logic in parallel modules.
-3. Backward compatibility by adapters during migration.
-4. Small, testable slices with measurable exit criteria.
-
-## Execution Phases
+## Refactoring Plan Execution Phases
 
 ### Phase 1: Domain Decoupling and Naming Cleanup
 
@@ -359,35 +284,3 @@ Exit:
 5. Runtime behavior does not depend on hidden import-time env capture for critical toggles.
 6. Sustainability budgets and API/export-surface checks prevent hotspot regression.
 
-## Work Breakdown Priority
-
-1. Phase 1 (domain decoupling)
-2. Phase 2 (contract hardening)
-3. Phase 3 (UI consolidation)
-4. Phase 4 (host decomposition)
-5. Phase 5 (renderer decomposition)
-6. Phase 6 (performance hygiene)
-
-## Acceptance Criteria
-
-1. No game-specific identifiers remain in engine contracts/config defaults.
-2. `engine/api` contracts are typed and do not depend on broad runtime reflection for core features.
-3. Duplicate UI runtime logic is removed and replaced by one canonical implementation.
-4. `EngineHost` and renderer responsibilities are decomposed into maintainable modules.
-5. Input and frame hot paths avoid unnecessary rebuild/eviction behavior and show stable performance.
-
-## Risks and Mitigation
-
-1. Risk: Large refactor breaks behavior across runtime/input/render paths.
-   - Mitigation: phase gating, compatibility adapters, and regression tests per phase.
-2. Risk: Migration churn for existing imports.
-   - Mitigation: temporary shims/re-exports with deprecation markers.
-3. Risk: Performance regressions from abstraction splits.
-   - Mitigation: baseline measurements before each phase and perf checks in CI.
-
-## Initial Task Queue
-
-1. Create issue set from each phase with explicit file targets and owners.
-2. Implement Phase 1 aliases/migrations and add compatibility tests.
-3. Draft target protocols for Phase 2 (`DiagnosticsHost`, `StyleRenderAPI` or equivalent).
-4. Produce Phase 3 migration map listing all duplicated symbol pairs and selected canonical source.
