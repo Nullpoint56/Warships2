@@ -3,16 +3,10 @@
 from __future__ import annotations
 
 from engine.api.render import RenderAPI as Render2D
+from engine.api.ui_style import DEFAULT_UI_STYLE_TOKENS, draw_rounded_rect
 from warships.game.core.models import ShipPlacement, cells_for_placement
 
-
-def truncate(text: str, max_len: int) -> str:
-    """Truncate text to fit fixed-width UI containers."""
-    if len(text) <= max_len:
-        return text
-    if max_len <= 3:
-        return text[:max_len]
-    return text[: max_len - 3] + "..."
+TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
 def draw_preset_preview(
@@ -25,8 +19,16 @@ def draw_preset_preview(
     cell: float,
 ) -> None:
     """Render a compact 10x10 fleet preview."""
-    renderer.add_rect(
-        f"preset:preview:bg:{key_prefix}", x, y, cell * 10, cell * 10, "#1e3a8a", z=1.0
+    draw_rounded_rect(
+        renderer,
+        key=f"preset:preview:bg:{key_prefix}",
+        x=x,
+        y=y,
+        w=cell * 10,
+        h=cell * 10,
+        radius=max(2.0, cell),
+        color=TOKENS.board_bg,
+        z=1.0,
     )
     for placement in placements:
         for coord in cells_for_placement(placement):
@@ -36,7 +38,7 @@ def draw_preset_preview(
                 y + coord.row * cell + 0.5,
                 cell - 1.0,
                 cell - 1.0,
-                "#10b981",
+                TOKENS.success,
                 z=1.1,
             )
 

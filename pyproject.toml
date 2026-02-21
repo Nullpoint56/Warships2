@@ -1,14 +1,16 @@
 [project]
 name = "warships2"
 version = "0.1.0"
-description = "Classic Battleship (Warships) built with Python and pygfx."
+description = "Classic Battleship (Warships) built with Python and wgpu."
 requires-python = ">=3.14,<3.15"
 dependencies = [
     "numpy>=2.0",
-    "pygfx>=0.7",
     "wgpu>=0.20",
     "rendercanvas>=2.4",
     "glfw>=2.9",
+    "freetype-py>=2.5",
+    "uharfbuzz>=0.43",
+    "orjson>=3.10",
 ]
 
 [dependency-groups]
@@ -38,7 +40,6 @@ check_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = [
-    "pygfx.*",
     "wgpu.*",
     "rendercanvas.*",
     "freetype.*",

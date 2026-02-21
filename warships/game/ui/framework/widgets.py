@@ -6,8 +6,17 @@ from dataclasses import dataclass
 
 from engine.api.render import RenderAPI as Render2D
 from engine.api.ui_primitives import Rect
+from engine.api.ui_projection import TextFitSpec, project_text_fit
+from engine.api.ui_style import (
+    DEFAULT_UI_STYLE_TOKENS,
+    draw_rounded_rect,
+    draw_shadow_rect,
+    draw_stroke_rect,
+)
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.layout_metrics import PROMPT
+
+TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,44 +60,113 @@ def render_modal_text_input_widget(renderer: Render2D, widget: ModalTextInputWid
         widget.overlay_rect.y,
         widget.overlay_rect.w,
         widget.overlay_rect.h,
-        "#000000",
+        TOKENS.shadow_strong,
         z=10.0,
     )
-    renderer.add_rect(
-        "prompt:panel",
-        widget.panel_rect.x,
-        widget.panel_rect.y,
-        widget.panel_rect.w,
-        widget.panel_rect.h,
-        "#1f2937",
+    draw_shadow_rect(
+        renderer,
+        key="prompt:panel:shadow",
+        x=widget.panel_rect.x + 2.0,
+        y=widget.panel_rect.y + 2.0,
+        w=widget.panel_rect.w,
+        h=widget.panel_rect.h,
+        color=TOKENS.shadow_strong,
+        corner_radius=10.0,
+        z=10.05,
+    )
+    draw_rounded_rect(
+        renderer,
+        key="prompt:panel",
+        x=widget.panel_rect.x,
+        y=widget.panel_rect.y,
+        w=widget.panel_rect.w,
+        h=widget.panel_rect.h,
+        radius=10.0,
+        color=TOKENS.surface_elevated,
         z=10.1,
+    )
+    draw_stroke_rect(
+        renderer,
+        key="prompt:panel:border",
+        x=widget.panel_rect.x,
+        y=widget.panel_rect.y,
+        w=widget.panel_rect.w,
+        h=widget.panel_rect.h,
+        color=TOKENS.border_subtle,
+        z=10.11,
+    )
+    title_text, title_font_size, _ = project_text_fit(
+        TextFitSpec(
+            text=widget.title,
+            rect=Rect(
+                widget.panel_rect.x + 30.0,
+                widget.panel_rect.y + 34.0,
+                widget.panel_rect.w - 60.0,
+                28.0,
+            ),
+            base_font_size=24.0,
+            min_font_size=12.0,
+            pad_x=4.0,
+            pad_y=1.0,
+            overflow_policy="ellipsis",
+            parent=widget.panel_rect,
+            enforce_parent=True,
+        )
     )
     renderer.add_text(
         key="prompt:title",
-        text=widget.title,
+        text=title_text,
         x=widget.panel_rect.x + 30.0,
         y=widget.panel_rect.y + 34.0,
-        font_size=24.0,
-        color="#f9fafb",
+        font_size=title_font_size,
+        color=TOKENS.text_primary,
         anchor="top-left",
         z=10.2,
     )
-    renderer.add_rect(
-        "prompt:input:bg",
-        widget.input_rect.x,
-        widget.input_rect.y,
-        widget.input_rect.w,
-        widget.input_rect.h,
-        "#111827",
+    draw_rounded_rect(
+        renderer,
+        key="prompt:input:bg",
+        x=widget.input_rect.x,
+        y=widget.input_rect.y,
+        w=widget.input_rect.w,
+        h=widget.input_rect.h,
+        radius=6.0,
+        color=TOKENS.surface_overlay,
         z=10.2,
+    )
+    draw_stroke_rect(
+        renderer,
+        key="prompt:input:border",
+        x=widget.input_rect.x,
+        y=widget.input_rect.y,
+        w=widget.input_rect.w,
+        h=widget.input_rect.h,
+        color=TOKENS.border_subtle,
+        z=10.21,
+    )
+    value_text, value_font_size, _ = project_text_fit(
+        TextFitSpec(
+            text=widget.value or "_",
+            rect=Rect(
+                widget.input_rect.x + 8.0,
+                widget.input_rect.y,
+                widget.input_rect.w - 16.0,
+                widget.input_rect.h,
+            ),
+            base_font_size=18.0,
+            min_font_size=12.0,
+            overflow_policy="ellipsis",
+            parent=widget.input_rect,
+            enforce_parent=True,
+        )
     )
     renderer.add_text(
         key="prompt:value",
-        text=widget.value or "_",
+        text=value_text,
         x=widget.input_rect.x + 12.0,
         y=widget.input_rect.y + widget.input_rect.h / 2.0,
-        font_size=18.0,
-        color="#e5e7eb",
+        font_size=value_font_size,
+        color=TOKENS.text_primary,
         anchor="middle-left",
         z=10.3,
     )

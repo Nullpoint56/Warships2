@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Protocol
 
+from engine.api.render_snapshot import RenderSnapshot
+
 
 class RenderAPI(Protocol):
     """Rendering capabilities exposed by the engine to higher layers."""
@@ -73,3 +75,6 @@ class RenderAPI(Protocol):
 
     def close(self) -> None:
         """Close renderer resources and stop the loop."""
+
+    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        """Render immutable snapshot payload."""

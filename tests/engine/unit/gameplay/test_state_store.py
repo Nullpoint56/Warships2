@@ -30,3 +30,10 @@ def test_state_store_get_returns_copy() -> None:
     current["items"].append(3)
 
     assert store.get() == {"items": [1, 2]}
+
+
+def test_state_store_peek_returns_reference() -> None:
+    store = create_state_store({"items": [1, 2]})
+    current = store.peek()
+    current["items"].append(3)
+    assert store.peek() == {"items": [1, 2, 3]}

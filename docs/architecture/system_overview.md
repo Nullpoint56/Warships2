@@ -6,7 +6,7 @@ Scope: current implemented architecture
 ## Goals
 
 - Engine-hosted runtime lifecycle
-- PyGFX rendering backend through engine APIs
+- WGPU rendering backend through engine APIs
 - Strict engine/game boundary
 - Game-specific rules/policy/UI composition kept in `warships/game`
 
@@ -18,7 +18,7 @@ Scope: current implemented architecture
 Key engine packages:
 - `engine/api/`: contracts (`GameModule`, `EngineAppPort`, `RenderAPI`)
 - `engine/runtime/`: host, bootstrap, frontend window adapter, UI framework routing
-- `engine/rendering/`: `SceneRenderer` and retained-node helpers
+- `engine/rendering/`: `WgpuRenderer` backend implementation
 - `engine/input/`: pointer/key/wheel event collection
 - `engine/ui_runtime/`: geometry, grid hit-testing, modal/key/wheel/list helpers
 
@@ -38,9 +38,9 @@ Entry point:
 Startup flow:
 1. `warships.main.main()` loads env and logging.
 2. `warships.game.app.engine_hosted_runtime.run_engine_hosted_app()` composes game objects.
-3. `engine.runtime.bootstrap.run_pygfx_hosted_runtime(...)` builds runtime:
+3. `engine.runtime.bootstrap.run_hosted_runtime(...)` builds runtime:
    - `GridLayout`
-   - `SceneRenderer`
+   - `WgpuRenderer` (or headless renderer when `ENGINE_HEADLESS=1`)
    - `EngineHost`
    - `InputController`
    - frontend window adapter
@@ -79,7 +79,7 @@ Interaction contract is engine-neutral:
 ### `RenderAPI`
 File: `engine/api/render.py`
 
-Game UI renders through this API; current implementation is `SceneRenderer`.
+Game UI renders through this API; current implementation is `WgpuRenderer`.
 
 ## Engine UI Runtime
 
@@ -105,7 +105,7 @@ Important boundary rule:
 ## Rendering
 
 Backend:
-- `pygfx` + `wgpu` via `engine/rendering/scene.py`
+- `wgpu` via `engine/rendering/wgpu_renderer.py`
 
 Model:
 - Retained keyed primitives (`rect`, `text`, `grid`) with per-frame activation
@@ -121,15 +121,14 @@ Preferred env files:
 
 Ownership:
 - Engine settings (`ENGINE_*`):
+  - `ENGINE_HEADLESS` (`1|true|yes|on` enables headless mode)
   - `ENGINE_WINDOW_MODE`
   - `ENGINE_UI_ASPECT_MODE`
   - `ENGINE_LOG_LEVEL`
-  - `ENGINE_DEBUG_METRICS`
-  - `ENGINE_DEBUG_OVERLAY`
-  - `ENGINE_DEBUG_UI_TRACE`
-  - `ENGINE_DEBUG_UI_TRACE_AUTO_DUMP`
-  - `ENGINE_DEBUG_UI_TRACE_DUMP_DIR`
-  - `ENGINE_DEBUG_RESIZE_TRACE`
+  - `ENGINE_METRICS_ENABLED`
+  - `ENGINE_UI_OVERLAY_ENABLED`
+  - `ENGINE_PROFILING_ENABLED`
+  - `ENGINE_DIAGNOSTICS_ENABLED`
 - App settings (`WARSHIPS_*` + app log format):
   - `WARSHIPS_DEBUG_INPUT`
   - `WARSHIPS_DEBUG_UI`
@@ -146,6 +145,11 @@ Logging boundary:
 - App applies policy by configuring engine logging API (levels/formats/sinks), not by
   mutating runtime internals directly.
 
+Headless and startup failure behavior:
+- If `ENGINE_HEADLESS=1`, runtime is allowed to start without renderer initialization.
+- If `ENGINE_HEADLESS` is not enabled and wgpu initialization fails, startup raises a hard
+  exception with detailed diagnostics (backend/adapter/surface/platform/stack details).
+
 ## Boundary Rules
 
 1. `engine/*` must not import `warships.*`.
@@ -161,3 +165,4 @@ Implemented and active:
 - Neutral engine app-port interaction semantics
 - Neutral engine grid primitives (`GridLayout`)
 - Unified window-mode ownership in runtime bootstrap/host config
+

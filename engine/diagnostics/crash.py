@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import sys
 import traceback
 from datetime import UTC, datetime
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.diagnostics.hub import DiagnosticHub
+from engine.diagnostics.json_codec import dumps_text
 from engine.diagnostics.schema import ENGINE_CRASH_BUNDLE_SCHEMA_VERSION
 
 
@@ -106,7 +106,7 @@ class CrashBundleWriter:
     @staticmethod
     def _write_payload(payload: dict[str, Any], *, path: Path) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        path.write_text(dumps_text(payload, pretty=True), encoding="utf-8")
         return path
 
 

@@ -1,4 +1,7 @@
+import pytest
+
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot, KeyboardSnapshot, MouseSnapshot
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.ui_runtime.grid_layout import GridLayout
 from tests.engine.conftest import (
@@ -122,3 +125,56 @@ def test_modal_key_swallow_without_action_returns_false() -> None:
     framework.sync_ui_state()
     changed = framework.handle_key_event(KeyEvent("key_down", "F1"))
     assert not changed
+
+
+def test_input_snapshot_routes_through_framework_handlers() -> None:
+    app = FakeApp()
+    app.set_plan(FakeInteractionPlan(wheel_scroll_regions=(Box(0, 0, 200, 200),)))
+    framework = EngineUIFramework(app=app, renderer=FakeRenderer(), layout=GridLayout())
+    snapshot = InputSnapshot(
+        frame_index=1,
+        keyboard=KeyboardSnapshot(just_pressed_keys=frozenset({"r"}), text_input=("x",)),
+        mouse=MouseSnapshot(
+            x=50.0,
+            y=50.0,
+            delta_x=1.0,
+            delta_y=0.0,
+            wheel_delta=1.0,
+            just_pressed_buttons=frozenset({1}),
+            just_released_buttons=frozenset({1}),
+        ),
+    )
+    changed = framework.handle_input_snapshot(snapshot)
+    assert changed
+    call_names = [name for name, _ in app.calls]
+    assert "on_pointer_move" in call_names
+    assert "on_pointer_down" in call_names or "on_button" in call_names
+    assert "on_pointer_release" in call_names
+    assert "on_key" in call_names
+    assert "on_char" in call_names
+    assert "on_wheel" in call_names
+
+
+def test_framework_maps_engine_design_space_to_app_design_space() -> None:
+    app = FakeApp()
+    app.set_ui_design_resolution(1200.0, 720.0)
+    app.set_plan(
+        FakeInteractionPlan(
+            buttons=(FakeButton("new_game", True, Box(100, 100, 100, 50)),),
+            wheel_scroll_regions=(Box(0, 0, 1200, 720),),
+        )
+    )
+    renderer = FakeRenderer(design_width=1920.0, design_height=1080.0)
+    framework = EngineUIFramework(app=app, renderer=renderer, layout=GridLayout())
+
+    changed_click = framework.handle_pointer_event(PointerEvent("pointer_down", 170.0, 170.0, 1))
+    changed_wheel = framework.handle_wheel_event(WheelEvent(170.0, 170.0, 1.0))
+
+    assert changed_click
+    assert changed_wheel
+    assert app.calls[0] == ("on_button", ("new_game",))
+    assert app.calls[1][0] == "on_wheel"
+    wheel_x, wheel_y, wheel_dy = app.calls[1][1]
+    assert wheel_x == pytest.approx(106.25)
+    assert wheel_y == pytest.approx(113.33333333333333)
+    assert wheel_dy == pytest.approx(1.0)

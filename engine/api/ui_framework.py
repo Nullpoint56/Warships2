@@ -6,6 +6,7 @@ from typing import Protocol
 
 from engine.api.app_port import EngineAppPort
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.ui_primitives import GridLayout
 
@@ -25,6 +26,9 @@ class UIFramework(Protocol):
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Handle wheel event and return changed flag."""
 
+    def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        """Handle one immutable input snapshot and return changed flag."""
+
 
 def create_ui_framework(
     *,
@@ -36,3 +40,10 @@ def create_ui_framework(
     from engine.runtime.framework_engine import EngineUIFramework
 
     return EngineUIFramework(app=app, renderer=renderer, layout=layout)
+
+
+def create_app_render_api(*, app: EngineAppPort, renderer: RenderAPI) -> RenderAPI:
+    """Create app-facing renderer with authored-space scaling when app provides it."""
+    from engine.runtime.ui_space import create_app_render_api as _create
+
+    return _create(app=app, renderer=renderer)

@@ -1,0 +1,76 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="Warships Profiling" type="PythonConfigurationType" factoryName="Python">
+    <module name="Warships2" />
+    <option name="ENV_FILES" value="" />
+    <option name="INTERPRETER_OPTIONS" value="" />
+    <option name="PARENT_ENVS" value="true" />
+    <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES" value="1" />
+      <env name="ENGINE_WGPU_STARTUP_PREWARM_ENABLED" value="1" />
+      <env name="ENGINE_WGPU_STARTUP_PREWARM_FRAMES" value="1" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_ENABLED" value="1" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_SIZES" value="14,18,24" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS" value="96" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_LABELS" value="New Game|Resume|Options|Back|Start|Preset|Difficulty|Random Fleet|Generate Random Fleet" />
+
+      <env name="ENGINE_LOG_LEVEL" value="INFO" />
+      <env name="ENGINE_INPUT_TRACE_ENABLED" value="0" />
+      <env name="ENGINE_UI_OVERLAY_ENABLED" value="0" />
+
+      <env name="ENGINE_DIAGNOSTICS_ENABLED" value="1" />
+      <env name="ENGINE_METRICS_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_SAMPLING_N" value="2" />
+      <env name="ENGINE_PROFILING_SYSTEM_TOP_N" value="5" />
+      <env name="ENGINE_PROFILING_LOG_PAYLOAD_ENABLED" value="0" />
+      <env name="ENGINE_PROFILING_INCLUDE_SYSTEM_TIMINGS" value="0" />
+      <env name="ENGINE_PROFILING_INCLUDE_EVENT_TOPICS" value="0" />
+      <env name="ENGINE_PROFILING_CAPTURE_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_CAPTURE_FRAMES" value="180" />
+      <env name="ENGINE_PROFILING_CAPTURE_TOP_N" value="80" />
+      <env name="ENGINE_PROFILING_CAPTURE_SORT" value="cumtime" />
+      <env name="ENGINE_PROFILING_CAPTURE_TRACEMALLOC_DEPTH" value="25" />
+      <env name="ENGINE_PROFILING_CAPTURE_EXPORT_DIR" value="../tools/data/profiles" />
+      <env name="ENGINE_PROFILING_CAPTURE_TIMELINE_MAX" value="600" />
+      <env name="ENGINE_PROFILING_CAPTURE_WARMUP_FRAMES" value="60" />
+
+      <env name="ENGINE_DIAGNOSTICS_HTTP_ENABLED" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_HTTP_HOST" value="127.0.0.1" />
+      <env name="ENGINE_DIAGNOSTICS_HTTP_PORT" value="8765" />
+      <env name="ENGINE_DIAGNOSTICS_BUFFER_CAP" value="8000" />
+
+      <env name="ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED" value="0" />
+      <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N" value="8" />
+      <env name="ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS" value="0" />
+      <env name="ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN" value="0" />
+
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_MODE" value="timeline" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_SAMPLING_N" value="2" />
+      <env name="ENGINE_DIAGNOSTICS_PROFILING_SPAN_CAP" value="8000" />
+
+      <env name="ENGINE_DIAGNOSTICS_CRASH_ENABLED" value="0" />
+      <env name="ENGINE_DIAGNOSTICS_REPLAY_ENABLED" value="0" />
+      <env name="ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED" value="1" />
+
+      <env name="ENGINE_MONITOR_REMOTE_SNAPSHOT_LIMIT" value="1500" />
+      <env name="ENGINE_MONITOR_REMOTE_PROFILING_LIMIT" value="1500" />
+      <env name="ENGINE_MONITOR_REMOTE_HEAVY_POLL_EVERY" value="4" />
+    </envs>
+    <option name="SDK_HOME" value="" />
+    <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/warships" />
+    <option name="IS_MODULE_SDK" value="true" />
+    <option name="ADD_CONTENT_ROOTS" value="true" />
+    <option name="ADD_SOURCE_ROOTS" value="true" />
+    <option name="RUN_TOOL" value="true" />
+    <option name="SCRIPT_NAME" value="$PROJECT_DIR$/warships/main.py" />
+    <option name="PARAMETERS" value="" />
+    <option name="SHOW_COMMAND_LINE" value="false" />
+    <option name="EMULATE_TERMINAL" value="false" />
+    <option name="MODULE_MODE" value="false" />
+    <option name="REDIRECT_INPUT" value="false" />
+    <option name="INPUT_FILE" value="" />
+    <method v="2" />
+  </configuration>
+</component>

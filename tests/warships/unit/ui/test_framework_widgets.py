@@ -1,9 +1,11 @@
 from engine.ui_runtime.widgets import Button
+from tests.warships.unit.ui.helpers import FakeRenderer
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.models import Orientation
 from warships.game.ui.framework.widgets import (
     build_modal_text_input_widget,
+    render_modal_text_input_widget,
     resolve_modal_pointer_target,
 )
 
@@ -73,3 +75,19 @@ def test_build_modal_widget_and_pointer_targets() -> None:
 def test_build_modal_widget_none_when_prompt_missing() -> None:
     ui = _ui_with_prompt(None)
     assert build_modal_text_input_widget(ui) is None
+
+
+def test_modal_prompt_title_does_not_collapse_to_single_character() -> None:
+    prompt = _Prompt()
+    prompt.title = "Save Preset"
+    ui = _ui_with_prompt(prompt)
+    widget = build_modal_text_input_widget(ui)
+    assert widget is not None
+    renderer = FakeRenderer()
+
+    render_modal_text_input_widget(renderer, widget)
+
+    title_calls = [kwargs for _args, kwargs in renderer.texts if kwargs.get("key") == "prompt:title"]
+    assert title_calls
+    text = str(title_calls[0].get("text", ""))
+    assert len(text) >= 4

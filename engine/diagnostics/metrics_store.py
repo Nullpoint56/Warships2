@@ -18,6 +18,13 @@ class DiagnosticsMetricsSnapshot:
     resize_event_to_apply_p95_ms: float
     resize_apply_to_frame_p95_ms: float
     rolling_render_ms: float
+    resize_burst_count: int
+    resize_coalesced_total: int
+    resize_redraw_skipped_total: int
+    acquire_failures_total: int
+    present_failures_total: int
+    recovery_backoff_events_total: int
+    adaptive_present_mode_switches_total: int
 
 
 class DiagnosticsMetricsStore:
@@ -32,6 +39,13 @@ class DiagnosticsMetricsStore:
         self._frame_count = 0
         self._max_frame_ms = 0.0
         self._resize_count = 0
+        self._resize_burst_count = 0
+        self._resize_coalesced_total = 0
+        self._resize_redraw_skipped_total = 0
+        self._acquire_failures_total = 0
+        self._present_failures_total = 0
+        self._recovery_backoff_events_total = 0
+        self._adaptive_present_mode_switches_total = 0
 
     def ingest(self, event: DiagnosticEvent) -> None:
         if event.category == "frame" and event.name == "frame.time_ms":
@@ -56,6 +70,40 @@ class DiagnosticsMetricsStore:
                 self._resize_event_to_apply_ms.append(float(event_to_apply))
             if isinstance(apply_to_frame, (int, float)):
                 self._resize_apply_to_frame_ms.append(float(apply_to_frame))
+            return
+        if event.category == "window" and event.name == "window.resize_burst":
+            self._resize_burst_count += 1
+            value = event.value
+            if isinstance(value, dict):
+                coalesced = value.get("resize_coalesced_total")
+                skipped = value.get("resize_redraw_skipped_total")
+                if isinstance(coalesced, (int, float)):
+                    self._resize_coalesced_total += int(coalesced)
+                if isinstance(skipped, (int, float)):
+                    self._resize_redraw_skipped_total += int(skipped)
+            return
+        if event.category == "render" and event.name == "render.profile_frame":
+            value = event.value
+            if not isinstance(value, dict):
+                return
+            acquire = value.get("acquire_failures")
+            present = value.get("present_failures")
+            backoff = value.get("recovery_backoff_events")
+            switches = value.get("adaptive_present_mode_switches")
+            if isinstance(acquire, (int, float)):
+                self._acquire_failures_total = max(self._acquire_failures_total, int(acquire))
+            if isinstance(present, (int, float)):
+                self._present_failures_total = max(self._present_failures_total, int(present))
+            if isinstance(backoff, (int, float)):
+                self._recovery_backoff_events_total = max(
+                    self._recovery_backoff_events_total,
+                    int(backoff),
+                )
+            if isinstance(switches, (int, float)):
+                self._adaptive_present_mode_switches_total = max(
+                    self._adaptive_present_mode_switches_total,
+                    int(switches),
+                )
 
     def snapshot(self) -> DiagnosticsMetricsSnapshot:
         if not self._frame_ms:
@@ -68,6 +116,13 @@ class DiagnosticsMetricsStore:
                 resize_event_to_apply_p95_ms=0.0,
                 resize_apply_to_frame_p95_ms=0.0,
                 rolling_render_ms=0.0,
+                resize_burst_count=self._resize_burst_count,
+                resize_coalesced_total=self._resize_coalesced_total,
+                resize_redraw_skipped_total=self._resize_redraw_skipped_total,
+                acquire_failures_total=self._acquire_failures_total,
+                present_failures_total=self._present_failures_total,
+                recovery_backoff_events_total=self._recovery_backoff_events_total,
+                adaptive_present_mode_switches_total=self._adaptive_present_mode_switches_total,
             )
         rolling_frame_ms = sum(self._frame_ms) / len(self._frame_ms)
         rolling_render_ms = (
@@ -83,6 +138,13 @@ class DiagnosticsMetricsStore:
             resize_event_to_apply_p95_ms=_percentile(self._resize_event_to_apply_ms, 0.95),
             resize_apply_to_frame_p95_ms=_percentile(self._resize_apply_to_frame_ms, 0.95),
             rolling_render_ms=rolling_render_ms,
+            resize_burst_count=self._resize_burst_count,
+            resize_coalesced_total=self._resize_coalesced_total,
+            resize_redraw_skipped_total=self._resize_redraw_skipped_total,
+            acquire_failures_total=self._acquire_failures_total,
+            present_failures_total=self._present_failures_total,
+            recovery_backoff_events_total=self._recovery_backoff_events_total,
+            adaptive_present_mode_switches_total=self._adaptive_present_mode_switches_total,
         )
 
 

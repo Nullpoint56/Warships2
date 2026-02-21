@@ -8,6 +8,7 @@ from warships.game.ui.views.placement_battle_screen import (
     draw_held_ship_preview,
     draw_placement_panel,
     draw_player_board,
+    draw_shots,
     draw_ships_from_placements,
 )
 
@@ -59,3 +60,19 @@ def test_draw_ships_and_held_preview() -> None:
     board = BoardState()
     board.place_ship(1, ShipPlacement(ShipType.DESTROYER, Coord(2, 2), Orientation.HORIZONTAL))
     assert renderer.rects
+
+
+def test_draw_shots_emits_impact_fx_overlays() -> None:
+    renderer = FakeRenderer()
+    layout = GridLayout()
+    board = BoardState()
+    board.shots[1, 1] = 1
+    board.shots[2, 3] = 2
+
+    draw_shots(renderer, layout, board, is_ai=False)
+
+    keys = [args[0] for args, _kwargs in renderer.rects if args]
+    assert any(str(key).startswith("shotfx:halo:player:1:1") for key in keys)
+    assert any(str(key).startswith("shotfx:core:player:2:3") for key in keys)
+    assert any(str(key).startswith("shotfx:ray:h:player:2:3") for key in keys)
+    assert any(str(key).startswith("shotfx:ray:v:player:2:3") for key in keys)

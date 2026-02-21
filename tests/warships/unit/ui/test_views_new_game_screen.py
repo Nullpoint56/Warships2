@@ -25,3 +25,22 @@ def test_draw_new_game_setup_with_open_difficulty_dropdown() -> None:
     assert any(
         "newgame:diff:opt:bg:" in (args[0] if args else "") for args, _ in renderer.rects if args
     )
+
+
+def test_draw_new_game_setup_random_button_text_is_fitted() -> None:
+    renderer = FakeRenderer()
+    ui = make_ui_state(
+        state=AppState.NEW_GAME_SETUP,
+        new_game_visible_presets=["alpha"],
+    )
+
+    draw_new_game_setup(renderer, ui)
+
+    for _args, kwargs in renderer.texts:
+        if kwargs.get("key") == "newgame:random:text":
+            assert kwargs.get("text", "") == "Generate Random Fleet"
+            assert float(kwargs.get("font_size", 99.0)) <= 14.0
+            break
+    else:
+        raise AssertionError("newgame:random:text was not rendered")
+

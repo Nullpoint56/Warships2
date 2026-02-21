@@ -50,6 +50,9 @@ class StateStore(Protocol[TState]):
     def get(self) -> TState:
         """Return current state value."""
 
+    def peek(self) -> TState:
+        """Return current state value reference without copying."""
+
     def set(self, value: TState) -> StateSnapshot[TState]:
         """Replace state value and increment revision."""
 

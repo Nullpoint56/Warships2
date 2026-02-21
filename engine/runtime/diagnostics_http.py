@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 from engine.api.debug import get_diagnostics_snapshot, get_metrics_snapshot, get_profiling_snapshot
+from engine.diagnostics.json_codec import dumps_bytes
 
 _LOG = logging.getLogger("engine.runtime.diag_http")
 
@@ -68,16 +69,21 @@ class DiagnosticsHttpServer:
         _LOG.info("diagnostics_http_stopped endpoint=%s", self.endpoint)
 
     def _handle_get(self, handler: BaseHTTPRequestHandler) -> None:
-        path = handler.path or "/"
+        raw_path = handler.path or "/"
+        parsed = urlparse(raw_path)
+        path = parsed.path or "/"
+        query = parse_qs(parsed.query or "")
+        snapshot_limit = _query_int(query, "limit", 5000, min_value=100, max_value=50000)
+        profiling_limit = _query_int(query, "limit", 2000, min_value=100, max_value=50000)
         try:
             if path.startswith("/snapshot"):
-                payload = asdict(get_diagnostics_snapshot(self._host_obj, limit=5000))
+                payload = asdict(get_diagnostics_snapshot(self._host_obj, limit=snapshot_limit))
                 return self._write_json(handler, 200, payload)
             if path.startswith("/metrics"):
                 payload = asdict(get_metrics_snapshot(self._host_obj))
                 return self._write_json(handler, 200, payload)
             if path.startswith("/profiling"):
-                payload = asdict(get_profiling_snapshot(self._host_obj, limit=2000))
+                payload = asdict(get_profiling_snapshot(self._host_obj, limit=profiling_limit))
                 return self._write_json(handler, 200, payload)
             if path.startswith("/health"):
                 return self._write_json(
@@ -89,6 +95,9 @@ class DiagnosticsHttpServer:
                     },
                 )
             return self._write_json(handler, 404, {"error": "not_found", "path": path})
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            # Client dropped the socket while we were writing; this is expected under polling timeouts.
+            return
         except Exception as exc:  # pylint: disable=broad-exception-caught
             _LOG.exception("diagnostics_http_request_failed path=%s", path)
             return self._write_json(handler, 500, {"error": str(exc)})
@@ -97,9 +106,31 @@ class DiagnosticsHttpServer:
     def _write_json(
         handler: BaseHTTPRequestHandler, status: int, payload: dict[str, object]
     ) -> None:
-        raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
-        handler.send_response(int(status))
-        handler.send_header("Content-Type", "application/json")
-        handler.send_header("Content-Length", str(len(raw)))
-        handler.end_headers()
-        handler.wfile.write(raw)
+        raw = dumps_bytes(payload)
+        try:
+            handler.send_response(int(status))
+            handler.send_header("Content-Type", "application/json")
+            handler.send_header("Content-Length", str(len(raw)))
+            handler.end_headers()
+            handler.wfile.write(raw)
+        except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
+            return
+
+
+def _query_int(
+    query: dict[str, list[str]],
+    key: str,
+    default: int,
+    *,
+    min_value: int,
+    max_value: int,
+) -> int:
+    raw_values = query.get(key)
+    if not raw_values:
+        return int(default)
+    raw = str(raw_values[0]).strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        return int(default)
+    return max(min_value, min(max_value, value))

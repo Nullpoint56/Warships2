@@ -23,6 +23,10 @@ class RuntimeStateStore[TState]:
         """Return deep-copied current state value."""
         return deepcopy(self._value)
 
+    def peek(self) -> TState:
+        """Return current state value by reference (read-only contract)."""
+        return self._value
+
     def set(self, value: TState) -> StateSnapshot[TState]:
         """Replace state value and increment revision."""
         self._value = value

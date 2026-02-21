@@ -86,3 +86,9 @@ def test_adapter_forwards_input_methods() -> None:
         "char",
         "wheel",
     ]
+
+
+def test_adapter_exposes_ui_design_resolution() -> None:
+    controller = _StubController(AppState.MAIN_MENU)
+    adapter = WarshipsAppAdapter(controller)
+    assert adapter.ui_design_resolution() == (1200.0, 720.0)

@@ -44,11 +44,16 @@ class FakeModalWidget:
 
 
 class FakeRenderer:
-    def __init__(self, scale: float = 1.0) -> None:
+    def __init__(self, scale: float = 1.0, design_width: float = 1200.0, design_height: float = 720.0) -> None:
         self.scale = scale
+        self.design_width = float(design_width)
+        self.design_height = float(design_height)
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return x * self.scale, y * self.scale
+
+    def design_space_size(self) -> tuple[float, float]:
+        return (self.design_width, self.design_height)
 
 
 class FakeApp:
@@ -61,12 +66,16 @@ class FakeApp:
         self.on_wheel_result = True
         self.on_pointer_down_result = True
         self.on_cell_click_result = True
+        self._ui_design_resolution: tuple[float, float] | None = None
 
     def set_modal(self, modal: FakeModalWidget | None) -> None:
         self._modal = modal
 
     def set_plan(self, plan: FakeInteractionPlan) -> None:
         self._plan = plan
+
+    def set_ui_design_resolution(self, width: float, height: float) -> None:
+        self._ui_design_resolution = (float(width), float(height))
 
     def ui_state(self) -> object:
         return object()
@@ -108,3 +117,6 @@ class FakeApp:
     def on_wheel(self, x: float, y: float, dy: float) -> bool:
         self.calls.append(("on_wheel", (x, y, dy)))
         return self.on_wheel_result
+
+    def ui_design_resolution(self) -> tuple[float, float] | None:
+        return self._ui_design_resolution

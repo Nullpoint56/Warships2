@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from engine.api.input_snapshot import InputSnapshot
 from engine.api.debug import (
     export_crash_bundle,
     export_profiling_snapshot,
@@ -20,20 +21,18 @@ class _FakeModule:
     def on_start(self, host) -> None:
         _ = host
 
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        return False
-
     def on_frame(self, context) -> None:
         _ = context
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        _ = snapshot
+        return False
+
+    def simulate(self, context) -> None:
+        self.on_frame(context)
+
+    def build_render_snapshot(self):
+        return None
 
     def should_close(self) -> bool:
         return False
@@ -43,7 +42,7 @@ class _FakeModule:
 
 
 def test_debug_api_returns_diagnostics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -55,7 +54,7 @@ def test_debug_api_returns_diagnostics_snapshot(monkeypatch) -> None:
 
 
 def test_debug_api_returns_metrics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -68,11 +67,18 @@ def test_debug_api_returns_metrics_snapshot(monkeypatch) -> None:
     assert metrics.resize_count >= 0
     assert metrics.resize_event_to_apply_p95_ms >= 0.0
     assert metrics.resize_apply_to_frame_p95_ms >= 0.0
+    assert metrics.resize_burst_count >= 0
+    assert metrics.resize_coalesced_total >= 0
+    assert metrics.resize_redraw_skipped_total >= 0
+    assert metrics.acquire_failures_total >= 0
+    assert metrics.present_failures_total >= 0
+    assert metrics.recovery_backoff_events_total >= 0
+    assert metrics.adaptive_present_mode_switches_total >= 0
 
 
 def test_debug_api_returns_profiling_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -83,8 +89,8 @@ def test_debug_api_returns_profiling_snapshot(monkeypatch) -> None:
 
 
 def test_debug_api_exports_profiling_snapshot(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -94,7 +100,7 @@ def test_debug_api_exports_profiling_snapshot(monkeypatch, tmp_path: Path) -> No
 
 
 def test_debug_api_exports_crash_bundle(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_BUNDLE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -104,7 +110,7 @@ def test_debug_api_exports_crash_bundle(monkeypatch, tmp_path: Path) -> None:
 
 
 def test_debug_api_replay_manifest_and_export(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     monkeypatch.setenv("WARSHIPS_RNG_SEED", "777")
     host = EngineHost(module=_FakeModule())
     host.frame()
@@ -119,7 +125,7 @@ def test_debug_api_replay_manifest_and_export(monkeypatch, tmp_path: Path) -> No
 
 
 def test_debug_api_replay_snapshot_and_validation(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     host = EngineHost(module=_FakeModule())
     host.frame()
 
@@ -146,3 +152,4 @@ def test_debug_api_replay_snapshot_and_validation(monkeypatch) -> None:
     )
     assert result.schema_version == "diag.replay_validation.v1"
     assert result.passed is True
+

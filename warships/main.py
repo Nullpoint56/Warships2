@@ -13,7 +13,8 @@ logger = get_logger(__name__)
 
 def main() -> None:
     """Run the Warships application."""
-    load_default_env_files()
+    # Keep IDE/CLI-provided env vars authoritative; env files fill missing values only.
+    load_default_env_files(override_existing=False)
     paths = apply_runtime_path_defaults()
     setup_logging()
     logger.info(

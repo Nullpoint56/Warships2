@@ -4,60 +4,30 @@ from engine.runtime.debug_config import (
     enabled_metrics,
     enabled_overlay,
     enabled_profiling,
-    enabled_resize_trace,
-    enabled_ui_trace,
     load_debug_config,
     resolve_log_level_name,
 )
 
 
 def test_load_debug_config_parses_flags_and_sampling(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "true")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE", "yes")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_TRACE", "on")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", "25")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_AUTO_DUMP", "0")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_DUMP_DIR", "diag_logs")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_PRIMITIVES", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_KEY_FILTER", "board:,ship:,button:")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_LOG_EVERY_FRAME", "true")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_FORCE_INVALIDATE", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SIZE_SOURCE_MODE", "event_only")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SIZE_QUANTIZATION", "round")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_CAMERA_SET_VIEW_SIZE", "true")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_SYNC_FROM_PHYSICAL_SIZE", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_RENDERER_FORCE_PIXEL_RATIO", "1.0")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING_SAMPLING_N", "5")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "true")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "5")
     monkeypatch.setenv("ENGINE_LOG_LEVEL", "debug")
 
     cfg = load_debug_config()
     assert cfg.metrics_enabled is True
     assert cfg.overlay_enabled is True
-    assert cfg.ui_trace_enabled is True
-    assert cfg.resize_trace_enabled is True
-    assert cfg.ui_trace_sampling_n == 25
-    assert cfg.ui_trace_auto_dump is False
-    assert cfg.ui_trace_dump_dir == "diag_logs"
-    assert cfg.ui_trace_primitives_enabled is True
-    assert cfg.ui_trace_key_filter == ("board:", "ship:", "button:")
-    assert cfg.ui_trace_log_every_frame is True
-    assert cfg.resize_force_invalidate is True
-    assert cfg.resize_size_source_mode == "event_only"
-    assert cfg.resize_size_quantization == "round"
-    assert cfg.resize_camera_set_view_size is True
-    assert cfg.resize_sync_from_physical_size is True
-    assert cfg.renderer_force_pixel_ratio == 1.0
     assert cfg.profiling_enabled is True
     assert cfg.profiling_sampling_n == 5
     assert cfg.log_level == "DEBUG"
 
 
-def test_load_debug_config_sampling_is_clamped(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE_SAMPLING_N", "0")
+def test_load_debug_config_profiling_sampling_is_clamped(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "0")
     cfg = load_debug_config()
-    assert cfg.ui_trace_sampling_n == 1
+    assert cfg.profiling_sampling_n == 1
 
 
 def test_resolve_log_level_prefers_engine_prefix(monkeypatch) -> None:
@@ -67,13 +37,24 @@ def test_resolve_log_level_prefers_engine_prefix(monkeypatch) -> None:
 
 
 def test_enabled_helpers_read_current_env(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "0")
-    monkeypatch.setenv("ENGINE_DEBUG_UI_TRACE", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_RESIZE_TRACE", "0")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "0")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
     assert enabled_metrics() is True
     assert enabled_overlay() is False
-    assert enabled_ui_trace() is True
-    assert enabled_resize_trace() is False
     assert enabled_profiling() is True
+
+
+def test_load_debug_config_uses_runtime_profile_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_RUNTIME_PROFILE", "dev-debug")
+    monkeypatch.delenv("ENGINE_METRICS_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_UI_OVERLAY_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_PROFILING_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_LOG_LEVEL", raising=False)
+
+    cfg = load_debug_config()
+    assert cfg.metrics_enabled is True
+    assert cfg.overlay_enabled is True
+    assert cfg.profiling_enabled is True
+    assert cfg.log_level == "DEBUG"
+

@@ -50,6 +50,13 @@ class DiagnosticsMetricsView:
     resize_event_to_apply_p95_ms: float
     resize_apply_to_frame_p95_ms: float
     rolling_render_ms: float
+    resize_burst_count: int
+    resize_coalesced_total: int
+    resize_redraw_skipped_total: int
+    acquire_failures_total: int
+    present_failures_total: int
+    recovery_backoff_events_total: int
+    adaptive_present_mode_switches_total: int
 
 
 @dataclass(frozen=True)
@@ -167,6 +174,13 @@ def get_metrics_snapshot(host: Any) -> DiagnosticsMetricsView:
             resize_event_to_apply_p95_ms=0.0,
             resize_apply_to_frame_p95_ms=0.0,
             rolling_render_ms=0.0,
+            resize_burst_count=0,
+            resize_coalesced_total=0,
+            resize_redraw_skipped_total=0,
+            acquire_failures_total=0,
+            present_failures_total=0,
+            recovery_backoff_events_total=0,
+            adaptive_present_mode_switches_total=0,
         )
     return DiagnosticsMetricsView(
         schema_version=DIAG_METRICS_SCHEMA_VERSION,
@@ -178,6 +192,17 @@ def get_metrics_snapshot(host: Any) -> DiagnosticsMetricsView:
         resize_event_to_apply_p95_ms=float(getattr(snapshot, "resize_event_to_apply_p95_ms", 0.0)),
         resize_apply_to_frame_p95_ms=float(getattr(snapshot, "resize_apply_to_frame_p95_ms", 0.0)),
         rolling_render_ms=float(getattr(snapshot, "rolling_render_ms", 0.0)),
+        resize_burst_count=int(getattr(snapshot, "resize_burst_count", 0)),
+        resize_coalesced_total=int(getattr(snapshot, "resize_coalesced_total", 0)),
+        resize_redraw_skipped_total=int(getattr(snapshot, "resize_redraw_skipped_total", 0)),
+        acquire_failures_total=int(getattr(snapshot, "acquire_failures_total", 0)),
+        present_failures_total=int(getattr(snapshot, "present_failures_total", 0)),
+        recovery_backoff_events_total=int(
+            getattr(snapshot, "recovery_backoff_events_total", 0)
+        ),
+        adaptive_present_mode_switches_total=int(
+            getattr(snapshot, "adaptive_present_mode_switches_total", 0)
+        ),
     )
 
 

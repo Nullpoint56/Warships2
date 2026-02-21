@@ -12,9 +12,9 @@ All tools assume diagnostics data under `tools/data/` by default.
 Engine side (same machine):
 - Diagnostics HTTP bridge is enabled by default.
 - Optional env overrides:
-  - `ENGINE_DEBUG_OBS_HTTP=0|1`
-  - `ENGINE_DEBUG_OBS_HTTP_HOST` (default `127.0.0.1`)
-  - `ENGINE_DEBUG_OBS_HTTP_PORT` (default `8765`)
+  - `ENGINE_DIAGNOSTICS_HTTP_ENABLED=0|1`
+  - `ENGINE_DIAGNOSTICS_HTTP_HOST` (default `127.0.0.1`)
+  - `ENGINE_DIAGNOSTICS_HTTP_PORT` (default `8765`)
 
 Run:
 ```bash
@@ -71,3 +71,4 @@ Exit codes:
 - `0`: pass / no regressions
 - `1`: failed validation / regressions found
 - `2`: invalid CLI input
+

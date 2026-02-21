@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from engine.diagnostics.hub import DiagnosticHub
+from engine.diagnostics.json_codec import dumps_text
 from engine.diagnostics.schema import (
     DIAG_REPLAY_MANIFEST_SCHEMA_VERSION,
     DIAG_REPLAY_SESSION_SCHEMA_VERSION,
@@ -146,7 +146,7 @@ class ReplayRecorder:
     def export_json(self, *, path: Path, limit: int = 5_000) -> Path:
         payload = self.snapshot(limit=limit)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(payload, ensure_ascii=True, indent=2), encoding="utf-8")
+        path.write_text(dumps_text(payload, pretty=True), encoding="utf-8")
         return path
 
 
@@ -226,5 +226,5 @@ class FixedStepReplayRunner:
 
 def compute_state_hash(value: Any) -> str:
     """Compute stable hash for deterministic replay checkpoints."""
-    normalized = json.dumps(value, ensure_ascii=True, sort_keys=True, separators=(",", ":"))
+    normalized = dumps_text(value, sort_keys=True)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()

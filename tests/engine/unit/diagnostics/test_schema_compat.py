@@ -40,6 +40,13 @@ def test_debug_view_types_expose_schema_version_field() -> None:
         resize_event_to_apply_p95_ms=0.0,
         resize_apply_to_frame_p95_ms=0.0,
         rolling_render_ms=0.0,
+        resize_burst_count=0,
+        resize_coalesced_total=0,
+        resize_redraw_skipped_total=0,
+        acquire_failures_total=0,
+        present_failures_total=0,
+        recovery_backoff_events_total=0,
+        adaptive_present_mode_switches_total=0,
     )
     profiling = DiagnosticsProfilingView(
         schema_version=DIAG_PROFILING_SCHEMA_VERSION,

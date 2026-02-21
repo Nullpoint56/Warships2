@@ -1,6 +1,8 @@
+from engine.api.ui_primitives import ButtonStyle
 from warships.game.app.services.new_game_flow import DIFFICULTIES
 from warships.game.app.services.prompt_flow import PromptFlowService
 from warships.game.app.services.ui_buttons import (
+    TOKENS,
     compose_buttons,
     new_game_setup_buttons,
     preset_row_buttons,
@@ -31,6 +33,9 @@ def test_prompt_and_preset_row_buttons_build_expected_ids() -> None:
     assert "preset_delete:alpha" in ids
     assert "preset_edit:beta" in ids
     assert len(row_buttons) == 6
+    delete_button = next(b for b in row_buttons if b.id == "preset_delete:alpha")
+    assert isinstance(delete_button.style, ButtonStyle)
+    assert delete_button.style.bg_color == TOKENS.danger
 
 
 def test_new_game_setup_buttons_include_difficulty_and_random() -> None:

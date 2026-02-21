@@ -31,3 +31,22 @@ def test_hub_subscriber_receives_events_until_unsubscribed() -> None:
     hub.emit_fast(category="frame", name="frame.end", tick=1)
 
     assert seen == ["frame.start"]
+
+
+def test_hub_can_filter_categories_and_apply_sampling() -> None:
+    hub = DiagnosticHub(
+        capacity=10,
+        enabled=True,
+        default_sampling_n=2,
+        category_sampling={"window": 1},
+        category_allowlist=("frame", "window"),
+    )
+    hub.emit_fast(category="input", name="input.event", tick=1)
+    hub.emit_fast(category="frame", name="frame.one", tick=1)
+    hub.emit_fast(category="frame", name="frame.two", tick=2)
+    hub.emit_fast(category="window", name="window.resize", tick=3)
+
+    events = hub.snapshot()
+    assert len(events) == 2
+    assert [event.category for event in events] == ["frame", "window"]
+    assert [event.name for event in events] == ["frame.two", "window.resize"]

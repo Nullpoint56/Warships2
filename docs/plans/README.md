@@ -3,7 +3,8 @@
 ## Active Plans
 
 - `docs/plans/active/config_system_plan.md`
-- `docs/plans/active/engine_generalization_plan.md`
+- `docs/plans/active/wgpu_only_renderer_migration_plan.md`
+- `docs/plans/active/wgpu_renderer_functional_completion_plan.md`
 - Diagnostics execution plan remains under diagnostics:
   - `docs/diagnostics/implementation/engine_debug_tools_implementation_plan.md`
 

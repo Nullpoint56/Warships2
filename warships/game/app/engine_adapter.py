@@ -26,7 +26,7 @@ from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.core.models import Coord
 from warships.game.ui.framework.widgets import build_modal_text_input_widget
-from warships.game.ui.layout_metrics import NEW_GAME_SETUP, PRESET_PANEL
+from warships.game.ui.layout_metrics import DESIGN_HEIGHT, DESIGN_WIDTH, NEW_GAME_SETUP, PRESET_PANEL
 
 
 @dataclass(slots=True)
@@ -94,3 +94,7 @@ class WarshipsAppAdapter(EngineAppPort):
 
     def on_wheel(self, x: float, y: float, dy: float) -> bool:
         return self._controller.handle_wheel(x, y, dy)
+
+    def ui_design_resolution(self) -> tuple[float, float]:
+        """Return authored Warships UI design resolution."""
+        return (float(DESIGN_WIDTH), float(DESIGN_HEIGHT))

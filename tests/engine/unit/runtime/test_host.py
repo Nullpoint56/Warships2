@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from engine.api.input_events import KeyEvent
+from engine.api.input_events import KeyEvent, PointerEvent
+from engine.api.input_snapshot import ActionSnapshot, ControllerSnapshot, InputSnapshot
+from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.runtime.host import EngineHost
 from engine.runtime.metrics import MetricsSnapshot
 
@@ -14,9 +16,7 @@ from engine.runtime.metrics import MetricsSnapshot
 class FakeModule:
     def __init__(self) -> None:
         self.started = 0
-        self.pointer_events = 0
-        self.key_events = 0
-        self.wheel_events = 0
+        self.snapshots: list[InputSnapshot] = []
         self.frames: list[tuple[int, float, float]] = []
         self.shutdown_calls = 0
         self._should_close = False
@@ -25,25 +25,20 @@ class FakeModule:
         _ = host
         self.started += 1
 
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        self.pointer_events += 1
-        return True
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        self.key_events += 1
-        return True
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        self.wheel_events += 1
-        return True
-
     def on_frame(self, context) -> None:
         self.frames.append((context.frame_index, context.delta_seconds, context.elapsed_seconds))
         if context.frame_index >= 1:
             self._should_close = True
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        self.snapshots.append(snapshot)
+        return False
+
+    def simulate(self, context) -> None:
+        self.on_frame(context)
+
+    def build_render_snapshot(self):
+        return None
 
     def should_close(self) -> bool:
         return self._should_close
@@ -59,21 +54,19 @@ class _ScheduledCloseModule:
     def on_start(self, host) -> None:
         host.call_later(0.0, host.close)
 
-    def on_pointer_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_key_event(self, event) -> bool:
-        _ = event
-        return False
-
-    def on_wheel_event(self, event) -> bool:
-        _ = event
-        return False
-
     def on_frame(self, context) -> None:
         _ = context
         self.frame_calls += 1
+
+    def on_input_snapshot(self, snapshot: InputSnapshot) -> bool:
+        _ = snapshot
+        return False
+
+    def simulate(self, context) -> None:
+        _ = context
+
+    def build_render_snapshot(self):
+        return None
 
     def should_close(self) -> bool:
         return False
@@ -88,6 +81,7 @@ class _FakeRenderer:
         self.text_calls: list[str] = []
         self.text_values: list[str] = []
         self.invalidates = 0
+        self.snapshots: list[RenderSnapshot] = []
 
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (x, y)
@@ -115,6 +109,39 @@ class _FakeRenderer:
     def invalidate(self) -> None:
         self.invalidates += 1
 
+    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
+        self.snapshots.append(snapshot)
+        for render_pass in snapshot.passes:
+            for command in render_pass.commands:
+                data = {str(key): value for key, value in command.data}
+                if command.kind == "text":
+                    key = data.get("key")
+                    text = data.get("text")
+                    self.text_calls.append(str(key))
+                    self.text_values.append(str(text))
+
+    def design_space_size(self) -> tuple[float, float]:
+        return (1920.0, 1080.0)
+
+
+class _SnapshotModule(FakeModule):
+    def __init__(self) -> None:
+        super().__init__()
+        self.payload: list[str] = ["base"]
+
+    def build_render_snapshot(self) -> RenderSnapshot:
+        command = RenderCommand(
+            kind="text",
+            data=(("key", "mod:text"), ("text", self.payload), ("x", 100.0), ("y", 100.0)),
+        )
+        return RenderSnapshot(
+            frame_index=len(self.frames),
+            passes=(RenderPassSnapshot(name="main", commands=(command,)),),
+        )
+
+    def ui_design_resolution(self) -> tuple[float, float]:
+        return (1200.0, 720.0)
+
 
 def test_engine_host_lifecycle_and_close() -> None:
     module = FakeModule()
@@ -131,13 +158,108 @@ def test_engine_host_lifecycle_and_close() -> None:
     assert module.shutdown_calls == 1
 
 
-def test_engine_host_forwards_input_events() -> None:
+def test_engine_host_submits_module_snapshot_to_renderer() -> None:
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+
+    assert len(renderer.snapshots) == 1
+    submitted = renderer.snapshots[0]
+    assert submitted.frame_index == len(module.frames)
+    assert submitted.passes[0].commands[0].kind == "text"
+    payload = dict(submitted.passes[0].commands[0].data)
+    assert payload["x"] == pytest.approx(160.0)
+    assert payload["y"] == pytest.approx(150.0)
+
+
+def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+    module.payload.append("mutated")
+
+    submitted = renderer.snapshots[0]
+    data = dict(submitted.passes[0].commands[0].data)
+    assert data["text"] == ("base",)
+
+
+def test_engine_host_can_skip_snapshot_sanitize_for_perf(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_RUNTIME_RENDER_SNAPSHOT_SANITIZE", "0")
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+    module.payload.append("mutated")
+
+    submitted = renderer.snapshots[0]
+    data = dict(submitted.passes[0].commands[0].data)
+    assert data["text"] == ["base", "mutated"]
+
+
+def test_engine_host_handles_input_snapshot() -> None:
     module = FakeModule()
     host = EngineHost(module=module)
-    assert host.handle_pointer_event(object()) is True
-    assert host.handle_key_event(object()) is True
-    assert host.handle_wheel_event(object()) is True
-    assert (module.pointer_events, module.key_events, module.wheel_events) == (1, 1, 1)
+    snapshot = InputSnapshot(
+        frame_index=0,
+        pointer_events=(PointerEvent(event_type="pointer_down", x=1.0, y=2.0, button=1),),
+        key_events=(KeyEvent(event_type="key_down", value="a"),),
+    )
+    assert host.handle_input_snapshot(snapshot) is False
+    assert len(module.snapshots) == 1
+
+
+def test_engine_host_replay_records_logical_actions_from_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
+    host = EngineHost(module=FakeModule())
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(
+            just_started=frozenset({"action.confirm"}),
+            just_ended=frozenset({"action.cancel"}),
+        ),
+        key_events=(KeyEvent(event_type="key_down", value="a"),),
+    )
+    host.handle_input_snapshot(snapshot)
+    replay = host.diagnostics_replay_snapshot
+    commands = list(replay.get("commands", []))
+    types = [str(item.get("type", "")) for item in commands]
+    assert types.count("input.action") == 2
+    assert "input.key" not in types
+
+
+def test_engine_host_snapshot_overlay_toggle_uses_logical_action(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "1")
+    renderer = _FakeRenderer()
+    host = EngineHost(module=FakeModule(), render_api=renderer)
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
+        key_events=(KeyEvent(event_type="key_down", value="f3"),),
+    )
+    assert host.handle_input_snapshot(snapshot) is True
+    assert renderer.invalidates == 1
+
+
+def test_engine_host_emits_input_diagnostics_for_snapshot(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    host = EngineHost(module=FakeModule())
+    snapshot = InputSnapshot(
+        frame_index=0,
+        actions=ActionSnapshot(values=(("meta.mapping_conflicts", 1.0),)),
+        controllers=(ControllerSnapshot(device_id="pad-1", connected=True),),
+    )
+    host.handle_input_snapshot(snapshot)
+    freq = host.diagnostics_hub.snapshot(category="input", name="input.event_frequency")
+    assert freq
+    conflicts = host.diagnostics_hub.snapshot(category="input", name="input.mapping_conflict")
+    assert conflicts
+    connected = host.diagnostics_hub.snapshot(category="input", name="input.device_connected")
+    assert connected
 
 
 def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:
@@ -149,7 +271,7 @@ def test_engine_host_stops_before_frame_when_scheduled_close_fires() -> None:
 
 
 def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     module = FakeModule()
     host = EngineHost(module=module)
 
@@ -163,8 +285,8 @@ def test_engine_host_exposes_metrics_snapshot(monkeypatch) -> None:
 
 
 def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_UI_OVERLAY_ENABLED", "1")
     module = FakeModule()
     renderer = _FakeRenderer()
     host = EngineHost(module=module, render_api=renderer)
@@ -172,7 +294,13 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     host.frame()
     assert renderer.text_calls == []
 
-    handled = host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
+    handled = host.handle_input_snapshot(
+        InputSnapshot(
+            frame_index=1,
+            actions=ActionSnapshot(just_started=frozenset({"engine.debug_overlay.toggle"})),
+            key_events=(KeyEvent(event_type="key_down", value="f3"),),
+        )
+    )
     assert handled is True
     assert renderer.invalidates == 1
 
@@ -181,27 +309,10 @@ def test_engine_host_draws_debug_overlay_when_enabled(monkeypatch) -> None:
     assert any(":line:" in key for key in renderer.text_calls)
 
 
-def test_engine_host_overlay_includes_ui_diagnostics_summary_when_available(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_OVERLAY", "1")
-    module = FakeModule()
-    renderer = _FakeRenderer()
-
-    def _summary() -> dict[str, int]:
-        return {"revision": 9, "resize_seq": 42, "anomaly_count": 2}
-
-    renderer.ui_diagnostics_summary = _summary  # type: ignore[attr-defined]
-    host = EngineHost(module=module, render_api=renderer)
-    host.handle_key_event(KeyEvent(event_type="key_down", value="f3"))
-    host.frame()
-
-    assert any(text.startswith("UI rev=9 resize=42 anomalies=2") for text in renderer.text_values)
-
-
 def test_engine_host_emits_profile_records_when_enabled(monkeypatch, caplog) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING", "1")
-    monkeypatch.setenv("ENGINE_DEBUG_PROFILING_SAMPLING_N", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "1")
     caplog.set_level(logging.INFO, logger="engine.profiling")
 
     module = FakeModule()
@@ -218,7 +329,7 @@ def test_engine_host_emits_profile_records_when_enabled(monkeypatch, caplog) -> 
 
 
 def test_engine_host_emits_frame_events_to_diagnostics_hub(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
     module = FakeModule()
     host = EngineHost(module=module)
 
@@ -243,8 +354,8 @@ class _HashingModule(FakeModule):
 
 
 def test_engine_host_writes_crash_bundle_on_frame_exception(monkeypatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_BUNDLE", "1")
-    monkeypatch.setenv("ENGINE_DIAG_CRASH_DIR", str(tmp_path))
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_CRASH_DIR", str(tmp_path))
     host = EngineHost(module=_ExplodingModule())
 
     with pytest.raises(RuntimeError):
@@ -260,8 +371,8 @@ def test_engine_host_writes_crash_bundle_on_frame_exception(monkeypatch, tmp_pat
 
 
 def test_engine_host_emits_perf_events_when_diag_timeline_enabled(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DEBUG_METRICS", "1")
-    monkeypatch.setenv("ENGINE_DIAG_PROFILE_MODE", "timeline")
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_PROFILING_MODE", "timeline")
     host = EngineHost(module=FakeModule())
 
     host.frame()
@@ -270,11 +381,17 @@ def test_engine_host_emits_perf_events_when_diag_timeline_enabled(monkeypatch) -
 
 
 def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
     monkeypatch.setenv("WARSHIPS_RNG_SEED", "12345")
     host = EngineHost(module=FakeModule())
 
-    host.handle_key_event(KeyEvent(event_type="key_down", value="a"))
+    host.handle_input_snapshot(
+        InputSnapshot(
+            frame_index=0,
+            actions=ActionSnapshot(just_started=frozenset({"action.confirm"})),
+            key_events=(KeyEvent(event_type="key_down", value="a"),),
+        )
+    )
     host.frame()
 
     manifest = host.diagnostics_replay_manifest
@@ -285,11 +402,45 @@ def test_engine_host_records_replay_input_and_manifest(monkeypatch) -> None:
 
 
 def test_engine_host_records_replay_state_hash_when_provider_available(monkeypatch) -> None:
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_CAPTURE", "1")
-    monkeypatch.setenv("ENGINE_DIAG_REPLAY_HASH_INTERVAL", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL", "1")
     host = EngineHost(module=_HashingModule())
     host.frame()
     host.frame()
 
     hash_events = host.diagnostics_hub.snapshot(category="replay", name="replay.state_hash")
     assert hash_events
+
+
+def test_engine_host_emits_capture_ready_and_profile_capture_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_FRAMES", "2")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_EXPORT_DIR", str(tmp_path))
+
+    host = EngineHost(module=FakeModule())
+    host.frame()
+    host.frame()
+
+    ready_events = host.diagnostics_hub.snapshot(category="perf", name="perf.host_capture_ready")
+    assert ready_events
+    value = ready_events[-1].value
+    assert isinstance(value, dict)
+    captured_frames = int(value.get("captured_frames", 0))
+    assert 1 <= captured_frames <= 2
+    report_path = value.get("path")
+    assert isinstance(report_path, str) and report_path
+    assert Path(report_path).exists()
+
+    profile_events = host.diagnostics_hub.snapshot(category="perf", name="perf.frame_profile")
+    assert profile_events
+    profile = profile_events[-1].value
+    assert isinstance(profile, dict)
+    capture = profile.get("capture")
+    assert isinstance(capture, dict)
+    assert capture.get("state") in {"capturing", "complete"}
+
