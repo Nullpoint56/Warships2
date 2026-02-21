@@ -1194,7 +1194,7 @@ def test_wgpu_backend_text_layout_skips_zero_bitmap_glyphs(monkeypatch) -> None:
     assert all(float(quad.w) > 0.0 and float(quad.h) > 0.0 for quad in quads)
 
 
-def test_wgpu_backend_packet_text_quads_snaps_position_but_not_size(monkeypatch) -> None:
+def test_wgpu_backend_packet_text_quads_snaps_to_pixel_grid(monkeypatch) -> None:
     _install_fake_wgpu_module(monkeypatch)
     backend = _WgpuBackend()
     backend._text_pipeline = object()  # noqa: SLF001
@@ -1242,8 +1242,8 @@ def test_wgpu_backend_packet_text_quads_snaps_position_but_not_size(monkeypatch)
     quad = quads[0]
     assert quad.x == pytest.approx(round(quad.x))
     assert quad.y == pytest.approx(round(quad.y))
-    assert quad.w == pytest.approx(5.49)
-    assert quad.h == pytest.approx(7.51)
+    assert quad.w == pytest.approx(round(quad.w))
+    assert quad.h == pytest.approx(round(quad.h))
 
 
 def test_wgpu_backend_acquire_frame_view_recovers_after_one_failure(monkeypatch) -> None:

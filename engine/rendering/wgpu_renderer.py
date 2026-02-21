@@ -3369,10 +3369,8 @@ class _WgpuBackend:
             # Snap quads to pixel grid to avoid fractional UV sampling blur.
             mx = float(round(mx))
             my = float(round(my))
-            # Keep extents at subpixel precision; rounding size can visibly
-            # squeeze/expand glyphs at certain DPI/viewport scales.
-            mw = float(max(1.0, mw))
-            mh = float(max(1.0, mh))
+            mw = float(max(1.0, round(mw)))
+            mh = float(max(1.0, round(mh)))
             out.append(
                 _DrawTextQuad(
                     layer=layer,
