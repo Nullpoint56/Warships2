@@ -394,6 +394,22 @@ User-visible result:
 Exit:
 1. Documented, reproducible runtime profile that meets performance target.
 
+Phase 7 execution note (2026-02-21):
+1. Added explicit runtime profile presets via `ENGINE_RUNTIME_PROFILE`:
+- `dev-debug`
+- `dev-fast`
+- `release-like`
+2. Wired profile defaults into engine config loaders:
+- `engine.runtime.debug_config` (metrics/overlay/profiling/log-level defaults)
+- `engine.rendering.scene_runtime` (render loop mode/fps cap + vsync defaults)
+- `engine.diagnostics.config` (diagnostics buffer/profile/sampling defaults)
+3. Added diagnostics budget controls in `DiagnosticHub`:
+- category allowlist filter
+- per-category sampling rates
+- default sampling rate fallback
+4. Connected diagnostics budget config from `EngineHost` into `DiagnosticHub` so hot-loop categories are gated centrally.
+5. Kept env overrides authoritative: explicit env vars still override profile defaults.
+
 ### Phase 8: Final Tuning and Acceptance Sweep
 
 Implementation:

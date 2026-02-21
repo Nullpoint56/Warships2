@@ -95,6 +95,9 @@ class EngineHost(HostControl):
         self._diagnostics_hub = DiagnosticHub(
             capacity=diag_cfg.buffer_capacity,
             enabled=diag_cfg.enabled,
+            default_sampling_n=diag_cfg.event_default_sampling_n,
+            category_sampling=diag_cfg.event_category_sampling,
+            category_allowlist=diag_cfg.event_category_allowlist,
         )
         self._diagnostics_metrics = DiagnosticsMetricsStore()
         self._diagnostics_subscriber_token = self._diagnostics_hub.subscribe(

@@ -14,11 +14,30 @@ Subscriber = Callable[[DiagnosticEvent], None]
 class DiagnosticHub:
     """Central diagnostics event emission and snapshot facility."""
 
-    def __init__(self, *, capacity: int = 10_000, enabled: bool = True) -> None:
+    def __init__(
+        self,
+        *,
+        capacity: int = 10_000,
+        enabled: bool = True,
+        default_sampling_n: int = 1,
+        category_sampling: dict[str, int] | None = None,
+        category_allowlist: tuple[str, ...] = (),
+    ) -> None:
         self._enabled = bool(enabled)
         self._buffer = RingBuffer[DiagnosticEvent](capacity=capacity)
         self._subscribers: dict[int, Subscriber] = {}
         self._next_subscriber_id = 1
+        self._default_sampling_n = max(1, int(default_sampling_n))
+        self._category_sampling = {
+            str(key).strip().lower(): max(1, int(value))
+            for key, value in dict(category_sampling or {}).items()
+            if str(key).strip()
+        }
+        self._category_allowlist = tuple(
+            str(item).strip().lower()
+            for item in category_allowlist
+            if str(item).strip()
+        )
 
     @property
     def enabled(self) -> bool:
@@ -47,11 +66,17 @@ class DiagnosticHub:
     ) -> None:
         if not self._enabled:
             return
+        normalized_category = str(category).strip().lower()
+        if self._category_allowlist and normalized_category not in self._category_allowlist:
+            return
+        sampling_n = int(self._category_sampling.get(normalized_category, self._default_sampling_n))
+        if sampling_n > 1 and (int(tick) % sampling_n) != 0:
+            return
         self.emit(
             DiagnosticEvent(
                 ts_utc=utc_now_iso(),
                 tick=int(tick),
-                category=category,
+                category=normalized_category,
                 name=name,
                 level=level,
                 value=value,

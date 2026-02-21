@@ -18,6 +18,7 @@ from engine.api.window import SurfaceHandle, WindowResizeEvent
 from engine.rendering.scene_runtime import resolve_preserve_aspect
 from engine.rendering.scene_viewport import to_design_space as viewport_to_design_space
 from engine.rendering.scene_viewport import viewport_transform
+from engine.runtime_profile import resolve_runtime_profile
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
@@ -174,6 +175,7 @@ class WgpuRenderer:
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
+        profile = resolve_runtime_profile()
         design_w, design_h = _resolve_ui_design_dimensions(
             default_width=max(1, int(self.width)),
             default_height=max(1, int(self.height)),
@@ -185,10 +187,14 @@ class WgpuRenderer:
             "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED", True
         )
         self._diag_stage_sampling_n = _env_int(
-            "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N", 1, minimum=1
+            "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N",
+            profile.diagnostics_default_sampling_n,
+            minimum=1,
         )
         self._diag_profile_sampling_n = _env_int(
-            "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N", 1, minimum=1
+            "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N",
+            profile.diagnostics_default_sampling_n,
+            minimum=1,
         )
         self._auto_static_min_stable_frames = _env_int(
             "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES", 3, minimum=1

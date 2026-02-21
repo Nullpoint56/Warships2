@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
+from engine.runtime_profile import resolve_runtime_profile
+
 
 def _flag(name: str, default: bool = False) -> bool:
     raw = os.getenv(name)
@@ -44,12 +46,13 @@ def resolve_log_level_name(default: str = "INFO") -> str:
 
 def load_debug_config() -> DebugConfig:
     """Load immutable debug configuration from env vars."""
+    profile = resolve_runtime_profile()
     return DebugConfig(
-        metrics_enabled=_flag("ENGINE_METRICS_ENABLED", False),
-        overlay_enabled=_flag("ENGINE_UI_OVERLAY_ENABLED", False),
-        profiling_enabled=_flag("ENGINE_PROFILING_ENABLED", False),
-        profiling_sampling_n=max(1, _int("ENGINE_PROFILING_SAMPLING_N", 1)),
-        log_level=resolve_log_level_name(),
+        metrics_enabled=_flag("ENGINE_METRICS_ENABLED", profile.metrics_enabled),
+        overlay_enabled=_flag("ENGINE_UI_OVERLAY_ENABLED", profile.overlay_enabled),
+        profiling_enabled=_flag("ENGINE_PROFILING_ENABLED", profile.profiling_enabled),
+        profiling_sampling_n=max(1, _int("ENGINE_PROFILING_SAMPLING_N", profile.profiling_sampling_n)),
+        log_level=resolve_log_level_name(default=profile.log_level),
     )
 
 

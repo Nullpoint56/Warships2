@@ -11,6 +11,7 @@ from engine.rendering.scene_runtime import (
     get_canvas_logical_size,
     resolve_preserve_aspect,
     resolve_render_loop_config,
+    resolve_render_vsync,
     resolve_window_mode,
     run_backend_loop,
     stop_backend_loop,
@@ -110,7 +111,19 @@ def test_resolve_env_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_render_loop_config_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ENGINE_RENDER_LOOP_MODE", raising=False)
     monkeypatch.delenv("ENGINE_RENDER_FPS_CAP", raising=False)
+    monkeypatch.delenv("ENGINE_RUNTIME_PROFILE", raising=False)
     assert resolve_render_loop_config() == RenderLoopConfig()
+
+
+def test_resolve_render_loop_and_vsync_from_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ENGINE_RUNTIME_PROFILE", "dev-debug")
+    monkeypatch.delenv("ENGINE_RENDER_LOOP_MODE", raising=False)
+    monkeypatch.delenv("ENGINE_RENDER_FPS_CAP", raising=False)
+    monkeypatch.delenv("ENGINE_RENDER_VSYNC", raising=False)
+    cfg = resolve_render_loop_config()
+    assert cfg.mode == "continuous"
+    assert cfg.fps_cap == 0.0
+    assert resolve_render_vsync() is False
 
 
 def test_resolve_render_loop_config_parsing_and_clamping(monkeypatch: pytest.MonkeyPatch) -> None:

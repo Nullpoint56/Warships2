@@ -44,3 +44,17 @@ def test_enabled_helpers_read_current_env(monkeypatch) -> None:
     assert enabled_overlay() is False
     assert enabled_profiling() is True
 
+
+def test_load_debug_config_uses_runtime_profile_defaults(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_RUNTIME_PROFILE", "dev-debug")
+    monkeypatch.delenv("ENGINE_METRICS_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_UI_OVERLAY_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_PROFILING_ENABLED", raising=False)
+    monkeypatch.delenv("ENGINE_LOG_LEVEL", raising=False)
+
+    cfg = load_debug_config()
+    assert cfg.metrics_enabled is True
+    assert cfg.overlay_enabled is True
+    assert cfg.profiling_enabled is True
+    assert cfg.log_level == "DEBUG"
+

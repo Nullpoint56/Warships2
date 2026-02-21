@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from typing import Any
 
+from engine.runtime_profile import resolve_runtime_profile
 from engine.window.rendercanvas_glfw import (
     apply_startup_window_mode as _apply_startup_window_mode,
     run_backend_loop as _run_backend_loop,
@@ -23,19 +24,21 @@ class RenderLoopConfig:
 
 def resolve_render_vsync() -> bool:
     """Read render present sync policy from environment."""
-    raw = os.getenv("ENGINE_RENDER_VSYNC", "1").strip().lower()
+    profile = resolve_runtime_profile()
+    raw = os.getenv("ENGINE_RENDER_VSYNC", "1" if profile.render_vsync else "0").strip().lower()
     return raw in {"1", "true", "yes", "on"}
 
 
 def resolve_render_loop_config() -> RenderLoopConfig:
     """Read render loop capability settings from environment."""
-    mode = os.getenv("ENGINE_RENDER_LOOP_MODE", "on_demand").strip().lower()
+    profile = resolve_runtime_profile()
+    mode = os.getenv("ENGINE_RENDER_LOOP_MODE", profile.render_loop_mode).strip().lower()
     if mode not in {"on_demand", "continuous"}:
-        mode = "on_demand"
+        mode = profile.render_loop_mode
     try:
-        fps_cap = float(os.getenv("ENGINE_RENDER_FPS_CAP", "60.0"))
+        fps_cap = float(os.getenv("ENGINE_RENDER_FPS_CAP", str(profile.render_fps_cap)))
     except ValueError:
-        fps_cap = 60.0
+        fps_cap = profile.render_fps_cap
     return RenderLoopConfig(
         mode=mode,
         fps_cap=max(0.0, fps_cap),
