@@ -76,7 +76,7 @@ def test_bootstrap_uses_window_mode_and_wires_runtime(monkeypatch) -> None:
     monkeypatch.setattr(bootstrap, "WgpuRenderer", FakeRenderer)
     monkeypatch.setattr(
         bootstrap,
-        "create_rendercanvas_window",
+        "create_window_layer",
         lambda **kwargs: FakeWindowLayer(canvas=object()),
     )
     monkeypatch.setattr(bootstrap, "InputController", FakeInputController)
@@ -100,7 +100,7 @@ def test_bootstrap_non_headless_raises_hard_error_when_wgpu_init_fails(monkeypat
     monkeypatch.delenv("ENGINE_HEADLESS", raising=False)
     monkeypatch.setattr(
         bootstrap,
-        "create_rendercanvas_window",
+        "create_window_layer",
         lambda **kwargs: FakeWindowLayer(canvas=object()),
     )
 
@@ -118,7 +118,7 @@ def test_bootstrap_non_headless_failure_details_include_phase4_fields(monkeypatc
     monkeypatch.delenv("ENGINE_HEADLESS", raising=False)
     monkeypatch.setattr(
         bootstrap,
-        "create_rendercanvas_window",
+        "create_window_layer",
         lambda **kwargs: FakeWindowLayer(canvas=object()),
     )
 

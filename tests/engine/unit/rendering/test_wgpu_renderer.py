@@ -820,16 +820,27 @@ def test_wgpu_backend_fails_when_system_font_discovery_fails(monkeypatch) -> Non
 def test_wgpu_backend_glyph_run_cache_keyed_by_font_size_and_text(monkeypatch) -> None:
     _install_fake_wgpu_module(monkeypatch)
     backend = _WgpuBackend()
-    backend._text_face = object()  # noqa: SLF001
     backend._text_pipeline = object()  # noqa: SLF001
     backend._text_bind_group = object()  # noqa: SLF001
     backend._text_atlas_texture = object()  # noqa: SLF001
 
-    def _fake_rasterize_glyph_bitmap(*, face: object | None, character: str, size_px: int):
-        _ = (face, character, size_px)
+    def _fake_shape_text_run(self, *, text: str, font_size_px: int):
+        _ = self
+        _ = (text, font_size_px)
+        return (
+            wgpu_renderer._ShapedGlyph(glyph_index=1, x_offset=0.0, y_offset=0.0, x_advance=6.0, y_advance=0.0),  # noqa: SLF001
+        )
+
+    def _fake_rasterize_glyph_index_bitmap(*, face: object | None, glyph_index: int, size_px: int):
+        _ = (face, glyph_index, size_px)
         return (2, 3, 0, 3, 2.0, b"\xff" * 6)
 
-    monkeypatch.setattr(wgpu_renderer, "_rasterize_glyph_bitmap", _fake_rasterize_glyph_bitmap)
+    monkeypatch.setattr(_WgpuBackend, "_shape_text_run", _fake_shape_text_run)  # noqa: SLF001
+    monkeypatch.setattr(
+        wgpu_renderer,
+        "_rasterize_glyph_index_bitmap",
+        _fake_rasterize_glyph_index_bitmap,
+    )
     packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
         kind="text",
         layer=10,
@@ -873,18 +884,31 @@ def test_wgpu_backend_glyph_run_cache_keyed_by_font_size_and_text(monkeypatch) -
 def test_wgpu_backend_text_layout_skips_zero_bitmap_glyphs(monkeypatch) -> None:
     _install_fake_wgpu_module(monkeypatch)
     backend = _WgpuBackend()
-    backend._text_face = object()  # noqa: SLF001
     backend._text_pipeline = object()  # noqa: SLF001
     backend._text_bind_group = object()  # noqa: SLF001
     backend._text_atlas_texture = object()  # noqa: SLF001
 
-    def _fake_rasterize_glyph_bitmap(*, face: object | None, character: str, size_px: int):
+    def _fake_shape_text_run(self, *, text: str, font_size_px: int):
+        _ = self
+        _ = (text, font_size_px)
+        return (
+            wgpu_renderer._ShapedGlyph(glyph_index=10, x_offset=0.0, y_offset=0.0, x_advance=6.0, y_advance=0.0),  # noqa: SLF001
+            wgpu_renderer._ShapedGlyph(glyph_index=0, x_offset=0.0, y_offset=0.0, x_advance=6.0, y_advance=0.0),  # noqa: SLF001
+            wgpu_renderer._ShapedGlyph(glyph_index=11, x_offset=0.0, y_offset=0.0, x_advance=6.0, y_advance=0.0),  # noqa: SLF001
+        )
+
+    def _fake_rasterize_glyph_index_bitmap(*, face: object | None, glyph_index: int, size_px: int):
         _ = (face, size_px)
-        if character == " ":
+        if glyph_index == 0:
             return (0, 0, 0, 0, 6.0, b"")
         return (2, 3, 0, 3, 2.0, b"\xff" * 6)
 
-    monkeypatch.setattr(wgpu_renderer, "_rasterize_glyph_bitmap", _fake_rasterize_glyph_bitmap)
+    monkeypatch.setattr(_WgpuBackend, "_shape_text_run", _fake_shape_text_run)  # noqa: SLF001
+    monkeypatch.setattr(
+        wgpu_renderer,
+        "_rasterize_glyph_index_bitmap",
+        _fake_rasterize_glyph_index_bitmap,
+    )
     packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
         kind="text",
         layer=10,

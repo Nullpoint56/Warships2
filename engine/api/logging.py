@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol, cast
+
+from engine.diagnostics.json_codec import dumps_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,7 +72,7 @@ class JsonFormatter(logging.Formatter):
             payload["fields"] = extras
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
-        return json.dumps(payload, ensure_ascii=True)
+        return dumps_text(payload, compact=False)
 
 
 def configure_logging(config: EngineLoggingConfig) -> None:

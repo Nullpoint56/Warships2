@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import queue
 import threading
 from dataclasses import dataclass
@@ -10,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from engine.diagnostics.event import DiagnosticEvent
+from engine.diagnostics.json_codec import dumps_text
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,7 +61,7 @@ class JsonlAsyncExporter:
                 except queue.Empty:
                     continue
                 payload = _event_to_dict(event)
-                out.write(json.dumps(payload, ensure_ascii=True, separators=(",", ":")))
+                out.write(dumps_text(payload))
                 out.write("\n")
                 self._written += 1
 

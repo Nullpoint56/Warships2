@@ -475,6 +475,29 @@ Exit:
 3. Faster diagnostics path is active by default for profiling/export tooling.
 4. End-state performance and fidelity targets remain met after these platform-level changes.
 
+Phase 9 execution note (2026-02-21):
+1. Native-backed text stack:
+- `freetype-py` glyph raster path remains primary for atlas population.
+- added enforced `uharfbuzz` shaping integration in glyph-run layout (`engine/rendering/wgpu_renderer.py`) as default runtime path.
+- added glyph-index atlas entry path so shaped glyph ids can map directly to atlas entries (ligature/kerning-aware when shaping is available).
+2. Native-backed render-prep packing:
+- replaced dynamic vertex/text float packing hot paths with typed contiguous `numpy` (`float32`) packing as enforced default runtime path.
+- upload paths now consume packed bytes from this helper for both rect and text streams.
+3. Window backend hardening/decision:
+- introduced engine-owned backend selector (`ENGINE_WINDOW_BACKEND`) via `engine.window.factory.create_window_layer`.
+- completed direct-GLFW decision as explicit reject for current production runtime path because renderer surface contract requires provider `get_context('wgpu')`; runtime now fails fast with an explicit message if forced.
+- added backend probe utility `tools/window_backend_probe.py` to capture benchmark/evidence artifacts under `artifacts/window_backend_probe.json`.
+4. Diagnostics fast serialization:
+- added diagnostics JSON codec (`engine/diagnostics/json_codec.py`) with enforced `orjson` serialization path.
+- switched diagnostics export/polling/logging JSON emission paths to the centralized codec:
+  - `engine/runtime/diagnostics_http.py`
+  - `engine/runtime/host.py` profiling export
+  - `engine/diagnostics/crash.py`
+  - `engine/diagnostics/profiling.py`
+  - `engine/diagnostics/replay.py`
+  - `engine/diagnostics/subscribers/jsonl_exporter.py`
+  - `engine/api/logging.py`
+
 ## Acceptance Criteria
 
 1. Performance:

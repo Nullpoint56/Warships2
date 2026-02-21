@@ -17,7 +17,7 @@ from engine.rendering.wgpu_renderer import WgpuInitError, WgpuRenderer
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.logging import setup_engine_logging
 from engine.runtime.window_frontend import create_window_frontend
-from engine.window import create_rendercanvas_window
+from engine.window import create_window_layer
 
 
 def run_hosted_runtime(
@@ -44,7 +44,7 @@ def run_hosted_runtime(
     vsync = resolve_render_vsync()
     update_mode = "continuous" if loop_cfg.mode == "continuous" else "ondemand"
     max_fps = loop_cfg.fps_cap if loop_cfg.fps_cap > 0.0 else 240.0
-    window_layer = create_rendercanvas_window(
+    window_layer = create_window_layer(
         width=int(panel_width),
         height=int(panel_height),
         title="Engine Runtime",

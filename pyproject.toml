@@ -8,6 +8,9 @@ dependencies = [
     "wgpu>=0.20",
     "rendercanvas>=2.4",
     "glfw>=2.9",
+    "freetype-py>=2.5",
+    "uharfbuzz>=0.43",
+    "orjson>=3.10",
 ]
 
 [dependency-groups]

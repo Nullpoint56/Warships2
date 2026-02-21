@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from collections.abc import Callable
@@ -26,6 +25,7 @@ from engine.diagnostics import (
     load_diagnostics_config,
     resolve_crash_bundle_dir,
 )
+from engine.diagnostics.json_codec import dumps_text
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
 from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
@@ -552,7 +552,7 @@ class EngineHost(HostControl):
                         "duration_ms": float(getattr(span, "duration_ms", 0.0)),
                         "metadata": dict(getattr(span, "metadata", {}) or {}),
                     }
-                    out.write(json.dumps(payload, ensure_ascii=True))
+                    out.write(dumps_text(payload))
                     out.write("\n")
         except OSError:
             _LOG.warning("profiling_export_failed path=%s", out_path)

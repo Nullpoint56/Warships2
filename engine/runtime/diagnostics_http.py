@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 from dataclasses import asdict
@@ -11,6 +10,7 @@ from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 from engine.api.debug import get_diagnostics_snapshot, get_metrics_snapshot, get_profiling_snapshot
+from engine.diagnostics.json_codec import dumps_bytes
 
 _LOG = logging.getLogger("engine.runtime.diag_http")
 
@@ -106,7 +106,7 @@ class DiagnosticsHttpServer:
     def _write_json(
         handler: BaseHTTPRequestHandler, status: int, payload: dict[str, object]
     ) -> None:
-        raw = json.dumps(payload, ensure_ascii=True).encode("utf-8")
+        raw = dumps_bytes(payload)
         try:
             handler.send_response(int(status))
             handler.send_header("Content-Type", "application/json")

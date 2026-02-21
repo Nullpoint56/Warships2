@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from array import array
+from importlib import import_module
 import os
 import sys
 import threading
@@ -11,7 +11,7 @@ import tracemalloc
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.window import SurfaceHandle, WindowResizeEvent
@@ -22,6 +22,16 @@ from engine.runtime_profile import resolve_runtime_profile
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
+
+def _optional_import(name: str) -> Any | None:
+    try:
+        return import_module(name)
+    except Exception:
+        return None
+
+
+_NP = _optional_import("numpy")
+_HB = _optional_import("uharfbuzz")
 
 
 class _Backend(Protocol):
@@ -121,6 +131,15 @@ class _GlyphRunLayout:
     width: float
     height: float
     placements: tuple[_GlyphPlacement, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _ShapedGlyph:
+    glyph_index: int
+    x_offset: float
+    y_offset: float
+    x_advance: float
+    y_advance: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -924,6 +943,16 @@ def _try_create_freetype_face(font_path: str) -> object | None:
         return None
 
 
+def _load_font_blob(font_path: str) -> bytes | None:
+    if not font_path:
+        return None
+    try:
+        with open(font_path, "rb") as handle:
+            return handle.read()
+    except Exception:
+        return None
+
+
 def _rasterize_glyph_bitmap(
     *,
     face: object | None,
@@ -940,6 +969,53 @@ def _rasterize_glyph_bitmap(
             return None
         set_pixel_sizes(0, int(max(1, size_px)))
         load_char(character)
+        bitmap = getattr(glyph, "bitmap", None)
+        if bitmap is None:
+            return None
+        width = int(getattr(bitmap, "width", 0))
+        rows = int(getattr(bitmap, "rows", 0))
+        pitch = int(getattr(bitmap, "pitch", width))
+        left = int(getattr(glyph, "bitmap_left", 0))
+        top = int(getattr(glyph, "bitmap_top", 0))
+        advance_raw = getattr(getattr(glyph, "advance", None), "x", 0)
+        advance = float(float(advance_raw) / 64.0) if isinstance(advance_raw, (int, float)) else 0.0
+        if width <= 0 or rows <= 0:
+            return (0, 0, left, top, max(advance, float(size_px) * 0.3), b"")
+        buffer_obj = getattr(bitmap, "buffer", b"")
+        raw = bytes(buffer_obj)
+        if pitch == width:
+            alpha = raw[: width * rows]
+        else:
+            out = bytearray()
+            row_pitch = max(width, abs(pitch))
+            for row in range(rows):
+                if pitch >= 0:
+                    start = row * row_pitch
+                else:
+                    start = (rows - 1 - row) * row_pitch
+                out.extend(raw[start : start + width])
+            alpha = bytes(out)
+        return (width, rows, left, top, max(advance, float(width)), alpha)
+    except Exception:
+        return None
+
+
+def _rasterize_glyph_index_bitmap(
+    *,
+    face: object | None,
+    glyph_index: int,
+    size_px: int,
+) -> tuple[int, int, int, int, float, bytes] | None:
+    if face is None:
+        return None
+    try:
+        set_pixel_sizes = getattr(face, "set_pixel_sizes", None)
+        load_glyph = getattr(face, "load_glyph", None)
+        glyph = getattr(face, "glyph", None)
+        if not callable(set_pixel_sizes) or not callable(load_glyph) or glyph is None:
+            return None
+        set_pixel_sizes(0, int(max(1, size_px)))
+        load_glyph(int(max(0, glyph_index)))
         bitmap = getattr(glyph, "bitmap", None)
         if bitmap is None:
             return None
@@ -1224,9 +1300,13 @@ class _WgpuBackend:
     _text_atlas_dirty: bool = field(init=False, default=False)
     _text_face: object | None = field(init=False, default=None)
     _glyph_atlas_cache: dict[tuple[int, str], _GlyphAtlasEntry] = field(init=False, default_factory=dict)
+    _glyph_index_atlas_cache: dict[tuple[int, int], _GlyphAtlasEntry] = field(
+        init=False, default_factory=dict
+    )
     _glyph_run_cache: dict[tuple[str, int, str], _GlyphRunLayout] = field(
         init=False, default_factory=dict
     )
+    _hb_font_cache: dict[int, object] = field(init=False, default_factory=dict)
     _draw_text_vertex_buffer_static: object | None = field(init=False, default=None)
     _draw_text_vertex_buffer_static_capacity: int = field(init=False, default=0)
     _draw_text_vertex_buffer_dynamic: object | None = field(init=False, default=None)
@@ -1277,6 +1357,7 @@ class _WgpuBackend:
     _selected_backend: str = field(init=False, default="unknown")
     _adapter_info: dict[str, object] = field(init=False, default_factory=dict)
     _font_path: str = field(init=False, default="")
+    _font_blob: bytes | None = field(init=False, default=None)
     _frame_in_flight: bool = field(init=False, default=False)
     _frame_in_flight_limit: int = field(init=False, default=1)
     _clear_pending: bool = field(init=False, default=True)
@@ -1323,6 +1404,26 @@ class _WgpuBackend:
             1.0,
             minimum=0.1,
         )
+        if _NP is None:
+            raise WgpuInitError(
+                "wgpu backend initialization failed",
+                details={
+                    "selected_backend": self._selected_backend,
+                    "adapter_info": dict(self._adapter_info),
+                    "missing_dependency": "numpy",
+                    "requirement": "Phase 9 native render-prep path requires numpy",
+                },
+            )
+        if _HB is None:
+            raise WgpuInitError(
+                "wgpu backend initialization failed",
+                details={
+                    "selected_backend": self._selected_backend,
+                    "adapter_info": dict(self._adapter_info),
+                    "missing_dependency": "uharfbuzz",
+                    "requirement": "Phase 9 native text shaping path requires uharfbuzz",
+                },
+            )
         self._recovery_failure_streak_threshold = _env_int(
             "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD",
             3,
@@ -1545,7 +1646,9 @@ class _WgpuBackend:
         self._queued_packets.clear()
         self._static_packet_rect_cache.clear()
         self._glyph_atlas_cache.clear()
+        self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
+        self._hb_font_cache.clear()
         self._upload_stream_buffer = None
         self._upload_stream_buffer_capacity = 0
         self._draw_vertex_buffer_static = None
@@ -1570,6 +1673,7 @@ class _WgpuBackend:
         self._text_atlas_view = None
         self._text_atlas_pixels = bytearray()
         self._text_face = None
+        self._font_blob = None
         self._frame_texture = None
         self._frame_texture_view = None
         self._frame_color_view = None
@@ -1602,6 +1706,8 @@ class _WgpuBackend:
         self._static_text_vertex_count = 0
         self._static_text_bundle = None
         self._static_text_bundle_key = None
+        self._glyph_index_atlas_cache.clear()
+        self._hb_font_cache.clear()
         return
 
     def resize_telemetry(self) -> dict[str, object]:
@@ -1885,8 +1991,11 @@ class _WgpuBackend:
         self._text_atlas_row_height = 0
         self._text_atlas_dirty = False
         self._glyph_atlas_cache.clear()
+        self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
+        self._hb_font_cache.clear()
         self._text_face = _try_create_freetype_face(self._font_path)
+        self._font_blob = _load_font_blob(self._font_path)
 
         create_texture = getattr(self._device, "create_texture", None)
         if not callable(create_texture):
@@ -2483,18 +2592,87 @@ class _WgpuBackend:
         cached = self._glyph_run_cache.get(run_key)
         if cached is not None:
             return cached
+        shaped = self._shape_text_run(text=text, font_size_px=font_size_px)
+        if not shaped:
+            raise RuntimeError("native text shaping returned no glyphs for non-empty text")
+        layout = self._layout_shaped_glyph_run(shaped=shaped, font_size_px=font_size_px)
+        if layout is None:
+            raise RuntimeError("native shaped glyph layout produced no drawable placements")
+        self._glyph_run_cache[run_key] = layout
+        return layout
+
+    def _shape_text_run(self, *, text: str, font_size_px: int) -> tuple[_ShapedGlyph, ...]:
+        if _HB is None:
+            return ()
+        if not text:
+            return ()
+        hb_font = self._hb_font_for_size(font_size_px=font_size_px)
+        if hb_font is None:
+            return ()
+        buffer = _HB.Buffer()
+        buffer.add_str(text)
+        buffer.guess_segment_properties()
+        _HB.shape(hb_font, buffer, {"kern": True, "liga": True, "clig": True})
+        infos = list(getattr(buffer, "glyph_infos", ()) or ())
+        positions = list(getattr(buffer, "glyph_positions", ()) or ())
+        if not infos or len(infos) != len(positions):
+            return ()
+        out: list[_ShapedGlyph] = []
+        scale = 1.0 / 64.0
+        for info, pos in zip(infos, positions, strict=False):
+            out.append(
+                _ShapedGlyph(
+                    glyph_index=int(getattr(info, "codepoint", 0)),
+                    x_offset=float(getattr(pos, "x_offset", 0)) * scale,
+                    y_offset=float(getattr(pos, "y_offset", 0)) * scale,
+                    x_advance=float(getattr(pos, "x_advance", 0)) * scale,
+                    y_advance=float(getattr(pos, "y_advance", 0)) * scale,
+                )
+            )
+        return tuple(out)
+
+    def _hb_font_for_size(self, *, font_size_px: int) -> object | None:
+        if _HB is None:
+            return None
+        key = int(max(1, font_size_px))
+        cached = self._hb_font_cache.get(key)
+        if cached is not None:
+            return cached
+        blob = self._font_blob
+        if not blob:
+            return None
+        try:
+            face = _HB.Face(blob)
+            font = _HB.Font(face)
+            _HB.ot_font_set_funcs(font)
+            scale = int(max(1, key) * 64)
+            font.scale = (scale, scale)
+            self._hb_font_cache[key] = cast(object, font)
+            return cast(object, font)
+        except Exception:
+            return None
+
+    def _layout_shaped_glyph_run(
+        self, *, shaped: tuple[_ShapedGlyph, ...], font_size_px: int
+    ) -> _GlyphRunLayout | None:
         pen_x = 0.0
+        pen_y = 0.0
         placements_raw: list[tuple[float, float, float, float, float, float, float, float]] = []
         min_x = 0.0
         min_y = 0.0
         max_x = 0.0
         max_y = 0.0
-        for ch in text:
-            entry = self._glyph_atlas_entry(ch=ch, font_size_px=font_size_px)
+        for glyph in shaped:
+            entry = self._glyph_atlas_entry_by_index(
+                glyph_index=glyph.glyph_index,
+                font_size_px=font_size_px,
+            )
             if entry is None:
+                pen_x += max(1.0, float(glyph.x_advance))
+                pen_y += float(glyph.y_advance)
                 continue
-            gx = pen_x + float(entry.bearing_x)
-            gy = 0.0 - float(entry.bearing_y)
+            gx = pen_x + float(glyph.x_offset) + float(entry.bearing_x)
+            gy = pen_y - float(glyph.y_offset) - float(entry.bearing_y)
             gw = max(0.0, float(entry.width))
             gh = max(0.0, float(entry.height))
             if gw > 0.0 and gh > 0.0:
@@ -2503,7 +2681,8 @@ class _WgpuBackend:
                 min_y = min(min_y, gy)
                 max_x = max(max_x, gx + gw)
                 max_y = max(max_y, gy + gh)
-            pen_x += max(1.0, float(entry.advance))
+            pen_x += max(1.0, float(glyph.x_advance))
+            pen_y += float(glyph.y_advance)
         if not placements_raw:
             return None
         width = max(1.0, max_x - min_x)
@@ -2521,9 +2700,7 @@ class _WgpuBackend:
             )
             for gx, gy, gw, gh, u0, v0, u1, v1 in placements_raw
         )
-        layout = _GlyphRunLayout(width=width, height=height, placements=placements)
-        self._glyph_run_cache[run_key] = layout
-        return layout
+        return _GlyphRunLayout(width=width, height=height, placements=placements)
 
     def _glyph_atlas_entry(self, *, ch: str, font_size_px: int) -> _GlyphAtlasEntry | None:
         key = (int(font_size_px), str(ch))
@@ -2577,6 +2754,63 @@ class _WgpuBackend:
             advance=float(max(1, advance)),
         )
         self._glyph_atlas_cache[key] = entry
+        return entry
+
+    def _glyph_atlas_entry_by_index(
+        self, *, glyph_index: int, font_size_px: int
+    ) -> _GlyphAtlasEntry | None:
+        size_px = int(max(1, font_size_px))
+        key = (size_px, int(max(0, glyph_index)))
+        cached = self._glyph_index_atlas_cache.get(key)
+        if cached is not None:
+            return cached
+        raster = _rasterize_glyph_index_bitmap(
+            face=self._text_face,
+            glyph_index=int(max(0, glyph_index)),
+            size_px=size_px,
+        )
+        if raster is None:
+            return None
+        width, rows, left, top, advance, alpha_bytes = raster
+        if width <= 0 or rows <= 0:
+            entry = _GlyphAtlasEntry(
+                u0=0.0,
+                v0=0.0,
+                u1=0.0,
+                v1=0.0,
+                width=0.0,
+                height=0.0,
+                bearing_x=float(left),
+                bearing_y=float(top),
+                advance=float(max(1.0, advance)),
+            )
+            self._glyph_index_atlas_cache[key] = entry
+            return entry
+        atlas_xy = self._pack_atlas_region(width=width, height=rows)
+        if atlas_xy is None:
+            return None
+        dst_x, dst_y = atlas_xy
+        self._blit_alpha_to_atlas(
+            x=dst_x,
+            y=dst_y,
+            width=width,
+            height=rows,
+            data=alpha_bytes,
+        )
+        atlas_w = max(1, int(self._text_atlas_width))
+        atlas_h = max(1, int(self._text_atlas_height))
+        entry = _GlyphAtlasEntry(
+            u0=float(dst_x) / float(atlas_w),
+            v0=float(dst_y) / float(atlas_h),
+            u1=float(dst_x + width) / float(atlas_w),
+            v1=float(dst_y + rows) / float(atlas_h),
+            width=float(max(1, width)),
+            height=float(max(1, rows)),
+            bearing_x=float(left),
+            bearing_y=float(top),
+            advance=float(max(1, advance)),
+        )
+        self._glyph_index_atlas_cache[key] = entry
         return entry
 
     def _pack_atlas_region(self, *, width: int, height: int) -> tuple[int, int] | None:
@@ -2854,8 +3088,7 @@ class _WgpuBackend:
     ) -> tuple[object | None, int, int]:
         if not values:
             return None, 0, 0
-        payload = array("f", values)
-        raw = payload.tobytes()
+        raw = _pack_f32_bytes(values)
         buffer = self._ensure_text_vertex_buffer_capacity(
             stream_kind=stream_kind,
             minimum_bytes=len(raw),
@@ -3020,8 +3253,7 @@ class _WgpuBackend:
     ) -> tuple[object | None, int, int]:
         if not values:
             return None, 0, 0
-        payload = array("f", values)
-        raw = payload.tobytes()
+        raw = _pack_f32_bytes(values)
         buffer = self._ensure_draw_vertex_buffer_capacity(
             stream_kind=stream_kind,
             minimum_bytes=len(raw),
@@ -3278,6 +3510,15 @@ def _resolve_text_texture_usage(wgpu_mod: object) -> int:
     texture_binding = int(getattr(texture_usage, "TEXTURE_BINDING", 0x04))
     copy_dst = int(getattr(texture_usage, "COPY_DST", 0x08))
     return texture_binding | copy_dst
+
+
+def _pack_f32_bytes(values: list[float]) -> bytes:
+    if not values:
+        return b""
+    if _NP is None:
+        raise RuntimeError("numpy is required for native float packing path")
+    arr = _NP.asarray(values, dtype=_NP.float32)
+    return bytes(arr.tobytes(order="C"))
 
 
 def _resolve_backend_priority() -> tuple[str, ...]:
