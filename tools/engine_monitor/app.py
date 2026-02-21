@@ -239,10 +239,14 @@ class MonitorApp:
             f"- present_ms: {model.render_present_ms:.3f}",
             f"- total_ms: {model.render_total_ms:.3f}",
             f"- mem_delta_mb: {model.render_mem_delta_mb:.3f}",
+            f"- present_mode: {model.render_present_mode}",
             f"- execute_packet_total: {model.render_execute_packet_count}",
             f"- execute_passes_total: {model.render_execute_pass_count}",
             f"- execute_static_packets: {model.render_execute_static_packet_count}",
             f"- execute_dynamic_packets: {model.render_execute_dynamic_packet_count}",
+            f"- execute_packet_build_ms: {model.render_execute_packet_build_ms:.3f}",
+            f"- execute_auto_static_ms: {model.render_execute_auto_static_ms:.3f}",
+            f"- execute_static_packet_cache_hits: {model.render_execute_static_packet_cache_hits}",
             f"- execute_static_reused: {model.render_execute_static_reused}",
             f"- execute_static_bundle_replayed: {model.render_execute_static_bundle_replayed}",
             f"- execute_static_upload_bytes: {model.render_execute_static_upload_bytes}",
@@ -250,6 +254,28 @@ class MonitorApp:
             f"- execute_static_rebuild_count: {model.render_execute_static_rebuild_count}",
             f"- execute_static_run_count: {model.render_execute_static_run_count}",
             f"- execute_dynamic_run_count: {model.render_execute_dynamic_run_count}",
+            f"- execute_stage_upload_ms: {model.render_execute_stage_upload_ms:.3f}",
+            f"- execute_translate_ms: {model.render_execute_translate_ms:.3f}",
+            f"- execute_expand_ms: {model.render_execute_expand_ms:.3f}",
+            f"- execute_rect_batch_ms: {model.render_execute_rect_batch_ms:.3f}",
+            f"- execute_text_batch_ms: {model.render_execute_text_batch_ms:.3f}",
+            f"- execute_text_layout_ms: {model.render_execute_text_layout_ms:.3f}",
+            f"- execute_text_shape_ms: {model.render_execute_text_shape_ms:.3f}",
+            f"- execute_text_shape_calls: {model.render_execute_text_shape_calls}",
+            f"- execute_atlas_upload_ms: {model.render_execute_atlas_upload_ms:.3f}",
+            f"- execute_atlas_upload_bytes: {model.render_execute_atlas_upload_bytes}",
+            f"- execute_atlas_upload_count: {model.render_execute_atlas_upload_count}",
+            f"- execute_packet_translate_count: {model.render_execute_packet_translate_count}",
+            f"- execute_rect_count: {model.render_execute_rect_count}",
+            f"- execute_text_quad_count: {model.render_execute_text_quad_count}",
+            f"- execute_draw_calls: {model.render_execute_draw_calls}",
+            f"- execute_pipeline_binds: {model.render_execute_pipeline_binds}",
+            f"- execute_vertex_buffer_binds: {model.render_execute_vertex_buffer_binds}",
+            f"- execute_bind_group_binds: {model.render_execute_bind_group_binds}",
+            f"- execute_bundle_replays: {model.render_execute_bundle_replays}",
+            f"- execute_cffi_type_miss_total: {model.render_execute_cffi_type_miss_total}",
+            f"- execute_cffi_type_miss_delta: {model.render_execute_cffi_type_miss_delta}",
+            f"- execute_cffi_type_miss_unique: {model.render_execute_cffi_type_miss_unique}",
             "",
             "latest renderer execute breakdown:",
         ]
@@ -265,14 +291,37 @@ class MonitorApp:
             )
         else:
             lines.append("- kind counts: n/a")
+        if model.render_execute_kind_rect_counts:
+            lines.extend(
+                [f"- kind_rects:{name} count={count}" for name, count in model.render_execute_kind_rect_counts]
+            )
+        else:
+            lines.append("- kind rect counts: n/a")
+        if model.render_execute_kind_text_quad_counts:
+            lines.extend(
+                [f"- kind_text_quads:{name} count={count}" for name, count in model.render_execute_kind_text_quad_counts]
+            )
+        else:
+            lines.append("- kind text-quad counts: n/a")
+        if model.render_execute_cffi_type_miss_top:
+            lines.extend(
+                [f"- cffi_miss:{name} count={count}" for name, count in model.render_execute_cffi_type_miss_top]
+            )
+        else:
+            lines.append("- cffi miss top: n/a")
         lines.extend(
             [
             "",
             "latest system/profile snapshot:",
             f"- top_system: {model.top_system_name}",
             f"- top_system_ms: {model.top_system_ms:.3f}",
+            f"- top_systems: {', '.join(f'{name}={ms:.3f}ms' for name, ms in model.top_systems) if model.top_systems else 'n/a'}",
             f"- python_current_mb: {model.python_current_mb:.3f}",
             f"- process_rss_mb: {model.process_rss_mb:.3f}",
+            f"- capture_state: {model.profile_capture_state}",
+            f"- capture_frames: {model.profile_capture_frames}/{model.profile_capture_target_frames}",
+            f"- capture_report_path: {model.profile_capture_report_path or 'n/a'}",
+            f"- capture_error: {model.profile_capture_error or 'none'}",
             "",
             "render.stage event counts:",
             ]

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from importlib import import_module
 import os
+import re
 import sys
 import threading
 import time
@@ -32,6 +33,14 @@ def _optional_import(name: str) -> Any | None:
 
 _NP = _optional_import("numpy")
 _HB = _optional_import("uharfbuzz")
+_COMMAND_PAYLOAD_CACHE_MAX = 20_000
+_COLOR_CACHE_MAX = 512
+_TRANSFORM_CACHE_MAX = 20_000
+_COMMAND_COLOR_CACHE: dict[object, tuple[float, float, float, float]] = {}
+_COMMAND_LINEAR_COLOR_CACHE: dict[
+    tuple[float, float, float, float], tuple[float, float, float, float]
+] = {}
+_TRANSFORM_VALUES_CACHE: dict[int, tuple[object, tuple[float, ...]]] = {}
 
 
 class _Backend(Protocol):
@@ -40,7 +49,13 @@ class _Backend(Protocol):
     def begin_frame(self) -> None:
         """Prepare one backend frame."""
 
-    def draw_packets(self, pass_name: str, packets: tuple["_DrawPacket", ...]) -> None:
+    def draw_packets(
+        self,
+        pass_name: str,
+        packets: tuple["_DrawPacket", ...],
+        *,
+        pass_signature: tuple[object, ...] | None = None,
+    ) -> None:
         """Encode and submit packets for one pass."""
 
     def present(self) -> None:
@@ -89,6 +104,9 @@ class _DrawPacket:
     sort_key: str
     transform: tuple[float, ...]
     data: tuple[tuple[str, object], ...]
+    engine_static: bool | None = None
+    engine_version: object | None = None
+    engine_cache_base: tuple[object, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +174,20 @@ class _DrawTextQuad:
     color: tuple[float, float, float, float]
 
 
+@dataclass(frozen=True, slots=True)
+class _StaticPassExpandCacheEntry:
+    static_draw_rects: tuple[_DrawRect, ...]
+    static_text_quads: tuple[_DrawTextQuad, ...]
+    static_draw_packet_keys: tuple[tuple[object, ...], ...]
+    static_text_packet_keys: tuple[tuple[object, ...], ...]
+    static_packet_identity: tuple[tuple[object, ...], ...]
+    kind_rect_counts: tuple[tuple[str, int], ...]
+    kind_text_quad_counts: tuple[tuple[str, int], ...]
+    rect_count: int
+    text_quad_count: int
+    packet_translate_count: int
+
+
 @dataclass(slots=True)
 class WgpuRenderer:
     """Renderer scaffold using immutable snapshots and explicit stages."""
@@ -189,6 +221,17 @@ class WgpuRenderer:
     _diag_profile_sampling_n: int = field(init=False, default=1)
     _auto_static_min_stable_frames: int = field(init=False, default=3)
     _auto_static_state: dict[str, tuple[object, int, int]] = field(
+        init=False, default_factory=dict
+    )
+    _pass_static_packet_cache: dict[
+        str, tuple[tuple[object, ...], tuple[tuple[int, _DrawPacket], ...]]
+    ] = field(
+        init=False, default_factory=dict
+    )
+    _command_packet_cache: dict[int, tuple[RenderCommand, _DrawPacket, str, object]] = field(
+        init=False, default_factory=dict
+    )
+    _command_version_token_cache: dict[int, tuple[RenderCommand, object]] = field(
         init=False, default_factory=dict
     )
 
@@ -458,6 +501,9 @@ class WgpuRenderer:
         if self._closed:
             return
         self._closed = True
+        self._pass_static_packet_cache.clear()
+        self._command_packet_cache.clear()
+        self._command_version_token_cache.clear()
         self._backend.close()
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
@@ -577,11 +623,48 @@ class WgpuRenderer:
         execute_packet_count = 0
         execute_static_packet_count = 0
         execute_dynamic_packet_count = 0
+        execute_packet_build_ms = 0.0
+        execute_auto_static_ms = 0.0
+        execute_static_packet_cache_hits = 0
+        execute_backend_draw_ms = 0.0
         for batch in batches:
-            packets = tuple(
-                self._annotate_packet_static_mode(_command_to_packet(command))
-                for command in batch.commands
-            )
+            batch_signature = self._command_batch_signature_cached(batch.commands)
+            cached = self._pass_static_packet_cache.get(batch.name)
+            static_cached_packets: dict[int, _DrawPacket] = {}
+            if cached is not None:
+                if cached[0] == batch_signature:
+                    static_cached_packets = {int(i): p for i, p in cached[1]}
+                else:
+                    self._pass_static_packet_cache.pop(batch.name, None)
+            packet_build_started = time.perf_counter()
+            packet_list: list[_DrawPacket] = []
+            static_entries_next: list[tuple[int, _DrawPacket]] = []
+            for index, command in enumerate(batch.commands):
+                cached_packet = static_cached_packets.get(index)
+                if cached_packet is not None:
+                    packet_list.append(cached_packet)
+                    execute_static_packet_cache_hits += 1
+                    static_entries_next.append((index, cached_packet))
+                    continue
+                packet, override, version_token = self._command_to_packet_cached(command)
+                annotated, auto_static_ms = self._annotate_packet_static_mode(
+                    packet,
+                    override=override,
+                    version_token=version_token,
+                )
+                execute_auto_static_ms += max(0.0, float(auto_static_ms))
+                packet_list.append(annotated)
+                if bool(getattr(annotated, "engine_static", False)):
+                    static_entries_next.append((index, annotated))
+            packets = tuple(packet_list)
+            execute_packet_build_ms += (time.perf_counter() - packet_build_started) * 1000.0
+            if static_entries_next:
+                self._pass_static_packet_cache[batch.name] = (
+                    batch_signature,
+                    tuple(static_entries_next),
+                )
+            else:
+                self._pass_static_packet_cache.pop(batch.name, None)
             packet_count = int(len(packets))
             execute_packet_count += packet_count
             execute_pass_packet_counts[batch.name] = (
@@ -598,7 +681,18 @@ class WgpuRenderer:
                 "execute_pass.begin",
                 metadata={"pass_name": batch.name, "packet_count": packet_count},
             )
-            self._backend.draw_packets(batch.name, packets)
+            backend_draw_started = time.perf_counter()
+            try:
+                self._backend.draw_packets(
+                    batch.name,
+                    packets,
+                    pass_signature=batch_signature,
+                )
+            except TypeError:
+                # Compatibility path for test doubles / legacy backends that do not
+                # support pass-level signatures yet.
+                self._backend.draw_packets(batch.name, packets)
+            execute_backend_draw_ms += (time.perf_counter() - backend_draw_started) * 1000.0
             self._emit_render_stage(
                 "execute_pass.end",
                 metadata={"pass_name": batch.name, "packet_count": packet_count},
@@ -608,6 +702,10 @@ class WgpuRenderer:
             "execute_pass_count": int(len(batches)),
             "execute_static_packet_count": int(execute_static_packet_count),
             "execute_dynamic_packet_count": int(execute_dynamic_packet_count),
+            "execute_packet_build_ms": float(max(0.0, execute_packet_build_ms)),
+            "execute_auto_static_ms": float(max(0.0, execute_auto_static_ms)),
+            "execute_static_packet_cache_hits": int(execute_static_packet_cache_hits),
+            "execute_backend_draw_ms": float(max(0.0, execute_backend_draw_ms)),
             "execute_pass_packet_counts": dict(sorted(execute_pass_packet_counts.items())),
             "execute_kind_packet_counts": dict(sorted(execute_kind_packet_counts.items())),
         }
@@ -618,42 +716,106 @@ class WgpuRenderer:
                 summary.update(payload)
         return summary
 
-    def _annotate_packet_static_mode(self, packet: _DrawPacket) -> _DrawPacket:
-        override = _packet_static_override(packet)
-        if override == "force_static":
+    def _command_batch_signature_cached(
+        self, commands: tuple[RenderCommand, ...]
+    ) -> tuple[object, ...]:
+        if not commands:
+            return ()
+        return tuple(self._command_version_token_cached(command) for command in commands)
+
+    def _annotate_packet_static_mode(
+        self,
+        packet: _DrawPacket,
+        *,
+        override: str | None = None,
+        version_token: object | None = None,
+    ) -> tuple[_DrawPacket, float]:
+        resolved_override = override if override is not None else _packet_static_override(packet)
+        auto_static_ms = 0.0
+        if resolved_override == "force_static":
             effective_static = True
-        elif override == "force_dynamic":
+        elif resolved_override == "force_dynamic":
             effective_static = False
         else:
-            effective_static = self._resolve_auto_static(packet)
-        data = tuple(packet.data) + (("_engine_static", bool(effective_static)),)
-        return _DrawPacket(
-            kind=str(packet.kind),
-            layer=int(packet.layer),
-            sort_key=str(packet.sort_key),
-            transform=tuple(packet.transform),
-            data=data,
+            auto_static_started = time.perf_counter()
+            effective_static = self._resolve_auto_static(packet, version_token=version_token)
+            auto_static_ms = (time.perf_counter() - auto_static_started) * 1000.0
+        resolved_version = version_token
+        if resolved_version is None:
+            resolved_version = _packet_version_token(packet)
+        if resolved_version is None:
+            resolved_version = (
+                int(id(packet.data)),
+                int(id(packet.transform)),
+            )
+        version_key = _version_fingerprint(resolved_version)
+        cache_base = (
+            str(packet.kind),
+            int(packet.layer),
+            str(packet.sort_key),
+            version_key,
+        )
+        return (
+            _DrawPacket(
+                kind=str(packet.kind),
+                layer=int(packet.layer),
+                sort_key=str(packet.sort_key),
+                transform=tuple(packet.transform),
+                data=packet.data,
+                engine_static=bool(effective_static),
+                engine_version=resolved_version,
+                engine_cache_base=cache_base,
+            ),
+            float(max(0.0, auto_static_ms)),
         )
 
-    def _resolve_auto_static(self, packet: _DrawPacket) -> bool:
+    def _resolve_auto_static(self, packet: _DrawPacket, *, version_token: object | None = None) -> bool:
         key = _packet_key(packet)
         if key is None:
             return False
-        fingerprint = _packet_fingerprint(packet)
+        version = version_token if version_token is not None else _packet_fingerprint(packet)
         frame = int(self._frame_index)
         state = self._auto_static_state.get(key)
         if state is None:
-            self._auto_static_state[key] = (fingerprint, 1, frame)
+            self._auto_static_state[key] = (version, 1, frame)
             return False
-        prev_fingerprint, stable_count, _last_seen = state
-        if prev_fingerprint == fingerprint:
+        prev_version, stable_count, _last_seen = state
+        if prev_version == version:
             stable_count = int(stable_count) + 1
         else:
             stable_count = 1
-        self._auto_static_state[key] = (fingerprint, stable_count, frame)
+        self._auto_static_state[key] = (version, stable_count, frame)
         if frame % 120 == 0:
             self._prune_auto_static_state(frame)
         return stable_count >= int(self._auto_static_min_stable_frames)
+
+    def _command_to_packet_cached(self, command: RenderCommand) -> tuple[_DrawPacket, str, object]:
+        command_id = int(id(command))
+        cached = self._command_packet_cache.get(command_id)
+        if cached is not None:
+            cached_command, packet, override, version_token = cached
+            if cached_command is command:
+                return packet, override, version_token
+        override = _command_static_override(command)
+        packet = _command_to_packet(command)
+        version_token = self._command_version_token_cached(command)
+        self._command_packet_cache[command_id] = (command, packet, override, version_token)
+        if len(self._command_packet_cache) > 20000:
+            self._command_packet_cache.clear()
+            self._command_packet_cache[command_id] = (command, packet, override, version_token)
+        return packet, override, version_token
+
+    def _command_version_token_cached(self, command: RenderCommand) -> object:
+        command_id = int(id(command))
+        cached = self._command_version_token_cache.get(command_id)
+        if cached is not None and cached[0] is command:
+            return cached[1]
+        token = _command_version_token(command)
+        self._command_version_token_cache[command_id] = (command, token)
+        if len(self._command_version_token_cache) > 20000:
+            self._command_version_token_cache.clear()
+            self._command_version_token_cache[command_id] = (command, token)
+        return token
 
     def _prune_auto_static_state(self, frame: int) -> None:
         cutoff = int(frame) - 300
@@ -801,11 +963,14 @@ class WgpuRenderer:
 
 
 def _command_key(command: RenderCommand) -> str:
-    payload = {str(key): value for key, value in command.data}
-    key = payload.get("key")
-    if not isinstance(key, str):
+    raw_key: object | None = None
+    for key, value in command.data:
+        if str(key) == "key":
+            raw_key = value
+            break
+    if not isinstance(raw_key, str):
         return ""
-    normalized = key.strip()
+    normalized = raw_key.strip()
     if not normalized:
         return ""
     return f"{command.kind}:{normalized}"
@@ -823,14 +988,14 @@ def _resolve_pass_descriptor(name: str) -> _PassDescriptor:
 
 
 def _command_to_packet(command: RenderCommand) -> _DrawPacket:
-    payload = tuple((str(key), value) for key, value in command.data)
+    payload = _normalized_payload(command.data)
     srgb_rgba = _extract_srgb_rgba(payload)
-    linear_rgba = _srgb_to_linear_rgba(srgb_rgba)
+    linear_rgba = _srgb_to_linear_rgba_cached(srgb_rgba)
     return _DrawPacket(
         kind=str(command.kind),
         layer=int(command.layer),
         sort_key=str(command.sort_key),
-        transform=tuple(float(value) for value in command.transform.values),
+        transform=_transform_values_tuple(command.transform.values),
         data=payload + (("srgb_rgba", srgb_rgba), ("linear_rgba", linear_rgba)),
     )
 
@@ -849,6 +1014,76 @@ def _command_sort_key(command: RenderCommand, ordinal: int) -> tuple[object, ...
     )
 
 
+def _command_static_override(command: RenderCommand) -> str:
+    override_raw: object | None = None
+    for key, value in command.data:
+        if str(key) == "static":
+            override_raw = value
+            break
+    if isinstance(override_raw, bool):
+        return "force_static" if override_raw else "auto"
+    if isinstance(override_raw, (int, float)):
+        return "force_static" if bool(override_raw) else "auto"
+    if isinstance(override_raw, str):
+        value = override_raw.strip().lower()
+        if value in {"1", "true", "yes", "on", "static", "force_static"}:
+            return "force_static"
+        if value in {"dynamic", "force_dynamic", "0", "false", "off"}:
+            return "force_dynamic"
+    return "auto"
+
+
+def _command_version_token(command: RenderCommand) -> object:
+    payload = tuple(command.data)
+    payload_token: object
+    try:
+        payload_token = ("h", hash(payload), len(payload))
+    except Exception:
+        payload_token = ("id", int(id(payload)), len(payload))
+    transform_values = _transform_values_tuple(command.transform.values)
+    transform_token: object
+    try:
+        transform_token = ("h", hash(transform_values), len(transform_values))
+    except Exception:
+        transform_token = ("id", int(id(transform_values)), len(transform_values))
+    return (
+        str(command.kind),
+        int(command.layer),
+        str(command.sort_key),
+        _command_key(command),
+        payload_token,
+        transform_token,
+    )
+
+
+def _normalized_payload(data: tuple[tuple[str, object], ...]) -> tuple[tuple[str, object], ...]:
+    all_str = True
+    for item in data:
+        if not (isinstance(item, tuple) and len(item) == 2 and isinstance(item[0], str)):
+            all_str = False
+            break
+    if all_str:
+        return data
+    return tuple((str(key), value) for key, value in data)
+
+
+def _transform_values_tuple(values: object) -> tuple[float, ...]:
+    key = int(id(values))
+    cached = _TRANSFORM_VALUES_CACHE.get(key)
+    if cached is not None and cached[0] is values:
+        return cached[1]
+    try:
+        raw_values = tuple(cast(Any, values))
+    except TypeError:
+        return ()
+    out = tuple(float(value) for value in raw_values)
+    _TRANSFORM_VALUES_CACHE[key] = (values, out)
+    if len(_TRANSFORM_VALUES_CACHE) > _TRANSFORM_CACHE_MAX:
+        _TRANSFORM_VALUES_CACHE.clear()
+        _TRANSFORM_VALUES_CACHE[key] = (values, out)
+    return out
+
+
 def _stable_sort_value(value: object) -> object:
     if isinstance(value, (int, float, str, bool)) or value is None:
         return value
@@ -861,11 +1096,23 @@ def _extract_srgb_rgba(payload: tuple[tuple[str, object], ...]) -> tuple[float, 
         if str(key) == "color":
             color_value = value
             break
+    cached = _COMMAND_COLOR_CACHE.get(color_value)
+    if cached is not None:
+        return cached
     if isinstance(color_value, str):
         parsed = _parse_hex_color(color_value)
         if parsed is not None:
+            _COMMAND_COLOR_CACHE[color_value] = parsed
+            if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
+                _COMMAND_COLOR_CACHE.clear()
+                _COMMAND_COLOR_CACHE[color_value] = parsed
             return parsed
-    return (1.0, 1.0, 1.0, 1.0)
+    fallback = (1.0, 1.0, 1.0, 1.0)
+    _COMMAND_COLOR_CACHE[color_value] = fallback
+    if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
+        _COMMAND_COLOR_CACHE.clear()
+        _COMMAND_COLOR_CACHE[color_value] = fallback
+    return fallback
 
 
 def _parse_hex_color(raw: str) -> tuple[float, float, float, float] | None:
@@ -896,6 +1143,20 @@ def _parse_hex_color(raw: str) -> tuple[float, float, float, float] | None:
 def _srgb_to_linear_rgba(srgb: tuple[float, float, float, float]) -> tuple[float, float, float, float]:
     r, g, b, a = srgb
     return (_srgb_to_linear_channel(r), _srgb_to_linear_channel(g), _srgb_to_linear_channel(b), a)
+
+
+def _srgb_to_linear_rgba_cached(
+    srgb: tuple[float, float, float, float]
+) -> tuple[float, float, float, float]:
+    cached = _COMMAND_LINEAR_COLOR_CACHE.get(srgb)
+    if cached is not None:
+        return cached
+    linear = _srgb_to_linear_rgba(srgb)
+    _COMMAND_LINEAR_COLOR_CACHE[srgb] = linear
+    if len(_COMMAND_LINEAR_COLOR_CACHE) > _COLOR_CACHE_MAX:
+        _COMMAND_LINEAR_COLOR_CACHE.clear()
+        _COMMAND_LINEAR_COLOR_CACHE[srgb] = linear
+    return linear
 
 
 def _srgb_to_linear_channel(value: float) -> float:
@@ -1326,6 +1587,8 @@ class _WgpuBackend:
     _window_height: int = field(init=False, default=720)
     _internal_render_scale: float = field(init=False, default=1.0)
     _upload_threshold_packets: int = field(init=False, default=256)
+    _static_bundle_min_draw_calls: int = field(init=False, default=2)
+    _static_pass_expand_cache_max: int = field(init=False, default=512)
     _upload_mode_last: str = field(init=False, default="none")
     _uploaded_packet_count: int = field(init=False, default=0)
     _stream_write_cursor: int = field(init=False, default=0)
@@ -1348,6 +1611,33 @@ class _WgpuBackend:
     _execute_static_rebuild_count_frame: int = field(init=False, default=0)
     _execute_static_run_count_frame: int = field(init=False, default=0)
     _execute_dynamic_run_count_frame: int = field(init=False, default=0)
+    _execute_stage_upload_ms_frame: float = field(init=False, default=0.0)
+    _execute_translate_ms_frame: float = field(init=False, default=0.0)
+    _execute_expand_ms_frame: float = field(init=False, default=0.0)
+    _execute_draw_packets_total_ms_frame: float = field(init=False, default=0.0)
+    _execute_packet_preprocess_ms_frame: float = field(init=False, default=0.0)
+    _execute_static_key_build_ms_frame: float = field(init=False, default=0.0)
+    _execute_begin_render_pass_ms_frame: float = field(init=False, default=0.0)
+    _execute_render_pass_record_ms_frame: float = field(init=False, default=0.0)
+    _execute_render_pass_end_ms_frame: float = field(init=False, default=0.0)
+    _execute_rect_batch_ms_frame: float = field(init=False, default=0.0)
+    _execute_text_batch_ms_frame: float = field(init=False, default=0.0)
+    _execute_text_layout_ms_frame: float = field(init=False, default=0.0)
+    _execute_text_shape_ms_frame: float = field(init=False, default=0.0)
+    _execute_atlas_upload_ms_frame: float = field(init=False, default=0.0)
+    _execute_atlas_upload_bytes_frame: int = field(init=False, default=0)
+    _execute_atlas_upload_count_frame: int = field(init=False, default=0)
+    _execute_packet_translate_count_frame: int = field(init=False, default=0)
+    _execute_rect_count_frame: int = field(init=False, default=0)
+    _execute_text_quad_count_frame: int = field(init=False, default=0)
+    _execute_draw_calls_frame: int = field(init=False, default=0)
+    _execute_pipeline_binds_frame: int = field(init=False, default=0)
+    _execute_vertex_buffer_binds_frame: int = field(init=False, default=0)
+    _execute_bind_group_binds_frame: int = field(init=False, default=0)
+    _execute_bundle_replays_frame: int = field(init=False, default=0)
+    _execute_text_shape_calls_frame: int = field(init=False, default=0)
+    _execute_kind_rect_counts_frame: dict[str, int] = field(init=False, default_factory=dict)
+    _execute_kind_text_quad_counts_frame: dict[str, int] = field(init=False, default_factory=dict)
     _reconfigure_retry_limit: int = field(init=False, default=2)
     _reconfigure_attempts_last: int = field(init=False, default=0)
     _reconfigure_failures: int = field(init=False, default=0)
@@ -1390,6 +1680,16 @@ class _WgpuBackend:
     _static_packet_rect_cache: dict[tuple[object, ...], tuple[_DrawRect, ...]] = field(
         init=False, default_factory=dict
     )
+    _static_packet_text_quad_cache: dict[tuple[object, ...], tuple[_DrawTextQuad, ...]] = field(
+        init=False, default_factory=dict
+    )
+    _static_pass_expand_cache: dict[
+        tuple[str, tuple[object, ...], tuple[object, ...]],
+        _StaticPassExpandCacheEntry,
+    ] = field(init=False, default_factory=dict)
+    _cffi_miss_diagnostics_enabled: bool = field(init=False, default=False)
+    _cffi_miss_store: dict[str, int] | None = field(init=False, default=None)
+    _cffi_miss_total_last: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
         self._preserve_aspect = resolve_preserve_aspect()
@@ -1403,6 +1703,10 @@ class _WgpuBackend:
             "ENGINE_RENDER_INTERNAL_SCALE",
             1.0,
             minimum=0.1,
+        )
+        self._cffi_miss_diagnostics_enabled = _env_flag(
+            "ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED",
+            False,
         )
         if _NP is None:
             raise WgpuInitError(
@@ -1445,6 +1749,16 @@ class _WgpuBackend:
             self._window_width,
             self._window_height,
         )
+        self._static_bundle_min_draw_calls = _env_int(
+            "ENGINE_RENDER_STATIC_BUNDLE_MIN_DRAWS",
+            2,
+            minimum=1,
+        )
+        self._static_pass_expand_cache_max = _env_int(
+            "ENGINE_RENDER_STATIC_PASS_EXPAND_CACHE_MAX",
+            512,
+            minimum=64,
+        )
         try:
             import wgpu
         except Exception as exc:
@@ -1458,6 +1772,12 @@ class _WgpuBackend:
                 },
             ) from exc
         self._wgpu = wgpu
+        _patch_wgpu_native_struct_alloc_fastpath()
+        _prewarm_wgpu_native_cffi_types()
+        if self._cffi_miss_diagnostics_enabled:
+            self._cffi_miss_store = _resolve_wgpu_native_cffi_miss_store()
+            if self._cffi_miss_store:
+                self._cffi_miss_total_last = int(sum(int(v) for v in self._cffi_miss_store.values()))
         try:
             self._adapter, self._selected_backend = self._request_adapter()
             self._adapter_info = self._extract_adapter_info(self._adapter)
@@ -1495,6 +1815,9 @@ class _WgpuBackend:
                 },
             )
         self._rebuild_frame_targets()
+        self._prime_native_paths()
+        self._prime_text_paths()
+        self._prime_startup_render_paths()
         self._wgpu_loaded = True
 
     def begin_frame(self) -> None:
@@ -1516,9 +1839,43 @@ class _WgpuBackend:
         self._execute_static_rebuild_count_frame = 0
         self._execute_static_run_count_frame = 0
         self._execute_dynamic_run_count_frame = 0
+        self._execute_stage_upload_ms_frame = 0.0
+        self._execute_translate_ms_frame = 0.0
+        self._execute_expand_ms_frame = 0.0
+        self._execute_draw_packets_total_ms_frame = 0.0
+        self._execute_packet_preprocess_ms_frame = 0.0
+        self._execute_static_key_build_ms_frame = 0.0
+        self._execute_begin_render_pass_ms_frame = 0.0
+        self._execute_render_pass_record_ms_frame = 0.0
+        self._execute_render_pass_end_ms_frame = 0.0
+        self._execute_rect_batch_ms_frame = 0.0
+        self._execute_text_batch_ms_frame = 0.0
+        self._execute_text_layout_ms_frame = 0.0
+        self._execute_text_shape_ms_frame = 0.0
+        self._execute_atlas_upload_ms_frame = 0.0
+        self._execute_atlas_upload_bytes_frame = 0
+        self._execute_atlas_upload_count_frame = 0
+        self._execute_packet_translate_count_frame = 0
+        self._execute_rect_count_frame = 0
+        self._execute_text_quad_count_frame = 0
+        self._execute_draw_calls_frame = 0
+        self._execute_pipeline_binds_frame = 0
+        self._execute_vertex_buffer_binds_frame = 0
+        self._execute_bind_group_binds_frame = 0
+        self._execute_bundle_replays_frame = 0
+        self._execute_text_shape_calls_frame = 0
+        self._execute_kind_rect_counts_frame.clear()
+        self._execute_kind_text_quad_counts_frame.clear()
 
-    def draw_packets(self, pass_name: str, packets: tuple[_DrawPacket, ...]) -> None:
-        self._queued_packets.append((str(pass_name), tuple(packets)))
+    def draw_packets(
+        self,
+        pass_name: str,
+        packets: tuple[_DrawPacket, ...],
+        *,
+        pass_signature: tuple[object, ...] | None = None,
+    ) -> None:
+        draw_packets_started = time.perf_counter()
+        self._queued_packets.append((str(pass_name), packets))
         self._stage_draw_packets(packets)
         encoder = self._command_encoder
         if encoder is None:
@@ -1533,6 +1890,9 @@ class _WgpuBackend:
         dynamic_draw_rects: list[_DrawRect] = []
         static_text_quads: list[_DrawTextQuad] = []
         dynamic_text_quads: list[_DrawTextQuad] = []
+        static_draw_packet_keys: list[tuple[object, ...]] = []
+        static_text_packet_keys: list[tuple[object, ...]] = []
+        supports_text_atlas = self._supports_text_atlas()
         sx, sy, ox, oy = viewport_transform(
             width=max(1, int(self._target_width)),
             height=max(1, int(self._target_height)),
@@ -1540,22 +1900,156 @@ class _WgpuBackend:
             design_height=max(1, int(self._design_height)),
             preserve_aspect=bool(self._preserve_aspect),
         )
+        viewport_cache_key = (
+            float(sx),
+            float(sy),
+            float(ox),
+            float(oy),
+            int(self._target_width),
+            int(self._target_height),
+            int(self._design_width),
+            int(self._design_height),
+            bool(self._preserve_aspect),
+        )
+        static_expand_cache_key: tuple[str, tuple[object, ...], tuple[object, ...]] | None = None
+        cached_static_entry: _StaticPassExpandCacheEntry | None = None
+        current_static_identity: tuple[tuple[object, ...], ...] = tuple(
+            _static_packet_identity(packet) for packet in packets if _packet_is_static(packet)
+        )
+        if pass_signature is not None:
+            static_expand_cache_key = (str(pass_name), tuple(pass_signature), viewport_cache_key)
+            candidate = self._static_pass_expand_cache.get(static_expand_cache_key)
+            if (
+                candidate is not None
+                and candidate.static_packet_identity == current_static_identity
+            ):
+                cached_static_entry = candidate
+        if cached_static_entry is not None:
+            static_draw_rects.extend(cached_static_entry.static_draw_rects)
+            static_text_quads.extend(cached_static_entry.static_text_quads)
+            static_draw_packet_keys.extend(cached_static_entry.static_draw_packet_keys)
+            static_text_packet_keys.extend(cached_static_entry.static_text_packet_keys)
+            self._execute_rect_count_frame += int(cached_static_entry.rect_count)
+            self._execute_text_quad_count_frame += int(cached_static_entry.text_quad_count)
+            self._execute_packet_translate_count_frame += int(
+                cached_static_entry.packet_translate_count
+            )
+            for kind, count in cached_static_entry.kind_rect_counts:
+                self._execute_kind_rect_counts_frame[kind] = (
+                    int(self._execute_kind_rect_counts_frame.get(kind, 0)) + int(count)
+                )
+            for kind, count in cached_static_entry.kind_text_quad_counts:
+                self._execute_kind_text_quad_counts_frame[kind] = (
+                    int(self._execute_kind_text_quad_counts_frame.get(kind, 0)) + int(count)
+                )
+        preprocess_started = time.perf_counter()
+        static_kind_rect_counts: dict[str, int] = {}
+        static_kind_text_counts: dict[str, int] = {}
+        static_rect_count = 0
+        static_text_quad_count = 0
+        static_packet_translate_count = 0
         for packet in packets:
-            if str(packet.kind) == "text" and self._supports_text_atlas():
-                text_quads = self._packet_text_quads(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+            kind_name = str(getattr(packet, "kind", "")) or "unknown"
+            packet_is_static = _packet_is_static(packet)
+            if packet_is_static and cached_static_entry is not None:
+                continue
+            static_packet_key: tuple[object, ...] | None = None
+            if packet_is_static:
+                static_key_started = time.perf_counter()
+                static_packet_key = self._build_static_packet_cache_key(
+                    packet,
+                    sx=sx,
+                    sy=sy,
+                    ox=ox,
+                    oy=oy,
+                    viewport_cache_key=viewport_cache_key,
+                )
+                self._execute_static_key_build_ms_frame += (
+                    time.perf_counter() - static_key_started
+                ) * 1000.0
+            self._execute_packet_translate_count_frame += 1
+            if packet_is_static:
+                static_packet_translate_count += 1
+            if str(packet.kind) == "text" and supports_text_atlas:
+                text_started = time.perf_counter()
+                text_quads = self._packet_text_quads(
+                    packet,
+                    sx=sx,
+                    sy=sy,
+                    ox=ox,
+                    oy=oy,
+                    static_cache_key=static_packet_key,
+                    viewport_cache_key=viewport_cache_key,
+                )
+                self._execute_translate_ms_frame += (time.perf_counter() - text_started) * 1000.0
                 if text_quads:
-                    if _packet_is_static(packet):
+                    self._execute_text_quad_count_frame += int(len(text_quads))
+                    self._execute_kind_text_quad_counts_frame[kind_name] = (
+                        int(self._execute_kind_text_quad_counts_frame.get(kind_name, 0))
+                        + int(len(text_quads))
+                    )
+                    if packet_is_static:
+                        static_text_quad_count += int(len(text_quads))
+                        static_kind_text_counts[kind_name] = (
+                            int(static_kind_text_counts.get(kind_name, 0)) + int(len(text_quads))
+                        )
                         static_text_quads.extend(text_quads)
+                        if static_packet_key is not None:
+                            static_text_packet_keys.append(static_packet_key)
                     else:
                         dynamic_text_quads.extend(text_quads)
                     continue
-            packet_rects = self._packet_draw_rects_cached(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+            rect_started = time.perf_counter()
+            packet_rects = self._packet_draw_rects_cached(
+                packet,
+                sx=sx,
+                sy=sy,
+                ox=ox,
+                oy=oy,
+                static_cache_key=static_packet_key,
+                viewport_cache_key=viewport_cache_key,
+            )
+            elapsed_ms = (time.perf_counter() - rect_started) * 1000.0
+            self._execute_translate_ms_frame += elapsed_ms
+            self._execute_expand_ms_frame += elapsed_ms
             if not packet_rects:
                 continue
-            if _packet_is_static(packet):
+            self._execute_rect_count_frame += int(len(packet_rects))
+            self._execute_kind_rect_counts_frame[kind_name] = (
+                int(self._execute_kind_rect_counts_frame.get(kind_name, 0))
+                + int(len(packet_rects))
+            )
+            if packet_is_static:
+                static_rect_count += int(len(packet_rects))
+                static_kind_rect_counts[kind_name] = (
+                    int(static_kind_rect_counts.get(kind_name, 0)) + int(len(packet_rects))
+                )
                 static_draw_rects.extend(packet_rects)
+                if static_packet_key is not None:
+                    static_draw_packet_keys.append(static_packet_key)
             else:
                 dynamic_draw_rects.extend(packet_rects)
+        self._execute_packet_preprocess_ms_frame += (time.perf_counter() - preprocess_started) * 1000.0
+        if (
+            cached_static_entry is None
+            and static_expand_cache_key is not None
+            and (static_draw_packet_keys or static_text_packet_keys)
+        ):
+            self._static_pass_expand_cache[static_expand_cache_key] = _StaticPassExpandCacheEntry(
+                static_draw_rects=tuple(static_draw_rects),
+                static_text_quads=tuple(static_text_quads),
+                static_draw_packet_keys=tuple(static_draw_packet_keys),
+                static_text_packet_keys=tuple(static_text_packet_keys),
+                static_packet_identity=current_static_identity,
+                kind_rect_counts=tuple(sorted(static_kind_rect_counts.items())),
+                kind_text_quad_counts=tuple(sorted(static_kind_text_counts.items())),
+                rect_count=int(static_rect_count),
+                text_quad_count=int(static_text_quad_count),
+                packet_translate_count=int(static_packet_translate_count),
+            )
+            while len(self._static_pass_expand_cache) > int(self._static_pass_expand_cache_max):
+                first_key = next(iter(self._static_pass_expand_cache))
+                self._static_pass_expand_cache.pop(first_key, None)
         if not static_draw_rects and not dynamic_draw_rects and not static_text_quads and not dynamic_text_quads:
             return
         color_attachments = [
@@ -1567,36 +2061,59 @@ class _WgpuBackend:
             }
         ]
         self._clear_pending = False
+        render_pass_begin_started = time.perf_counter()
         render_pass = begin_render_pass(color_attachments=color_attachments)
+        self._execute_begin_render_pass_ms_frame += (
+            time.perf_counter() - render_pass_begin_started
+        ) * 1000.0
+        render_record_started = time.perf_counter()
         try:
             if static_draw_rects:
+                rect_batch_started = time.perf_counter()
                 self._draw_rect_batches(
                     render_pass,
                     tuple(static_draw_rects),
                     stream_kind="static",
+                    static_batch_key=tuple(static_draw_packet_keys),
                 )
+                self._execute_rect_batch_ms_frame += (time.perf_counter() - rect_batch_started) * 1000.0
             if dynamic_draw_rects:
+                rect_batch_started = time.perf_counter()
                 self._draw_rect_batches(
                     render_pass,
                     tuple(dynamic_draw_rects),
                     stream_kind="dynamic",
                 )
+                self._execute_rect_batch_ms_frame += (time.perf_counter() - rect_batch_started) * 1000.0
             if static_text_quads:
+                text_batch_started = time.perf_counter()
                 self._draw_text_batches(
                     render_pass,
                     tuple(static_text_quads),
                     stream_kind="static",
+                    static_batch_key=tuple(static_text_packet_keys),
                 )
+                self._execute_text_batch_ms_frame += (time.perf_counter() - text_batch_started) * 1000.0
             if dynamic_text_quads:
+                text_batch_started = time.perf_counter()
                 self._draw_text_batches(
                     render_pass,
                     tuple(dynamic_text_quads),
                     stream_kind="dynamic",
                 )
+                self._execute_text_batch_ms_frame += (time.perf_counter() - text_batch_started) * 1000.0
         finally:
+            self._execute_render_pass_record_ms_frame += (
+                time.perf_counter() - render_record_started
+            ) * 1000.0
             end = getattr(render_pass, "end", None)
             if callable(end):
+                end_started = time.perf_counter()
                 end()
+                self._execute_render_pass_end_ms_frame += (
+                    time.perf_counter() - end_started
+                ) * 1000.0
+        self._execute_draw_packets_total_ms_frame += (time.perf_counter() - draw_packets_started) * 1000.0
 
     def present(self) -> None:
         encoder = self._command_encoder
@@ -1645,6 +2162,8 @@ class _WgpuBackend:
     def close(self) -> None:
         self._queued_packets.clear()
         self._static_packet_rect_cache.clear()
+        self._static_packet_text_quad_cache.clear()
+        self._static_pass_expand_cache.clear()
         self._glyph_atlas_cache.clear()
         self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
@@ -1698,6 +2217,8 @@ class _WgpuBackend:
         self._configure_canvas_context()
         self._rebuild_frame_targets_with_retry()
         self._static_packet_rect_cache.clear()
+        self._static_packet_text_quad_cache.clear()
+        self._static_pass_expand_cache.clear()
         self._static_draw_cache_key = None
         self._static_draw_runs = ()
         self._static_render_bundle = None
@@ -1994,6 +2515,8 @@ class _WgpuBackend:
         self._glyph_index_atlas_cache.clear()
         self._glyph_run_cache.clear()
         self._hb_font_cache.clear()
+        self._static_packet_text_quad_cache.clear()
+        self._static_pass_expand_cache.clear()
         self._text_face = _try_create_freetype_face(self._font_path)
         self._font_blob = _load_font_blob(self._font_path)
 
@@ -2066,6 +2589,7 @@ class _WgpuBackend:
         if not callable(write_texture):
             return
         payload = bytes(self._text_atlas_pixels)
+        upload_started = time.perf_counter()
         try:
             write_texture(
                 {"texture": self._text_atlas_texture, "origin": (0, 0, 0)},
@@ -2079,6 +2603,9 @@ class _WgpuBackend:
             )
         except Exception:
             return
+        self._execute_atlas_upload_ms_frame += (time.perf_counter() - upload_started) * 1000.0
+        self._execute_atlas_upload_bytes_frame += int(len(payload))
+        self._execute_atlas_upload_count_frame += 1
         self._text_atlas_dirty = False
 
     def _resolve_present_mode(self) -> str:
@@ -2101,19 +2628,23 @@ class _WgpuBackend:
         return "fifo"
 
     def _stage_draw_packets(self, packets: tuple[_DrawPacket, ...]) -> None:
+        stage_started = time.perf_counter()
         packet_count = int(len(packets))
         if packet_count <= 0:
             self._upload_mode_last = "none"
             self._uploaded_packet_count = 0
+            self._execute_stage_upload_ms_frame += (time.perf_counter() - stage_started) * 1000.0
             return
         if packet_count <= self._upload_threshold_packets:
             self._upload_mode_last = "full_rewrite"
             self._uploaded_packet_count = packet_count
             self._upload_full_rewrite(packet_count)
+            self._execute_stage_upload_ms_frame += (time.perf_counter() - stage_started) * 1000.0
             return
         self._upload_mode_last = "ring_buffer"
         self._uploaded_packet_count = packet_count
         self._upload_ring_buffer(packet_count)
+        self._execute_stage_upload_ms_frame += (time.perf_counter() - stage_started) * 1000.0
 
     def _upload_full_rewrite(self, packet_count: int) -> None:
         size = max(256, int(packet_count * 64))
@@ -2497,10 +3028,21 @@ class _WgpuBackend:
         sy: float,
         ox: float,
         oy: float,
+        static_cache_key: tuple[object, ...] | None = None,
+        viewport_cache_key: tuple[object, ...] | None = None,
     ) -> tuple["_DrawRect", ...]:
         if not _packet_is_static(packet):
             return self._packet_draw_rects(packet, sx=sx, sy=sy, ox=ox, oy=oy)
-        cache_key = self._build_static_packet_cache_key(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+        cache_key = static_cache_key
+        if cache_key is None:
+            cache_key = self._build_static_packet_cache_key(
+                packet,
+                sx=sx,
+                sy=sy,
+                ox=ox,
+                oy=oy,
+                viewport_cache_key=viewport_cache_key,
+            )
         cached = self._static_packet_rect_cache.get(cache_key)
         if cached is not None:
             return cached
@@ -2516,23 +3058,36 @@ class _WgpuBackend:
         sy: float,
         ox: float,
         oy: float,
+        viewport_cache_key: tuple[object, ...] | None = None,
     ) -> tuple[object, ...]:
-        return (
-            str(packet.kind),
-            int(packet.layer),
-            str(packet.sort_key),
-            _freeze_packet_value(packet.transform),
-            _freeze_packet_value(packet.data),
-            round(float(sx), 6),
-            round(float(sy), 6),
-            round(float(ox), 6),
-            round(float(oy), 6),
-            int(self._target_width),
-            int(self._target_height),
-            int(self._design_width),
-            int(self._design_height),
-            bool(self._preserve_aspect),
-        )
+        cache_base = getattr(packet, "engine_cache_base", None)
+        if cache_base is None:
+            version_token = _packet_version_token(packet)
+            if version_token is None:
+                version_token = (
+                    int(id(packet.data)),
+                    int(id(packet.transform)),
+                )
+            version_key = _version_fingerprint(version_token)
+            cache_base = (
+                str(packet.kind),
+                int(packet.layer),
+                str(packet.sort_key),
+                version_key,
+            )
+        if viewport_cache_key is None:
+            viewport_cache_key = (
+                float(sx),
+                float(sy),
+                float(ox),
+                float(oy),
+                int(self._target_width),
+                int(self._target_height),
+                int(self._design_width),
+                int(self._design_height),
+                bool(self._preserve_aspect),
+            )
+        return cache_base + tuple(viewport_cache_key)
 
     def _packet_text_quads(
         self,
@@ -2542,26 +3097,69 @@ class _WgpuBackend:
         sy: float,
         ox: float,
         oy: float,
+        static_cache_key: tuple[object, ...] | None = None,
+        viewport_cache_key: tuple[object, ...] | None = None,
     ) -> tuple[_DrawTextQuad, ...]:
         if not self._supports_text_atlas():
             return ()
-        payload = _packet_payload(packet)
-        text_raw = payload.get("text", "")
+        is_static_packet = _packet_is_static(packet)
+        cache_key: tuple[object, ...] | None = None
+        if is_static_packet:
+            cache_key = static_cache_key
+            if cache_key is None:
+                cache_key = self._build_static_packet_cache_key(
+                    packet,
+                    sx=sx,
+                    sy=sy,
+                    ox=ox,
+                    oy=oy,
+                    viewport_cache_key=viewport_cache_key,
+                )
+            cached = self._static_packet_text_quad_cache.get(cache_key)
+            if cached is not None:
+                return cached
+        raw_data = getattr(packet, "data", ())
+        if not isinstance(raw_data, tuple):
+            return ()
+        text_raw: object = ""
+        font_size_raw: object = 18.0
+        x_raw: object = 0.0
+        y_raw: object = 0.0
+        anchor_raw: object = "top-left"
+        color_raw: object = (1.0, 1.0, 1.0, 1.0)
+        for item in raw_data:
+            if not (isinstance(item, tuple) and len(item) == 2):
+                continue
+            key, value = item
+            key_name = str(key)
+            if key_name == "text":
+                text_raw = value
+            elif key_name == "font_size":
+                font_size_raw = value
+            elif key_name == "x":
+                x_raw = value
+            elif key_name == "y":
+                y_raw = value
+            elif key_name == "anchor":
+                anchor_raw = value
+            elif key_name == "linear_rgba":
+                color_raw = value
         if not isinstance(text_raw, str):
             return ()
         text = text_raw.strip("\n")
         if not text:
             return ()
-        font_size_px = max(6, int(round(_payload_float(payload, "font_size", 18.0))))
+        font_size_px = 18
+        if isinstance(font_size_raw, (int, float)):
+            font_size_px = max(6, int(round(float(font_size_raw))))
         run = self._layout_glyph_run(text=text, font_size_px=font_size_px)
         if run is None or not run.placements:
             return ()
-        x = _payload_float(payload, "x", 0.0)
-        y = _payload_float(payload, "y", 0.0)
-        anchor_raw = payload.get("anchor", "top-left")
+        x = float(x_raw) if isinstance(x_raw, (int, float)) else 0.0
+        y = float(y_raw) if isinstance(y_raw, (int, float)) else 0.0
         anchor = str(anchor_raw).strip().lower() if isinstance(anchor_raw, str) else "top-left"
         origin_x, origin_y = _anchor_to_origin(anchor, x, y, run.width, run.height)
-        color = _normalize_rgba(payload.get("linear_rgba", (1.0, 1.0, 1.0, 1.0)))
+        color = _normalize_rgba(color_raw)
         layer = int(getattr(packet, "layer", 0))
         out: list[_DrawTextQuad] = []
         for placement in run.placements:
@@ -2583,53 +3181,65 @@ class _WgpuBackend:
                     color=color,
                 )
             )
-        return tuple(out)
+        quads = tuple(out)
+        if is_static_packet and cache_key is not None:
+            self._static_packet_text_quad_cache[cache_key] = quads
+        return quads
 
     def _layout_glyph_run(self, *, text: str, font_size_px: int) -> _GlyphRunLayout | None:
-        if self._text_face is None:
-            return None
-        run_key = (self._font_path, int(font_size_px), str(text))
-        cached = self._glyph_run_cache.get(run_key)
-        if cached is not None:
-            return cached
-        shaped = self._shape_text_run(text=text, font_size_px=font_size_px)
-        if not shaped:
-            raise RuntimeError("native text shaping returned no glyphs for non-empty text")
-        layout = self._layout_shaped_glyph_run(shaped=shaped, font_size_px=font_size_px)
-        if layout is None:
-            raise RuntimeError("native shaped glyph layout produced no drawable placements")
-        self._glyph_run_cache[run_key] = layout
-        return layout
+        layout_started = time.perf_counter()
+        try:
+            if self._text_face is None:
+                return None
+            run_key = (self._font_path, int(font_size_px), str(text))
+            cached = self._glyph_run_cache.get(run_key)
+            if cached is not None:
+                return cached
+            shaped = self._shape_text_run(text=text, font_size_px=font_size_px)
+            if not shaped:
+                raise RuntimeError("native text shaping returned no glyphs for non-empty text")
+            layout = self._layout_shaped_glyph_run(shaped=shaped, font_size_px=font_size_px)
+            if layout is None:
+                raise RuntimeError("native shaped glyph layout produced no drawable placements")
+            self._glyph_run_cache[run_key] = layout
+            return layout
+        finally:
+            self._execute_text_layout_ms_frame += (time.perf_counter() - layout_started) * 1000.0
 
     def _shape_text_run(self, *, text: str, font_size_px: int) -> tuple[_ShapedGlyph, ...]:
-        if _HB is None:
-            return ()
-        if not text:
-            return ()
-        hb_font = self._hb_font_for_size(font_size_px=font_size_px)
-        if hb_font is None:
-            return ()
-        buffer = _HB.Buffer()
-        buffer.add_str(text)
-        buffer.guess_segment_properties()
-        _HB.shape(hb_font, buffer, {"kern": True, "liga": True, "clig": True})
-        infos = list(getattr(buffer, "glyph_infos", ()) or ())
-        positions = list(getattr(buffer, "glyph_positions", ()) or ())
-        if not infos or len(infos) != len(positions):
-            return ()
-        out: list[_ShapedGlyph] = []
-        scale = 1.0 / 64.0
-        for info, pos in zip(infos, positions, strict=False):
-            out.append(
-                _ShapedGlyph(
-                    glyph_index=int(getattr(info, "codepoint", 0)),
-                    x_offset=float(getattr(pos, "x_offset", 0)) * scale,
-                    y_offset=float(getattr(pos, "y_offset", 0)) * scale,
-                    x_advance=float(getattr(pos, "x_advance", 0)) * scale,
-                    y_advance=float(getattr(pos, "y_advance", 0)) * scale,
+        shape_started = time.perf_counter()
+        self._execute_text_shape_calls_frame += 1
+        try:
+            if _HB is None:
+                return ()
+            if not text:
+                return ()
+            hb_font = self._hb_font_for_size(font_size_px=font_size_px)
+            if hb_font is None:
+                return ()
+            buffer = _HB.Buffer()
+            buffer.add_str(text)
+            buffer.guess_segment_properties()
+            _HB.shape(hb_font, buffer, {"kern": True, "liga": True, "clig": True})
+            infos = list(getattr(buffer, "glyph_infos", ()) or ())
+            positions = list(getattr(buffer, "glyph_positions", ()) or ())
+            if not infos or len(infos) != len(positions):
+                return ()
+            out: list[_ShapedGlyph] = []
+            scale = 1.0 / 64.0
+            for info, pos in zip(infos, positions, strict=False):
+                out.append(
+                    _ShapedGlyph(
+                        glyph_index=int(getattr(info, "codepoint", 0)),
+                        x_offset=float(getattr(pos, "x_offset", 0)) * scale,
+                        y_offset=float(getattr(pos, "y_offset", 0)) * scale,
+                        x_advance=float(getattr(pos, "x_advance", 0)) * scale,
+                        y_advance=float(getattr(pos, "y_advance", 0)) * scale,
+                    )
                 )
-            )
-        return tuple(out)
+            return tuple(out)
+        finally:
+            self._execute_text_shape_ms_frame += (time.perf_counter() - shape_started) * 1000.0
 
     def _hb_font_for_size(self, *, font_size_px: int) -> object | None:
         if _HB is None:
@@ -2893,6 +3503,7 @@ class _WgpuBackend:
         draw_rects: tuple["_DrawRect", ...],
         *,
         stream_kind: str,
+        static_batch_key: tuple[object, ...] | None = None,
     ) -> None:
         set_pipeline = getattr(render_pass, "set_pipeline", None)
         set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
@@ -2908,7 +3519,11 @@ class _WgpuBackend:
                 )
             return
         if stream_kind == "static":
-            cache_key = _draw_rects_cache_key(draw_rects)
+            cache_key = (
+                ("packet_sig", static_batch_key)
+                if static_batch_key is not None
+                else _draw_rects_cache_key(draw_rects)
+            )
             if (
                 cache_key == self._static_draw_cache_key
                 and self._draw_vertex_buffer_static is not None
@@ -2920,19 +3535,24 @@ class _WgpuBackend:
                     callable(execute_bundles)
                     and self._static_render_bundle is not None
                     and self._static_render_bundle_key == cache_key
+                    and self._bundle_replay_enabled_for_draw_count(len(self._static_draw_runs))
                 ):
                     execute_bundles([self._static_render_bundle])
                     self._execute_static_bundle_replayed_frame = True
+                    self._execute_bundle_replays_frame += 1
                     self._execute_static_run_count_frame += int(len(self._static_draw_runs))
                     return
                 set_vertex_buffer(0, self._draw_vertex_buffer_static)
+                self._execute_vertex_buffer_binds_frame += 1
                 self._execute_static_run_count_frame += int(len(self._static_draw_runs))
                 pipeline = self._pipeline_for_color((1.0, 1.0, 1.0, 1.0))
                 if pipeline is None:
                     return
                 set_pipeline(pipeline)
+                self._execute_pipeline_binds_frame += 1
                 for run_first_vertex, run_vertex_count in self._static_draw_runs:
                     draw(run_vertex_count, 1, run_first_vertex, 0)
+                    self._execute_draw_calls_frame += 1
                 return
         packed_vertices = self._batch_vertices_for_rects(draw_rects)
         vertex_buffer, total_vertex_count, uploaded_bytes = self._create_vertex_buffer_from_positions(
@@ -2946,13 +3566,20 @@ class _WgpuBackend:
             self._execute_static_upload_bytes_frame += int(uploaded_bytes)
             self._execute_static_rebuild_count_frame += 1
             self._execute_static_run_count_frame += int(len(run_draws))
-            cache_key = _draw_rects_cache_key(draw_rects)
+            cache_key = (
+                ("packet_sig", static_batch_key)
+                if static_batch_key is not None
+                else _draw_rects_cache_key(draw_rects)
+            )
             self._static_draw_cache_key = cache_key
             self._static_draw_runs = tuple(run_draws)
-            self._static_render_bundle = self._build_static_render_bundle(
-                run_draws=tuple(run_draws),
-                vertex_buffer=vertex_buffer,
-            )
+            if self._bundle_replay_enabled_for_draw_count(len(run_draws)):
+                self._static_render_bundle = self._build_static_render_bundle(
+                    run_draws=tuple(run_draws),
+                    vertex_buffer=vertex_buffer,
+                )
+            else:
+                self._static_render_bundle = None
             self._static_render_bundle_key = (
                 cache_key if self._static_render_bundle is not None else None
             )
@@ -2965,9 +3592,12 @@ class _WgpuBackend:
         if pipeline is None:
             return
         set_pipeline(pipeline)
+        self._execute_pipeline_binds_frame += 1
         set_vertex_buffer(0, vertex_buffer)
+        self._execute_vertex_buffer_binds_frame += 1
         for run_first_vertex, run_vertex_count in run_draws:
             draw(run_vertex_count, 1, run_first_vertex, 0)
+            self._execute_draw_calls_frame += 1
 
     def _draw_text_batches(
         self,
@@ -2975,6 +3605,7 @@ class _WgpuBackend:
         text_quads: tuple[_DrawTextQuad, ...],
         *,
         stream_kind: str,
+        static_batch_key: tuple[object, ...] | None = None,
     ) -> None:
         if not text_quads:
             return
@@ -2997,7 +3628,11 @@ class _WgpuBackend:
             return
         self._upload_text_atlas_if_needed()
         if stream_kind == "static":
-            cache_key = _text_quads_cache_key(text_quads)
+            cache_key = (
+                ("packet_sig", static_batch_key)
+                if static_batch_key is not None
+                else _text_quads_cache_key(text_quads)
+            )
             if (
                 cache_key == self._static_text_cache_key
                 and self._draw_text_vertex_buffer_static is not None
@@ -3009,13 +3644,20 @@ class _WgpuBackend:
                     callable(execute_bundles)
                     and self._static_text_bundle is not None
                     and self._static_text_bundle_key == cache_key
+                    and self._bundle_replay_enabled_for_draw_count(1)
                 ):
                     execute_bundles([self._static_text_bundle])
+                    self._execute_static_bundle_replayed_frame = True
+                    self._execute_bundle_replays_frame += 1
                     return
                 set_pipeline(text_pipeline)
-                set_bind_group(0, text_bind_group, [], 0, 999999)
+                self._execute_pipeline_binds_frame += 1
+                set_bind_group(0, text_bind_group)
+                self._execute_bind_group_binds_frame += 1
                 set_vertex_buffer(0, self._draw_text_vertex_buffer_static)
+                self._execute_vertex_buffer_binds_frame += 1
                 draw(self._static_text_vertex_count, 1, 0, 0)
+                self._execute_draw_calls_frame += 1
                 return
         vertices = self._text_vertices_for_quads(text_quads)
         text_buffer, vertex_count, uploaded_bytes = self._create_text_vertex_buffer(
@@ -3025,13 +3667,20 @@ class _WgpuBackend:
         if stream_kind == "static":
             self._execute_static_upload_bytes_frame += int(uploaded_bytes)
             self._execute_static_rebuild_count_frame += 1
-            cache_key = _text_quads_cache_key(text_quads)
+            cache_key = (
+                ("packet_sig", static_batch_key)
+                if static_batch_key is not None
+                else _text_quads_cache_key(text_quads)
+            )
             self._static_text_cache_key = cache_key
             self._static_text_vertex_count = int(vertex_count)
-            self._static_text_bundle = self._build_static_text_bundle(
-                vertex_buffer=text_buffer,
-                vertex_count=int(vertex_count),
-            )
+            if self._bundle_replay_enabled_for_draw_count(1):
+                self._static_text_bundle = self._build_static_text_bundle(
+                    vertex_buffer=text_buffer,
+                    vertex_count=int(vertex_count),
+                )
+            else:
+                self._static_text_bundle = None
             self._static_text_bundle_key = (
                 cache_key if self._static_text_bundle is not None else None
             )
@@ -3040,9 +3689,13 @@ class _WgpuBackend:
         if text_buffer is None or vertex_count <= 0:
             return
         set_pipeline(text_pipeline)
-        set_bind_group(0, text_bind_group, [], 0, 999999)
+        self._execute_pipeline_binds_frame += 1
+        set_bind_group(0, text_bind_group)
+        self._execute_bind_group_binds_frame += 1
         set_vertex_buffer(0, text_buffer)
+        self._execute_vertex_buffer_binds_frame += 1
         draw(vertex_count, 1, 0, 0)
+        self._execute_draw_calls_frame += 1
 
     def _text_vertices_for_quads(self, text_quads: tuple[_DrawTextQuad, ...]) -> list[float]:
         if not text_quads:
@@ -3174,12 +3827,15 @@ class _WgpuBackend:
             return None
         try:
             set_pipeline(self._text_pipeline)
-            set_bind_group(0, self._text_bind_group, [], 0, 999999)
+            set_bind_group(0, self._text_bind_group)
             set_vertex_buffer(0, vertex_buffer)
             draw(vertex_count, 1, 0, 0)
             return cast(object, finish())
         except Exception:
             return None
+
+    def _bundle_replay_enabled_for_draw_count(self, draw_call_count: int) -> bool:
+        return int(draw_call_count) >= int(self._static_bundle_min_draw_calls)
 
     def _build_static_render_bundle(
         self,
@@ -3217,6 +3873,208 @@ class _WgpuBackend:
             return cast(object, finish())
         except Exception:
             return None
+
+    def _prime_native_paths(self) -> None:
+        if not _env_flag("ENGINE_WGPU_PRIME_NATIVE_PATHS", True):
+            return
+        write_buffer = getattr(self._queue, "write_buffer", None)
+        if not callable(write_buffer):
+            return
+        try:
+            raw = _pack_f32_bytes([0.0] * 12)
+            draw_buffer = self._ensure_draw_vertex_buffer_capacity(
+                stream_kind="dynamic",
+                minimum_bytes=len(raw),
+            )
+            if draw_buffer is not None:
+                write_buffer(draw_buffer, 0, raw)
+            text_raw = _pack_f32_bytes([0.0] * 16)
+            text_buffer = self._ensure_text_vertex_buffer_capacity(
+                stream_kind="dynamic",
+                minimum_bytes=len(text_raw),
+            )
+            if text_buffer is not None:
+                write_buffer(text_buffer, 0, text_raw)
+        except Exception:
+            return
+
+    def _prime_text_paths(self) -> None:
+        if not _env_flag("ENGINE_WGPU_TEXT_PREWARM_ENABLED", False):
+            return
+        if not self._supports_text_atlas():
+            return
+        raw_sizes = os.getenv("ENGINE_WGPU_TEXT_PREWARM_SIZES", "14,18,24").strip()
+        sizes: list[int] = []
+        if raw_sizes:
+            for part in raw_sizes.split(","):
+                try:
+                    sizes.append(max(6, int(part.strip())))
+                except ValueError:
+                    continue
+        if not sizes:
+            sizes = [14, 18, 24]
+        raw_chars = os.getenv(
+            "ENGINE_WGPU_TEXT_PREWARM_CHARS",
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?-_()/[]{}+#",
+        )
+        raw_labels = os.getenv(
+            "ENGINE_WGPU_TEXT_PREWARM_LABELS",
+            "New Game|Resume|Options|Back|Start|Preset|Difficulty|Random Fleet|Generate Random Fleet",
+        )
+        max_chars = _env_int("ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS", 96, minimum=8)
+        seed_text = str(raw_chars)[: int(max_chars)].strip()
+        labels: list[str] = []
+        for label in str(raw_labels).split("|"):
+            value = label.strip()
+            if value:
+                labels.append(value)
+        if not seed_text and not labels:
+            return
+        for size in sizes:
+            if seed_text:
+                try:
+                    self._layout_glyph_run(text=seed_text, font_size_px=int(size))
+                except Exception:
+                    continue
+            for label in labels:
+                try:
+                    self._layout_glyph_run(text=label, font_size_px=int(size))
+                except Exception:
+                    continue
+        try:
+            self._upload_text_atlas_if_needed()
+        except Exception:
+            return
+
+    def _prime_startup_render_paths(self) -> None:
+        if not _env_flag("ENGINE_WGPU_STARTUP_PREWARM_ENABLED", False):
+            return
+        frames = _env_int("ENGINE_WGPU_STARTUP_PREWARM_FRAMES", 1, minimum=1)
+        packets = self._startup_prewarm_packets()
+        if not packets:
+            return
+        for _ in range(frames):
+            try:
+                self.begin_frame()
+                self.draw_packets(
+                    "overlay",
+                    packets,
+                    pass_signature=("engine_startup_prewarm",),
+                )
+                self.present()
+            except Exception:
+                break
+            finally:
+                if self._frame_in_flight:
+                    self.end_frame()
+
+    def _startup_prewarm_packets(self) -> tuple[_DrawPacket, ...]:
+        text_color = (1.0, 1.0, 1.0, 1.0)
+        return (
+            _DrawPacket(
+                kind="fill_window",
+                layer=-10000,
+                sort_key="prewarm.fill",
+                transform=(),
+                data=(("color", "#0f1117"), ("key", "__prewarm_fill")),
+            ),
+            _DrawPacket(
+                kind="rect",
+                layer=10,
+                sort_key="prewarm.rect",
+                transform=(),
+                data=(
+                    ("x", 64.0),
+                    ("y", 64.0),
+                    ("w", 360.0),
+                    ("h", 120.0),
+                    ("linear_rgba", (0.18, 0.33, 0.92, 1.0)),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "rect", 1)),
+                ),
+            ),
+            _DrawPacket(
+                kind="rounded_rect",
+                layer=20,
+                sort_key="prewarm.rounded",
+                transform=(),
+                data=(
+                    ("x", 480.0),
+                    ("y", 64.0),
+                    ("w", 360.0),
+                    ("h", 120.0),
+                    ("radius", 14.0),
+                    ("linear_rgba", (0.78, 0.21, 0.28, 1.0)),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "rounded", 1)),
+                ),
+            ),
+            _DrawPacket(
+                kind="stroke_rect",
+                layer=30,
+                sort_key="prewarm.stroke",
+                transform=(),
+                data=(
+                    ("x", 64.0),
+                    ("y", 220.0),
+                    ("w", 776.0),
+                    ("h", 120.0),
+                    ("thickness", 2.0),
+                    ("linear_rgba", (0.94, 0.95, 0.97, 1.0)),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "stroke", 1)),
+                ),
+            ),
+            _DrawPacket(
+                kind="shadow_rect",
+                layer=35,
+                sort_key="prewarm.shadow",
+                transform=(),
+                data=(
+                    ("x", 64.0),
+                    ("y", 220.0),
+                    ("w", 776.0),
+                    ("h", 120.0),
+                    ("radius", 2.0),
+                    ("thickness", 4.0),
+                    ("linear_rgba", (0.0, 0.0, 0.0, 0.4)),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "shadow", 1)),
+                ),
+            ),
+            _DrawPacket(
+                kind="text",
+                layer=40,
+                sort_key="prewarm.text",
+                transform=(),
+                data=(
+                    ("text", "Generate Random Fleet"),
+                    ("font_size", 24.0),
+                    ("x", 96.0),
+                    ("y", 96.0),
+                    ("anchor", "top-left"),
+                    ("linear_rgba", text_color),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "text", 1)),
+                ),
+            ),
+            _DrawPacket(
+                kind="title",
+                layer=50,
+                sort_key="prewarm.title",
+                transform=(),
+                data=(
+                    ("text", "WARSHIPS 2"),
+                    ("font_size", 36.0),
+                    ("x", 96.0),
+                    ("y", 250.0),
+                    ("anchor", "top-left"),
+                    ("linear_rgba", text_color),
+                    ("_engine_static", True),
+                    ("_engine_version", ("prewarm", "title", 1)),
+                ),
+            ),
+        )
 
     def _batch_vertices_for_rects(self, rects: tuple["_DrawRect", ...]) -> list[float]:
         vertices: list[float] = []
@@ -3298,7 +4156,7 @@ class _WgpuBackend:
         return pipeline if pipeline is not None else active_pipeline
 
     def consume_execute_telemetry(self) -> dict[str, object]:
-        return {
+        payload = {
             "execute_static_reused": bool(self._execute_static_reused_frame),
             "execute_static_bundle_replayed": bool(self._execute_static_bundle_replayed_frame),
             "execute_static_upload_bytes": int(self._execute_static_upload_bytes_frame),
@@ -3306,7 +4164,61 @@ class _WgpuBackend:
             "execute_static_rebuild_count": int(self._execute_static_rebuild_count_frame),
             "execute_static_run_count": int(self._execute_static_run_count_frame),
             "execute_dynamic_run_count": int(self._execute_dynamic_run_count_frame),
+            "execute_stage_upload_ms": float(max(0.0, self._execute_stage_upload_ms_frame)),
+            "execute_translate_ms": float(max(0.0, self._execute_translate_ms_frame)),
+            "execute_expand_ms": float(max(0.0, self._execute_expand_ms_frame)),
+            "execute_draw_packets_total_ms": float(
+                max(0.0, self._execute_draw_packets_total_ms_frame)
+            ),
+            "execute_packet_preprocess_ms": float(
+                max(0.0, self._execute_packet_preprocess_ms_frame)
+            ),
+            "execute_static_key_build_ms": float(
+                max(0.0, self._execute_static_key_build_ms_frame)
+            ),
+            "execute_begin_render_pass_ms": float(
+                max(0.0, self._execute_begin_render_pass_ms_frame)
+            ),
+            "execute_render_pass_record_ms": float(
+                max(0.0, self._execute_render_pass_record_ms_frame)
+            ),
+            "execute_render_pass_end_ms": float(max(0.0, self._execute_render_pass_end_ms_frame)),
+            "execute_rect_batch_ms": float(max(0.0, self._execute_rect_batch_ms_frame)),
+            "execute_text_batch_ms": float(max(0.0, self._execute_text_batch_ms_frame)),
+            "execute_text_layout_ms": float(max(0.0, self._execute_text_layout_ms_frame)),
+            "execute_text_shape_ms": float(max(0.0, self._execute_text_shape_ms_frame)),
+            "execute_text_shape_calls": int(self._execute_text_shape_calls_frame),
+            "execute_atlas_upload_ms": float(max(0.0, self._execute_atlas_upload_ms_frame)),
+            "execute_atlas_upload_bytes": int(self._execute_atlas_upload_bytes_frame),
+            "execute_atlas_upload_count": int(self._execute_atlas_upload_count_frame),
+            "execute_packet_translate_count": int(self._execute_packet_translate_count_frame),
+            "execute_rect_count": int(self._execute_rect_count_frame),
+            "execute_text_quad_count": int(self._execute_text_quad_count_frame),
+            "execute_draw_calls": int(self._execute_draw_calls_frame),
+            "execute_pipeline_binds": int(self._execute_pipeline_binds_frame),
+            "execute_vertex_buffer_binds": int(self._execute_vertex_buffer_binds_frame),
+            "execute_bind_group_binds": int(self._execute_bind_group_binds_frame),
+            "execute_bundle_replays": int(self._execute_bundle_replays_frame),
+            "present_mode": str(self._present_mode),
+            "execute_kind_rect_counts": dict(sorted(self._execute_kind_rect_counts_frame.items())),
+            "execute_kind_text_quad_counts": dict(
+                sorted(self._execute_kind_text_quad_counts_frame.items())
+            ),
         }
+        if self._cffi_miss_diagnostics_enabled and self._cffi_miss_store is not None:
+            total = int(sum(int(v) for v in self._cffi_miss_store.values()))
+            delta = int(max(0, total - int(self._cffi_miss_total_last)))
+            self._cffi_miss_total_last = total
+            sorted_items = sorted(
+                ((str(name), int(count)) for name, count in self._cffi_miss_store.items()),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            payload["execute_cffi_type_miss_total"] = int(total)
+            payload["execute_cffi_type_miss_delta"] = int(delta)
+            payload["execute_cffi_type_miss_unique"] = int(len(sorted_items))
+            payload["execute_cffi_type_miss_top"] = dict(sorted_items[:8])
+        return payload
 
     def _ensure_draw_vertex_buffer_capacity(
         self,
@@ -3353,6 +4265,9 @@ def _resolve_texture_usage(wgpu_mod: object) -> int:
 
 
 def _packet_is_static(packet: _DrawPacket) -> bool:
+    raw_engine_static = getattr(packet, "engine_static", None)
+    if isinstance(raw_engine_static, bool):
+        return raw_engine_static
     raw_data = getattr(packet, "data", ())
     if not isinstance(raw_data, tuple):
         return False
@@ -3405,20 +4320,50 @@ def _packet_key(packet: _DrawPacket) -> str | None:
 
 
 def _packet_fingerprint(packet: _DrawPacket) -> tuple[object, ...]:
-    filtered_data: list[tuple[object, object]] = []
-    for item in tuple(getattr(packet, "data", ())):
-        if not (isinstance(item, tuple) and len(item) == 2):
-            continue
-        key = str(item[0])
-        if key in {"static", "_engine_static"}:
-            continue
-        filtered_data.append((key, item[1]))
+    version_token = _packet_version_token(packet)
+    if version_token is None:
+        version_token = (int(id(packet.data)), int(id(packet.transform)))
+    version_key = _version_fingerprint(version_token)
     return (
         str(packet.kind),
         int(packet.layer),
         str(packet.sort_key),
-        _freeze_packet_value(packet.transform),
-        _freeze_packet_value(tuple(filtered_data)),
+        version_key,
+    )
+
+
+def _packet_version_token(packet: _DrawPacket) -> object | None:
+    raw_engine_version = getattr(packet, "engine_version", None)
+    if raw_engine_version is not None:
+        return cast(object, raw_engine_version)
+    raw_data = getattr(packet, "data", ())
+    if not isinstance(raw_data, tuple):
+        return None
+    return _packet_data_value(raw_data, "_engine_version")
+
+
+def _version_fingerprint(value: object) -> object:
+    if value is None:
+        return None
+    if isinstance(value, (bool, int, float, str, bytes)):
+        return value
+    try:
+        return ("h", int(hash(value)))
+    except Exception:
+        return ("id", int(id(value)))
+
+
+def _static_packet_identity(packet: _DrawPacket) -> tuple[object, ...]:
+    version_token = _packet_version_token(packet)
+    if version_token is None:
+        version_token = (int(id(packet.data)), int(id(packet.transform)))
+    return (
+        str(packet.kind),
+        int(packet.layer),
+        str(packet.sort_key),
+        _version_fingerprint(version_token),
+        packet.data,
+        packet.transform,
     )
 
 
@@ -3451,47 +4396,13 @@ def _freeze_packet_value(value: object) -> object:
 def _draw_rects_cache_key(draw_rects: tuple[_DrawRect, ...]) -> tuple[object, ...]:
     if not draw_rects:
         return ()
-    frozen: list[tuple[object, ...]] = []
-    for rect in draw_rects:
-        frozen.append(
-            (
-                int(rect.layer),
-                round(float(rect.x), 4),
-                round(float(rect.y), 4),
-                round(float(rect.w), 4),
-                round(float(rect.h), 4),
-                round(float(rect.color[0]), 4),
-                round(float(rect.color[1]), 4),
-                round(float(rect.color[2]), 4),
-                round(float(rect.color[3]), 4),
-            )
-        )
-    return tuple(frozen)
+    return (len(draw_rects), hash(draw_rects))
 
 
 def _text_quads_cache_key(text_quads: tuple[_DrawTextQuad, ...]) -> tuple[object, ...]:
     if not text_quads:
         return ()
-    frozen: list[tuple[object, ...]] = []
-    for quad in text_quads:
-        frozen.append(
-            (
-                int(quad.layer),
-                round(float(quad.x), 4),
-                round(float(quad.y), 4),
-                round(float(quad.w), 4),
-                round(float(quad.h), 4),
-                round(float(quad.u0), 6),
-                round(float(quad.v0), 6),
-                round(float(quad.u1), 6),
-                round(float(quad.v1), 6),
-                round(float(quad.color[0]), 4),
-                round(float(quad.color[1]), 4),
-                round(float(quad.color[2]), 4),
-                round(float(quad.color[3]), 4),
-            )
-        )
-    return tuple(frozen)
+    return (len(text_quads), hash(text_quads))
 
 
 def _resolve_buffer_usage(wgpu_mod: object) -> int:
@@ -3677,6 +4588,178 @@ def _platform_font_directories() -> tuple[str, ...]:
             os.path.expanduser("~/.fonts"),
         )
     return ()
+
+
+def _patch_wgpu_native_struct_alloc_fastpath() -> None:
+    if not _env_flag("ENGINE_WGPU_CFFI_FASTPATH_ENABLED", True):
+        return
+    try:
+        import wgpu.backends.wgpu_native._api as native_api
+    except Exception:
+        return
+    if bool(getattr(native_api, "_engine_struct_alloc_patched", False)):
+        return
+    ffi = getattr(native_api, "ffi", None)
+    original_new_struct_p = getattr(native_api, "_new_struct_p", None)
+    original_new_array = getattr(native_api, "new_array", None)
+    if ffi is None or not callable(original_new_struct_p) or not callable(original_new_array):
+        return
+    ctype_cache: dict[str, object] = {}
+    ctype_misses: dict[str, int] = {}
+    cache_max = max(64, _env_int("ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX", 512, minimum=64))
+
+    def _new_struct_p_cached(ctype: str, **kwargs: object) -> object:
+        ctype_obj = ctype_cache.get(ctype)
+        if ctype_obj is None:
+            ctype_misses[ctype] = int(ctype_misses.get(ctype, 0)) + 1
+            ctype_obj = ffi.typeof(ctype)
+            ctype_cache[ctype] = ctype_obj
+            while len(ctype_cache) > cache_max:
+                first_key = next(iter(ctype_cache))
+                if first_key == ctype:
+                    break
+                ctype_cache.pop(first_key, None)
+        struct_p = ffi.new(ctype_obj)
+        cstructfield2enum = getattr(native_api, "cstructfield2enum")
+        cstructfield2enum_alt = getattr(native_api, "_cstructfield2enum_alt")
+        enummap = getattr(native_api, "enummap")
+        for key, val in kwargs.items():
+            if val is None:
+                continue
+            if isinstance(val, str) and isinstance(getattr(struct_p, key), int):
+                if key in cstructfield2enum_alt:
+                    structname = cstructfield2enum_alt[key]
+                else:
+                    structname = cstructfield2enum[ctype.strip(" *")[4:] + "." + key]
+                ival = enummap[structname + "." + val]
+                setattr(struct_p, key, ival)
+            else:
+                setattr(struct_p, key, val)
+        return struct_p
+
+    def _new_array_cached(ctype: str, elements: object) -> object:
+        assert ctype.endswith("[]")
+        ctype_obj = ctype_cache.get(ctype)
+        if ctype_obj is None:
+            ctype_misses[ctype] = int(ctype_misses.get(ctype, 0)) + 1
+            ctype_obj = ffi.typeof(ctype)
+            ctype_cache[ctype] = ctype_obj
+            while len(ctype_cache) > cache_max:
+                first_key = next(iter(ctype_cache))
+                if first_key == ctype:
+                    break
+                ctype_cache.pop(first_key, None)
+        if isinstance(elements, int):
+            return ffi.new(ctype_obj, elements)
+        if elements:
+            elements_seq = cast(Any, elements)
+            array = ffi.new(ctype_obj, elements)
+            refs_per_struct = getattr(native_api, "_refs_per_struct")
+            refs_per_struct[array] = [
+                refs_per_struct.get(el, None)
+                for el in elements_seq
+                if isinstance(el, ffi.CData)
+            ]
+            return array
+        return ffi.NULL
+
+    setattr(native_api, "_new_struct_p", _new_struct_p_cached)
+    setattr(native_api, "new_array", _new_array_cached)
+    setattr(native_api, "_engine_struct_alloc_patched", True)
+    setattr(native_api, "_engine_struct_alloc_cache", ctype_cache)
+    setattr(native_api, "_engine_struct_alloc_misses", ctype_misses)
+
+
+def _prewarm_wgpu_native_cffi_types() -> None:
+    if not _env_flag("ENGINE_WGPU_CFFI_PREWARM_ENABLED", True):
+        return
+    try:
+        import wgpu.backends.wgpu_native._api as native_api
+    except Exception:
+        return
+    ffi = getattr(native_api, "ffi", None)
+    structs_mod = getattr(native_api, "structs", None)
+    if ffi is None or structs_mod is None:
+        return
+    max_types = max(32, _env_int("ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES", 256, minimum=32))
+    names = sorted(
+        name
+        for name in dir(structs_mod)
+        if name.endswith("Struct") and len(name) > len("Struct") and name[0].isupper()
+    )[:max_types]
+    for name in names:
+        base = f"WGPU{name[:-6]}"
+        for ctype in (f"{base} *", f"{base}[]"):
+            try:
+                ffi.typeof(ctype)
+            except Exception:
+                continue
+    for ctype in (
+        "WGPUChainedStruct *",
+        "WGPUChainedStruct * ",
+        "char []",
+        "intptr_t",
+        "uint32_t *",
+        "uint32_t []",
+        "uint8_t *",
+        "uint8_t[]",
+        "void *",
+    ):
+        try:
+            ffi.typeof(ctype)
+        except Exception:
+            continue
+    literal_max = max(128, _env_int("ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS", 2048, minimum=128))
+    for ctype in _discover_wgpu_native_ctype_literals(native_api)[:literal_max]:
+        try:
+            ffi.typeof(ctype)
+        except Exception:
+            continue
+
+
+def _discover_wgpu_native_ctype_literals(native_api: object) -> tuple[str, ...]:
+    source_path = str(getattr(native_api, "__file__", "")).strip()
+    if not source_path or not os.path.exists(source_path):
+        return ()
+    try:
+        with open(source_path, "r", encoding="utf-8") as handle:
+            text = handle.read()
+    except Exception:
+        return ()
+    # Capture literal ctypes used in ffi.new/new_array/new_struct*/ffi.cast/ffi.typeof.
+    pattern = re.compile(
+        r"""(?x)
+        (?:ffi\.(?:new|cast|typeof)\s*\(\s*|new_array\s*\(\s*|new_struct(?:_p)?\s*\(\s*)
+        ["']([^"']+)["']
+        """
+    )
+    out: list[str] = []
+    seen: set[str] = set()
+    for match in pattern.finditer(text):
+        raw = str(match.group(1)).strip()
+        if not raw:
+            continue
+        if " " not in raw and "*" not in raw and "[" not in raw:
+            continue
+        if raw in seen:
+            continue
+        seen.add(raw)
+        out.append(raw)
+    return tuple(out)
+
+
+def _resolve_wgpu_native_cffi_miss_store() -> dict[str, int] | None:
+    try:
+        import wgpu.backends.wgpu_native._api as native_api
+    except Exception:
+        return None
+    raw = getattr(native_api, "_engine_struct_alloc_misses", None)
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, int] = {}
+    for key, value in raw.items():
+        out[str(key)] = int(value) if isinstance(value, int) else 0
+    return out
 
 
 def _ortho_projection(*, width: float, height: float) -> tuple[float, ...]:

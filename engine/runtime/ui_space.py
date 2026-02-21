@@ -9,6 +9,16 @@ from typing import Any
 from engine.api.render import RenderAPI
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 
+_SCALE_CACHE_MAX = 20_000
+_SCALED_COMMAND_CACHE: dict[
+    tuple[int, tuple[float, float, float]],
+    tuple[RenderCommand, RenderCommand],
+] = {}
+_SCALED_PASS_CACHE: dict[
+    tuple[int, tuple[float, float, float]],
+    tuple[tuple[RenderCommand, ...], tuple[RenderCommand, ...]],
+] = {}
+
 
 @dataclass(frozen=True, slots=True)
 class UISpaceTransform:
@@ -274,11 +284,18 @@ class _ScaledRenderAPI:
 
 
 def _scale_render_snapshot(snapshot: RenderSnapshot, transform: UISpaceTransform) -> RenderSnapshot:
+    scale_key = (
+        round(float(transform.scale_x), 6),
+        round(float(transform.scale_y), 6),
+        round(float(transform.font_scale), 6),
+    )
     scaled_passes = tuple(
         RenderPassSnapshot(
             name=str(render_pass.name),
-            commands=tuple(
-                _scale_render_command(command, transform) for command in render_pass.commands
+            commands=_scale_render_commands(
+                render_pass.commands,
+                transform,
+                scale_key=scale_key,
             ),
         )
         for render_pass in snapshot.passes
@@ -322,3 +339,42 @@ def _scale_render_command(command: RenderCommand, transform: UISpaceTransform) -
         transform=command.transform,
         data=tuple(scaled_data),
     )
+
+
+def _scale_render_commands(
+    commands: tuple[RenderCommand, ...],
+    transform: UISpaceTransform,
+    *,
+    scale_key: tuple[float, float, float],
+) -> tuple[RenderCommand, ...]:
+    pass_cache_key = (int(id(commands)), scale_key)
+    cached_pass = _SCALED_PASS_CACHE.get(pass_cache_key)
+    if cached_pass is not None and cached_pass[0] is commands:
+        return cached_pass[1]
+    scaled = tuple(
+        _scale_render_command_cached(command, transform, scale_key=scale_key)
+        for command in commands
+    )
+    _SCALED_PASS_CACHE[pass_cache_key] = (commands, scaled)
+    if len(_SCALED_PASS_CACHE) > _SCALE_CACHE_MAX:
+        _SCALED_PASS_CACHE.clear()
+        _SCALED_PASS_CACHE[pass_cache_key] = (commands, scaled)
+    return scaled
+
+
+def _scale_render_command_cached(
+    command: RenderCommand,
+    transform: UISpaceTransform,
+    *,
+    scale_key: tuple[float, float, float],
+) -> RenderCommand:
+    cache_key = (int(id(command)), scale_key)
+    cached = _SCALED_COMMAND_CACHE.get(cache_key)
+    if cached is not None and cached[0] is command:
+        return cached[1]
+    scaled = _scale_render_command(command, transform)
+    _SCALED_COMMAND_CACHE[cache_key] = (command, scaled)
+    if len(_SCALED_COMMAND_CACHE) > _SCALE_CACHE_MAX:
+        _SCALED_COMMAND_CACHE.clear()
+        _SCALED_COMMAND_CACHE[cache_key] = (command, scaled)
+    return scaled

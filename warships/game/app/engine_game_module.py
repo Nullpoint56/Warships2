@@ -11,10 +11,8 @@ from engine.api.events import Subscription, create_event_bus
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.gameplay import (
     GameplaySystem,
-    StateStore,
     SystemSpec,
     UpdateLoop,
-    create_state_store,
     create_update_loop,
 )
 from engine.api.input_snapshot import InputSnapshot
@@ -30,14 +28,6 @@ from warships.game.ui.game_view import GameView
 @dataclass(frozen=True, slots=True)
 class _CloseRequested:
     """Internal runtime event used to decouple close signaling."""
-
-
-@dataclass(frozen=True, slots=True)
-class _FrameState:
-    """Per-frame transient state stored in gameplay state-store."""
-
-    debug_labels: list[str]
-    ui_state: object | None = None
 
 
 class _FrameworkSyncSystem(GameplaySystem):
@@ -64,10 +54,8 @@ class _ViewProjectionSystem(GameplaySystem):
     def update(self, context: RuntimeContext, delta_seconds: float) -> None:
         _ = delta_seconds
         controller = cast(GameController, context.require("controller"))
-        state_store = cast(StateStore[_FrameState], context.require("frame_state_store"))
-        ui = controller.ui_state()
-        frame_state = state_store.get()
-        state_store.set(_FrameState(debug_labels=frame_state.debug_labels, ui_state=ui))
+        module = cast(WarshipsGameModule, context.require("engine_game_module"))
+        module._frame_ui_state = controller.ui_state()
 
     def shutdown(self, context: RuntimeContext) -> None:
         _ = context
@@ -81,8 +69,8 @@ class _CloseLifecycleSystem(GameplaySystem):
 
     def update(self, context: RuntimeContext, delta_seconds: float) -> None:
         _ = delta_seconds
-        state_store = cast(StateStore[_FrameState], context.require("frame_state_store"))
-        ui_state = state_store.get().ui_state
+        module = cast(WarshipsGameModule, context.require("engine_game_module"))
+        ui_state = module._frame_ui_state
         if ui_state is None or not getattr(ui_state, "is_closing", False):
             return
         request_close = cast(Callable[[], None], context.require("request_close"))
@@ -129,13 +117,14 @@ class WarshipsGameModule(GameModule):
         self._close_subscription: Subscription | None = None
         self._close_task_id: int | None = None
         self._context = create_runtime_context()
+        self._context.provide("engine_game_module", self)
         self._context.provide("controller", controller)
         self._context.provide("framework", framework)
         self._context.provide("view", view)
         self._context.provide("debug_ui", debug_ui)
         self._context.provide("request_close", self._schedule_close_request)
-        self._frame_state_store = create_state_store(_FrameState(debug_labels=[]))
-        self._context.provide("frame_state_store", self._frame_state_store)
+        self._frame_debug_labels: list[str] = []
+        self._frame_ui_state: object | None = None
         self._update_loop = create_update_loop()
         self._update_loop.add_system(SystemSpec("framework_sync", _FrameworkSyncSystem(), order=0))
         self._update_loop.add_system(SystemSpec("view_projection", _ViewProjectionSystem(), order=10))
@@ -174,9 +163,7 @@ class WarshipsGameModule(GameModule):
         frame_context = cast(HostFrameContext | None, self._context.get("frame_context"))
         if frame_context is None:
             return None
-        state_store = cast(StateStore[_FrameState], self._context.require("frame_state_store"))
-        frame_state = state_store.get()
-        ui_state = frame_state.ui_state
+        ui_state = self._frame_ui_state
         if ui_state is None:
             return None
         debug_ui = cast(bool, self._context.require("debug_ui"))
@@ -191,12 +178,13 @@ class WarshipsGameModule(GameModule):
             frame_index=frame_context.frame_index,
             ui=cast(AppUIState, ui_state),
             debug_ui=debug_ui,
-            debug_labels_state=frame_state.debug_labels,
+            debug_labels_state=self._frame_debug_labels,
         )
         self._last_debug_ui = debug_ui
         self._cached_render_snapshot = snapshot
         self._render_dirty = False
-        state_store.set(_FrameState(debug_labels=labels, ui_state=ui_state))
+        self._frame_debug_labels = list(labels)
+        self._frame_ui_state = ui_state
         return snapshot
 
     def should_close(self) -> bool:

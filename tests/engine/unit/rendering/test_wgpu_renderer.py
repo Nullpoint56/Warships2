@@ -226,8 +226,7 @@ def test_wgpu_renderer_auto_static_classification_after_stability() -> None:
             static_count = 0
             dynamic_count = 0
             for packet in packets:
-                payload = dict(packet.data)
-                if bool(payload.get("_engine_static", False)):
+                if bool(getattr(packet, "engine_static", False)):
                     static_count += 1
                 else:
                     dynamic_count += 1
@@ -270,8 +269,7 @@ def test_wgpu_renderer_static_override_forces_static_immediately() -> None:
         def draw_packets(self, pass_name: str, packets) -> None:
             super().draw_packets(pass_name, packets)
             for packet in packets:
-                payload = dict(packet.data)
-                self.engine_static_values.append(bool(payload.get("_engine_static", False)))
+                self.engine_static_values.append(bool(getattr(packet, "engine_static", False)))
 
     backend = _StaticOverrideBackend()
     renderer = WgpuRenderer(_backend_factory=lambda _surface: backend)

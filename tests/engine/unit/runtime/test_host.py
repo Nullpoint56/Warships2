@@ -187,6 +187,20 @@ def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:
     assert data["text"] == ("base",)
 
 
+def test_engine_host_can_skip_snapshot_sanitize_for_perf(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_RUNTIME_RENDER_SNAPSHOT_SANITIZE", "0")
+    module = _SnapshotModule()
+    renderer = _FakeRenderer()
+    host = EngineHost(module=module, render_api=renderer)
+
+    host.frame()
+    module.payload.append("mutated")
+
+    submitted = renderer.snapshots[0]
+    data = dict(submitted.passes[0].commands[0].data)
+    assert data["text"] == ["base", "mutated"]
+
+
 def test_engine_host_handles_input_snapshot() -> None:
     module = FakeModule()
     host = EngineHost(module=module)
@@ -396,4 +410,37 @@ def test_engine_host_records_replay_state_hash_when_provider_available(monkeypat
 
     hash_events = host.diagnostics_hub.snapshot(category="replay", name="replay.state_hash")
     assert hash_events
+
+
+def test_engine_host_emits_capture_ready_and_profile_capture_state(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("ENGINE_METRICS_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_SAMPLING_N", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_ENABLED", "1")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_FRAMES", "2")
+    monkeypatch.setenv("ENGINE_PROFILING_CAPTURE_EXPORT_DIR", str(tmp_path))
+
+    host = EngineHost(module=FakeModule())
+    host.frame()
+    host.frame()
+
+    ready_events = host.diagnostics_hub.snapshot(category="perf", name="perf.host_capture_ready")
+    assert ready_events
+    value = ready_events[-1].value
+    assert isinstance(value, dict)
+    captured_frames = int(value.get("captured_frames", 0))
+    assert 1 <= captured_frames <= 2
+    report_path = value.get("path")
+    assert isinstance(report_path, str) and report_path
+    assert Path(report_path).exists()
+
+    profile_events = host.diagnostics_hub.snapshot(category="perf", name="perf.frame_profile")
+    assert profile_events
+    profile = profile_events[-1].value
+    assert isinstance(profile, dict)
+    capture = profile.get("capture")
+    assert isinstance(capture, dict)
+    assert capture.get("state") in {"capturing", "complete"}
 

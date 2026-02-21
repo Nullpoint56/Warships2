@@ -67,8 +67,13 @@ def _sample_snapshot() -> LiveSnapshot:
                 "execute_ms": 8.0,
                 "present_ms": 0.2,
                 "total_ms": 9.8,
+                "present_mode": "mailbox",
                 "execute_packet_count": 42,
                 "execute_pass_count": 3,
+                "execute_cffi_type_miss_total": 5,
+                "execute_cffi_type_miss_delta": 1,
+                "execute_cffi_type_miss_unique": 2,
+                "execute_cffi_type_miss_top": {"uint8_t *": 3, "WGPUFoo[]": 2},
                 "execute_pass_packet_counts": {"main": 30, "overlay": 12},
                 "execute_kind_packet_counts": {"rect": 20, "text": 22},
             },
@@ -81,8 +86,21 @@ def _sample_snapshot() -> LiveSnapshot:
             name="perf.frame_profile",
             level="info",
             value={
-                "systems": {"top_system": {"name": "view_projection", "ms": 2.5}},
+                "systems": {
+                    "top_system": {"name": "view_projection", "ms": 2.5},
+                    "top_systems": [
+                        {"name": "view_projection", "ms": 2.5},
+                        {"name": "close_lifecycle", "ms": 1.2},
+                    ],
+                },
                 "memory": {"python_current_mb": 5.0, "process_rss_mb": 42.0},
+                "capture": {
+                    "state": "complete",
+                    "captured_frames": 120,
+                    "target_frames": 120,
+                    "report_path": "tools/data/profiles/host_profile_capture_20260101T000000.json",
+                    "error": "",
+                },
             },
             metadata={},
         ),
@@ -148,7 +166,14 @@ def test_performance_breakdown_model() -> None:
     assert model.bottleneck_lane in {"render", "host/sim/input", "mixed", "unknown"}
     assert model.top_render_span_name != "n/a"
     assert model.render_execute_packet_count == 42
+    assert model.render_present_mode == "mailbox"
+    assert model.render_execute_cffi_type_miss_total == 5
+    assert model.render_execute_cffi_type_miss_delta == 1
+    assert model.render_execute_cffi_type_miss_unique == 2
+    assert model.render_execute_cffi_type_miss_top[0] == ("uint8_t *", 3)
     assert model.render_execute_pass_count == 3
     assert model.render_execute_pass_packet_counts[0] == ("main", 30)
     assert model.render_execute_kind_packet_counts[0] == ("text", 22)
     assert model.top_system_name == "view_projection"
+    assert model.top_systems[0][0] == "view_projection"
+    assert model.profile_capture_state == "complete"

@@ -26,6 +26,7 @@ from engine.diagnostics import (
     resolve_crash_bundle_dir,
 )
 from engine.diagnostics.json_codec import dumps_text
+from engine.diagnostics.event import DiagnosticEvent
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
 from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
@@ -103,6 +104,10 @@ class EngineHost(HostControl):
         self._diagnostics_subscriber_token = self._diagnostics_hub.subscribe(
             self._diagnostics_metrics.ingest
         )
+        self._latest_render_profile_payload: dict[str, object] | None = None
+        self._render_profile_subscriber_token = self._diagnostics_hub.subscribe(
+            self._ingest_render_profile_event
+        )
         if self._render_api is not None:
             bind_hub = getattr(self._render_api, "set_diagnostics_hub", None)
             if callable(bind_hub):
@@ -128,8 +133,14 @@ class EngineHost(HostControl):
         self._render_snapshot_exchange: DoubleBufferedSnapshotExchange[RenderSnapshot] = (
             DoubleBufferedSnapshotExchange()
         )
+        self._sanitize_render_snapshot_enabled = _env_flag(
+            "ENGINE_RUNTIME_RENDER_SNAPSHOT_SANITIZE", True
+        )
         self._last_snapshot_passes_identity: int = 0
         self._last_sanitized_passes: tuple[RenderPassSnapshot, ...] | None = None
+        self._last_scaled_snapshot_passes_identity: int = 0
+        self._last_scaled_transform_key: tuple[float, float, float] | None = None
+        self._last_scaled_passes: tuple[RenderPassSnapshot, ...] | None = None
         self._module_ui_transform: UISpaceTransform | None = None
         if self._render_api is not None:
             self._module_ui_transform = resolve_ui_space_transform(
@@ -303,130 +314,162 @@ class EngineHost(HostControl):
             self.start()
         if self._closed:
             return
-        frame_span = self._diagnostics_profiler.begin_span(
-            tick=self._frame_index,
-            category="host",
-            name="frame",
-            metadata={"frame_index": self._frame_index},
-        )
-        self._diagnostics_hub.emit_fast(
-            category="frame",
-            name="frame.start",
-            tick=self._frame_index,
-            metadata={"closed": False},
-        )
-        time_context = self._clock.next(self._frame_index)
-        self._metrics_collector.begin_frame(self._frame_index)
-        self._scheduler.advance(time_context.delta_seconds)
-        enqueued_count, dequeued_count = self._scheduler.consume_activity_counts()
-        if hasattr(self._metrics_collector, "set_scheduler_activity"):
-            self._metrics_collector.set_scheduler_activity(enqueued_count, dequeued_count)
-        self._metrics_collector.set_scheduler_queue_size(self._scheduler.queued_task_count)
-        if self._closed:
-            self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
-            return
-        module_span = self._diagnostics_profiler.begin_span(
-            tick=self._frame_index,
-            category="module",
-            name="simulate",
-        )
-        module_render_snapshot: RenderSnapshot | None = None
+        self._frame_profiler.on_frame_start(frame_index=self._frame_index)
         try:
-            frame_context = HostFrameContext(
-                frame_index=self._frame_index,
-                delta_seconds=time_context.delta_seconds,
-                elapsed_seconds=time_context.elapsed_seconds,
-            )
-            self._module.simulate(frame_context)
-            module_render_snapshot = self._module.build_render_snapshot()
-        except Exception as exc:
-            self._diagnostics_profiler.end_span(module_span)
-            bundle_path = self._crash_bundle_writer.capture_exception(
-                exc,
+            frame_span = self._diagnostics_profiler.begin_span(
                 tick=self._frame_index,
-                diagnostics_hub=self._diagnostics_hub,
-                runtime_metadata=self._runtime_metadata(),
-                profiling_snapshot={
-                    "frame_profile": self._frame_profiler.latest_payload or {},
-                    "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
+                category="host",
+                name="frame",
+                metadata={"frame_index": self._frame_index},
+            )
+            self._diagnostics_hub.emit_fast(
+                category="frame",
+                name="frame.start",
+                tick=self._frame_index,
+                metadata={"closed": False},
+            )
+            time_context = self._clock.next(self._frame_index)
+            self._metrics_collector.begin_frame(self._frame_index)
+            self._scheduler.advance(time_context.delta_seconds)
+            enqueued_count, dequeued_count = self._scheduler.consume_activity_counts()
+            if hasattr(self._metrics_collector, "set_scheduler_activity"):
+                self._metrics_collector.set_scheduler_activity(enqueued_count, dequeued_count)
+            self._metrics_collector.set_scheduler_queue_size(self._scheduler.queued_task_count)
+            if self._closed:
+                self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
+                return
+            module_span = self._diagnostics_profiler.begin_span(
+                tick=self._frame_index,
+                category="module",
+                name="simulate",
+            )
+            module_render_snapshot: RenderSnapshot | None = None
+            try:
+                frame_context = HostFrameContext(
+                    frame_index=self._frame_index,
+                    delta_seconds=time_context.delta_seconds,
+                    elapsed_seconds=time_context.elapsed_seconds,
+                )
+                self._module.simulate(frame_context)
+                module_render_snapshot = self._module.build_render_snapshot()
+            except Exception as exc:
+                self._diagnostics_profiler.end_span(module_span)
+                bundle_path = self._crash_bundle_writer.capture_exception(
+                    exc,
+                    tick=self._frame_index,
+                    diagnostics_hub=self._diagnostics_hub,
+                    runtime_metadata=self._runtime_metadata(),
+                    profiling_snapshot={
+                        "frame_profile": self._frame_profiler.latest_payload or {},
+                        "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
+                    },
+                )
+                if bundle_path is not None:
+                    _LOG.error("crash_bundle_written path=%s", bundle_path)
+                self._diagnostics_profiler.end_span(frame_span)
+                raise
+            self._diagnostics_profiler.end_span(module_span)
+            self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
+            metrics_snapshot = self._metrics_collector.snapshot()
+            emit_frame_metrics(self._diagnostics_hub, metrics_snapshot)
+            self._diagnostics_hub.emit_fast(
+                category="frame",
+                name="frame.end",
+                tick=self._frame_index,
+                metadata={
+                    "delta_seconds": time_context.delta_seconds,
+                    "elapsed_seconds": time_context.elapsed_seconds,
                 },
             )
-            if bundle_path is not None:
-                _LOG.error("crash_bundle_written path=%s", bundle_path)
+            if module_render_snapshot is not None and self._module_ui_transform is not None:
+                transform = self._module_ui_transform
+                transform_key = (
+                    round(float(transform.scale_x), 6),
+                    round(float(transform.scale_y), 6),
+                    round(float(transform.font_scale), 6),
+                )
+                passes_identity = int(id(module_render_snapshot.passes))
+                if (
+                    self._last_scaled_passes is not None
+                    and self._last_scaled_snapshot_passes_identity == passes_identity
+                    and self._last_scaled_transform_key == transform_key
+                ):
+                    module_render_snapshot = RenderSnapshot(
+                        frame_index=int(module_render_snapshot.frame_index),
+                        passes=self._last_scaled_passes,
+                    )
+                else:
+                    scaled = scale_render_snapshot(module_render_snapshot, transform)
+                    self._last_scaled_snapshot_passes_identity = passes_identity
+                    self._last_scaled_transform_key = transform_key
+                    self._last_scaled_passes = scaled.passes
+                    module_render_snapshot = scaled
+            if (
+                self._debug_overlay is not None
+                and self._debug_overlay_visible
+                and self._render_api is not None
+            ):
+                overlay_snapshot = _build_overlay_snapshot(
+                    frame_index=self._frame_index,
+                    overlay=self._debug_overlay,
+                    snapshot=self._metrics_collector.snapshot(),
+                    ui_diagnostics=None,
+                )
+                module_render_snapshot = _merge_render_snapshots(module_render_snapshot, overlay_snapshot)
+            if module_render_snapshot is not None:
+                sanitized_snapshot = self._sanitize_snapshot_cached(module_render_snapshot)
+                self._render_snapshot_exchange.publish(sanitized_snapshot)
+            render_snapshot_payload = self._render_snapshot_exchange.consume_latest()
+            if render_snapshot_payload is not None and self._render_api is not None:
+                render_snapshot = getattr(self._render_api, "render_snapshot", None)
+                if callable(render_snapshot):
+                    render_snapshot(render_snapshot_payload)
+            if _LOG.isEnabledFor(logging.DEBUG):
+                metrics_snapshot = self._metrics_collector.snapshot()
+                if metrics_snapshot.last_frame is not None:
+                    _LOG.debug(
+                        "frame_metrics frame=%d dt_ms=%.3f fps=%.2f sched_q=%d events=%d top=%s",
+                        metrics_snapshot.last_frame.frame_index,
+                        metrics_snapshot.last_frame.dt_ms,
+                        metrics_snapshot.rolling_fps,
+                        metrics_snapshot.last_frame.scheduler_queue_size,
+                        metrics_snapshot.last_frame.event_publish_count,
+                        metrics_snapshot.top_systems_last_frame,
+                    )
+            self._frame_profiler.set_latest_render_profile(self._latest_render_profile_payload)
+            profile = self._frame_profiler.make_profile_payload(metrics_snapshot)
+            if profile is not None:
+                self._diagnostics_hub.emit_fast(
+                    category="perf",
+                    name="perf.frame_profile",
+                    tick=self._frame_index,
+                    value=profile,
+                )
+                if _PROFILE_LOG_ENABLED:
+                    _PROFILE_LOG.info(
+                        "frame_profile frame=%d dt_ms=%.3f top=%s",
+                        profile["frame_index"],
+                        profile["dt_ms"],
+                        profile["systems"]["top_system"]["name"],
+                        extra={"profile": profile},
+                    )
             self._diagnostics_profiler.end_span(frame_span)
-            raise
-        self._diagnostics_profiler.end_span(module_span)
-        self._metrics_collector.end_frame(time_context.delta_seconds * 1000.0)
-        metrics_snapshot = self._metrics_collector.snapshot()
-        emit_frame_metrics(self._diagnostics_hub, metrics_snapshot)
-        self._diagnostics_hub.emit_fast(
-            category="frame",
-            name="frame.end",
-            tick=self._frame_index,
-            metadata={
-                "delta_seconds": time_context.delta_seconds,
-                "elapsed_seconds": time_context.elapsed_seconds,
-            },
-        )
-        if module_render_snapshot is not None and self._module_ui_transform is not None:
-            module_render_snapshot = scale_render_snapshot(
-                module_render_snapshot,
-                self._module_ui_transform,
-            )
-        if (
-            self._debug_overlay is not None
-            and self._debug_overlay_visible
-            and self._render_api is not None
-        ):
-            overlay_snapshot = _build_overlay_snapshot(
-                frame_index=self._frame_index,
-                overlay=self._debug_overlay,
-                snapshot=self._metrics_collector.snapshot(),
-                ui_diagnostics=None,
-            )
-            module_render_snapshot = _merge_render_snapshots(module_render_snapshot, overlay_snapshot)
-        if module_render_snapshot is not None:
-            sanitized_snapshot = self._sanitize_snapshot_cached(module_render_snapshot)
-            self._render_snapshot_exchange.publish(sanitized_snapshot)
-        render_snapshot_payload = self._render_snapshot_exchange.consume_latest()
-        if render_snapshot_payload is not None and self._render_api is not None:
-            render_snapshot = getattr(self._render_api, "render_snapshot", None)
-            if callable(render_snapshot):
-                render_snapshot(render_snapshot_payload)
-        if _LOG.isEnabledFor(logging.DEBUG):
-            metrics_snapshot = self._metrics_collector.snapshot()
-            if metrics_snapshot.last_frame is not None:
-                _LOG.debug(
-                    "frame_metrics frame=%d dt_ms=%.3f fps=%.2f sched_q=%d events=%d top=%s",
-                    metrics_snapshot.last_frame.frame_index,
-                    metrics_snapshot.last_frame.dt_ms,
-                    metrics_snapshot.rolling_fps,
-                    metrics_snapshot.last_frame.scheduler_queue_size,
-                    metrics_snapshot.last_frame.event_publish_count,
-                    metrics_snapshot.top_systems_last_frame,
+            state_hash = self._resolve_replay_state_hash()
+            self._replay_recorder.mark_frame(tick=self._frame_index, state_hash=state_hash)
+            self._frame_index += 1
+            if self._module.should_close():
+                self.close()
+        finally:
+            ready = self._frame_profiler.on_frame_end(frame_index=self._frame_index)
+            if ready is None:
+                ready = self._frame_profiler.consume_capture_report_ready()
+            if ready is not None:
+                self._diagnostics_hub.emit_fast(
+                    category="perf",
+                    name="perf.host_capture_ready",
+                    tick=self._frame_index,
+                    value=ready,
                 )
-        profile = self._frame_profiler.make_profile_payload(metrics_snapshot)
-        if profile is not None:
-            self._diagnostics_hub.emit_fast(
-                category="perf",
-                name="perf.frame_profile",
-                tick=self._frame_index,
-                value=profile,
-            )
-            if _PROFILE_LOG_ENABLED:
-                _PROFILE_LOG.info(
-                    "frame_profile frame=%d dt_ms=%.3f top=%s",
-                    profile["frame_index"],
-                    profile["dt_ms"],
-                    profile["systems"]["top_system"]["name"],
-                    extra={"profile": profile},
-                )
-        self._diagnostics_profiler.end_span(frame_span)
-        state_hash = self._resolve_replay_state_hash()
-        self._replay_recorder.mark_frame(tick=self._frame_index, state_hash=state_hash)
-        self._frame_index += 1
-        if self._module.should_close():
-            self.close()
 
     def call_later(self, delay_seconds: float, callback: Callable[[], None]) -> int:
         """Schedule a one-shot callback in host runtime time."""
@@ -441,6 +484,8 @@ class EngineHost(HostControl):
         self._scheduler.cancel(task_id)
 
     def _sanitize_snapshot_cached(self, snapshot: RenderSnapshot) -> RenderSnapshot:
+        if not self._sanitize_render_snapshot_enabled:
+            return snapshot
         passes_identity = id(snapshot.passes)
         if (
             self._last_sanitized_passes is not None
@@ -455,6 +500,13 @@ class EngineHost(HostControl):
         self._last_sanitized_passes = sanitized.passes
         return sanitized
 
+    def _ingest_render_profile_event(self, event: DiagnosticEvent) -> None:
+        if event.category != "render" or event.name != "render.profile_frame":
+            return
+        raw = event.value
+        if isinstance(raw, dict):
+            self._latest_render_profile_payload = dict(raw)
+
     def close(self) -> None:
         if self._closed:
             return
@@ -465,6 +517,7 @@ class EngineHost(HostControl):
             self._diagnostics_http.stop()
             self._diagnostics_http = None
         self._diagnostics_hub.unsubscribe(self._diagnostics_subscriber_token)
+        self._diagnostics_hub.unsubscribe(self._render_profile_subscriber_token)
         self._frame_profiler.close()
         self._module.on_shutdown()
 
@@ -828,3 +881,15 @@ def _try_state_hash_provider(module: object) -> str | None:
     if isinstance(state_hash, str):
         return state_hash
     return str(state_hash)
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    value = raw.strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)

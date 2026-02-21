@@ -13,6 +13,7 @@ from engine.api.ui_primitives import GridLayout
 from warships.game.app.controller import GameController
 from warships.game.app.engine_adapter import WarshipsAppAdapter
 from warships.game.app.engine_game_module import WarshipsGameModule
+from warships.game.app.events import ButtonPressed
 from warships.game.infra.app_data import resolve_presets_dir
 from warships.game.presets.repository import PresetRepository
 from warships.game.presets.service import PresetService
@@ -41,7 +42,9 @@ def _build_controller() -> GameController:
     preset_root = Path(configured_presets) if configured_presets else resolve_presets_dir()
     preset_service = PresetService(PresetRepository(preset_root))
     debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
-    return GameController(preset_service=preset_service, rng=random.Random(), debug_ui=debug_ui)
+    controller = GameController(preset_service=preset_service, rng=random.Random(), debug_ui=debug_ui)
+    _apply_startup_screen_override(controller)
+    return controller
 
 
 def _build_module(
@@ -60,3 +63,28 @@ def _build_module(
         view=view,
         debug_ui=debug_ui,
     )
+
+
+def _apply_startup_screen_override(controller: GameController) -> None:
+    """Allow deterministic startup directly into a target screen for profiling."""
+    target = os.getenv("WARSHIPS_START_SCREEN", "").strip().lower()
+    if not target or target == "main_menu":
+        return
+    if target == "new_game_setup":
+        controller.handle_button(ButtonPressed("new_game"))
+        return
+    if target == "preset_manage":
+        controller.handle_button(ButtonPressed("manage_presets"))
+        return
+    if target == "placement_edit":
+        controller.handle_button(ButtonPressed("manage_presets"))
+        rows = controller.ui_state().preset_rows
+        if rows:
+            controller.handle_button(ButtonPressed(f"preset_edit:{rows[0].name}"))
+            return
+        controller.handle_button(ButtonPressed("create_preset"))
+        return
+    if target == "battle":
+        controller.handle_button(ButtonPressed("new_game"))
+        controller.handle_button(ButtonPressed("new_game_randomize"))
+        controller.handle_button(ButtonPressed("start_game"))

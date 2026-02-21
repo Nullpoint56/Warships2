@@ -5,6 +5,35 @@
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
+      <env name="PYTHONUNBUFFERED" value="1" />
+      <env name="ENGINE_LOG_LEVEL" value="DEBUG" />
+      <env name="ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES" value="1" />
+      <env name="ENGINE_WGPU_STARTUP_PREWARM_ENABLED" value="1" />
+      <env name="ENGINE_WGPU_STARTUP_PREWARM_FRAMES" value="1" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_ENABLED" value="1" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_SIZES" value="14,18,24" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS" value="96" />
+      <env name="ENGINE_WGPU_TEXT_PREWARM_LABELS" value="New Game|Resume|Options|Back|Start|Preset|Difficulty|Random Fleet|Generate Random Fleet" />
+
+      <env name="ENGINE_METRICS_ENABLED" value="1" />
+      <env name="ENGINE_UI_OVERLAY_ENABLED" value="1" />
+      <env name="ENGINE_INPUT_TRACE_ENABLED" value="1" />
+
+      <env name="ENGINE_PROFILING_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_SAMPLING_N" value="1" />
+      <env name="ENGINE_PROFILING_SYSTEM_TOP_N" value="5" />
+      <env name="ENGINE_PROFILING_LOG_PAYLOAD_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_INCLUDE_SYSTEM_TIMINGS" value="1" />
+      <env name="ENGINE_PROFILING_INCLUDE_EVENT_TOPICS" value="1" />
+      <env name="ENGINE_PROFILING_CAPTURE_ENABLED" value="1" />
+      <env name="ENGINE_PROFILING_CAPTURE_FRAMES" value="180" />
+      <env name="ENGINE_PROFILING_CAPTURE_TOP_N" value="80" />
+      <env name="ENGINE_PROFILING_CAPTURE_SORT" value="cumtime" />
+      <env name="ENGINE_PROFILING_CAPTURE_TRACEMALLOC_DEPTH" value="25" />
+      <env name="ENGINE_PROFILING_CAPTURE_EXPORT_DIR" value="../tools/data/profiles" />
+      <env name="ENGINE_PROFILING_CAPTURE_TIMELINE_MAX" value="600" />
+      <env name="ENGINE_PROFILING_CAPTURE_WARMUP_FRAMES" value="60" />
+
       <env name="ENGINE_DIAGNOSTICS_BUFFER_CAP" value="20000" />
       <env name="ENGINE_DIAGNOSTICS_CRASH_DIR" value="../tools/data/crash" />
       <env name="ENGINE_DIAGNOSTICS_CRASH_ENABLED" value="1" />
@@ -17,24 +46,19 @@
       <env name="ENGINE_DIAGNOSTICS_PROFILING_MODE" value="timeline" />
       <env name="ENGINE_DIAGNOSTICS_PROFILING_SAMPLING_N" value="1" />
       <env name="ENGINE_DIAGNOSTICS_PROFILING_SPAN_CAP" value="20000" />
+      <env name="ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS" value="1" />
+      <env name="ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN" value="1" />
       <env name="ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N" value="1" />
       <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED" value="1" />
       <env name="ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N" value="1" />
       <env name="ENGINE_DIAGNOSTICS_REPLAY_ENABLED" value="1" />
       <env name="ENGINE_DIAGNOSTICS_REPLAY_EXPORT_DIR" value="../tools/data/replay" />
       <env name="ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL" value="1" />
-      <env name="ENGINE_INPUT_TRACE_ENABLED" value="1" />
-      <env name="ENGINE_LOG_LEVEL" value="DEBUG" />
-      <env name="ENGINE_METRICS_ENABLED" value="1" />
+      <env name="ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED" value="1" />
+
       <env name="ENGINE_MONITOR_REMOTE_HEAVY_POLL_EVERY" value="1" />
       <env name="ENGINE_MONITOR_REMOTE_PROFILING_LIMIT" value="5000" />
       <env name="ENGINE_MONITOR_REMOTE_SNAPSHOT_LIMIT" value="5000" />
-      <env name="ENGINE_PROFILING_ENABLED" value="1" />
-      <env name="ENGINE_PROFILING_SAMPLING_N" value="1" />
-      <env name="ENGINE_RUNTIME_GAME_NAME" value="warships" />
-      <env name="ENGINE_UI_OVERLAY_ENABLED" value="1" />
-      <env name="PYTHONUNBUFFERED" value="1" />
-      <env name="ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES" value="1" />
     </envs>
     <option name="SDK_HOME" value="" />
     <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/warships" />

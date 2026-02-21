@@ -21,10 +21,14 @@ class PerformanceBreakdownModel:
     render_present_ms: float
     render_total_ms: float
     render_mem_delta_mb: float
+    render_present_mode: str
     render_execute_packet_count: int
     render_execute_pass_count: int
     render_execute_static_packet_count: int
     render_execute_dynamic_packet_count: int
+    render_execute_packet_build_ms: float
+    render_execute_auto_static_ms: float
+    render_execute_static_packet_cache_hits: int
     render_execute_static_reused: bool
     render_execute_static_bundle_replayed: bool
     render_execute_static_upload_bytes: int
@@ -32,12 +36,43 @@ class PerformanceBreakdownModel:
     render_execute_static_rebuild_count: int
     render_execute_static_run_count: int
     render_execute_dynamic_run_count: int
+    render_execute_stage_upload_ms: float
+    render_execute_translate_ms: float
+    render_execute_expand_ms: float
+    render_execute_rect_batch_ms: float
+    render_execute_text_batch_ms: float
+    render_execute_text_layout_ms: float
+    render_execute_text_shape_ms: float
+    render_execute_text_shape_calls: int
+    render_execute_atlas_upload_ms: float
+    render_execute_atlas_upload_bytes: int
+    render_execute_atlas_upload_count: int
+    render_execute_packet_translate_count: int
+    render_execute_rect_count: int
+    render_execute_text_quad_count: int
+    render_execute_draw_calls: int
+    render_execute_pipeline_binds: int
+    render_execute_vertex_buffer_binds: int
+    render_execute_bind_group_binds: int
+    render_execute_bundle_replays: int
+    render_execute_cffi_type_miss_total: int
+    render_execute_cffi_type_miss_delta: int
+    render_execute_cffi_type_miss_unique: int
+    render_execute_cffi_type_miss_top: tuple[tuple[str, int], ...]
     render_execute_pass_packet_counts: tuple[tuple[str, int], ...]
     render_execute_kind_packet_counts: tuple[tuple[str, int], ...]
+    render_execute_kind_rect_counts: tuple[tuple[str, int], ...]
+    render_execute_kind_text_quad_counts: tuple[tuple[str, int], ...]
     top_system_name: str
     top_system_ms: float
+    top_systems: tuple[tuple[str, float], ...]
     python_current_mb: float
     process_rss_mb: float
+    profile_capture_state: str
+    profile_capture_frames: int
+    profile_capture_target_frames: int
+    profile_capture_report_path: str
+    profile_capture_error: str
     render_stage_event_counts: tuple[tuple[str, int], ...]
 
 
@@ -61,10 +96,14 @@ def build_performance_breakdown_model(
             render_present_ms=0.0,
             render_total_ms=0.0,
             render_mem_delta_mb=0.0,
+            render_present_mode="unknown",
             render_execute_packet_count=0,
             render_execute_pass_count=0,
             render_execute_static_packet_count=0,
             render_execute_dynamic_packet_count=0,
+            render_execute_packet_build_ms=0.0,
+            render_execute_auto_static_ms=0.0,
+            render_execute_static_packet_cache_hits=0,
             render_execute_static_reused=False,
             render_execute_static_bundle_replayed=False,
             render_execute_static_upload_bytes=0,
@@ -72,12 +111,43 @@ def build_performance_breakdown_model(
             render_execute_static_rebuild_count=0,
             render_execute_static_run_count=0,
             render_execute_dynamic_run_count=0,
+            render_execute_stage_upload_ms=0.0,
+            render_execute_translate_ms=0.0,
+            render_execute_expand_ms=0.0,
+            render_execute_rect_batch_ms=0.0,
+            render_execute_text_batch_ms=0.0,
+            render_execute_text_layout_ms=0.0,
+            render_execute_text_shape_ms=0.0,
+            render_execute_text_shape_calls=0,
+            render_execute_atlas_upload_ms=0.0,
+            render_execute_atlas_upload_bytes=0,
+            render_execute_atlas_upload_count=0,
+            render_execute_packet_translate_count=0,
+            render_execute_rect_count=0,
+            render_execute_text_quad_count=0,
+            render_execute_draw_calls=0,
+            render_execute_pipeline_binds=0,
+            render_execute_vertex_buffer_binds=0,
+            render_execute_bind_group_binds=0,
+            render_execute_bundle_replays=0,
+            render_execute_cffi_type_miss_total=0,
+            render_execute_cffi_type_miss_delta=0,
+            render_execute_cffi_type_miss_unique=0,
+            render_execute_cffi_type_miss_top=(),
             render_execute_pass_packet_counts=(),
             render_execute_kind_packet_counts=(),
+            render_execute_kind_rect_counts=(),
+            render_execute_kind_text_quad_counts=(),
             top_system_name="n/a",
             top_system_ms=0.0,
+            top_systems=(),
             python_current_mb=0.0,
             process_rss_mb=0.0,
+            profile_capture_state="off",
+            profile_capture_frames=0,
+            profile_capture_target_frames=0,
+            profile_capture_report_path="",
+            profile_capture_error="",
             render_stage_event_counts=(),
         )
     frame_sum = 0.0
@@ -126,6 +196,7 @@ def build_performance_breakdown_model(
     render_present_ms = _safe_float(render_profile.get("present_ms"), 0.0)
     render_total_ms = _safe_float(render_profile.get("total_ms"), 0.0)
     render_mem_delta_mb = _safe_float(render_profile.get("mem_delta_mb"), 0.0)
+    render_present_mode = str(render_profile.get("present_mode", "unknown")).strip() or "unknown"
     render_execute_packet_count = _safe_int(render_profile.get("execute_packet_count"), 0)
     render_execute_pass_count = _safe_int(render_profile.get("execute_pass_count"), 0)
     render_execute_static_packet_count = _safe_int(
@@ -133,6 +204,15 @@ def build_performance_breakdown_model(
     )
     render_execute_dynamic_packet_count = _safe_int(
         render_profile.get("execute_dynamic_packet_count"), 0
+    )
+    render_execute_packet_build_ms = _safe_float(
+        render_profile.get("execute_packet_build_ms"), 0.0
+    )
+    render_execute_auto_static_ms = _safe_float(
+        render_profile.get("execute_auto_static_ms"), 0.0
+    )
+    render_execute_static_packet_cache_hits = _safe_int(
+        render_profile.get("execute_static_packet_cache_hits"), 0
     )
     render_execute_static_reused = bool(render_profile.get("execute_static_reused", False))
     render_execute_static_bundle_replayed = bool(
@@ -153,27 +233,100 @@ def build_performance_breakdown_model(
     render_execute_dynamic_run_count = _safe_int(
         render_profile.get("execute_dynamic_run_count"), 0
     )
+    render_execute_stage_upload_ms = _safe_float(render_profile.get("execute_stage_upload_ms"), 0.0)
+    render_execute_translate_ms = _safe_float(render_profile.get("execute_translate_ms"), 0.0)
+    render_execute_expand_ms = _safe_float(render_profile.get("execute_expand_ms"), 0.0)
+    render_execute_rect_batch_ms = _safe_float(render_profile.get("execute_rect_batch_ms"), 0.0)
+    render_execute_text_batch_ms = _safe_float(render_profile.get("execute_text_batch_ms"), 0.0)
+    render_execute_text_layout_ms = _safe_float(render_profile.get("execute_text_layout_ms"), 0.0)
+    render_execute_text_shape_ms = _safe_float(render_profile.get("execute_text_shape_ms"), 0.0)
+    render_execute_text_shape_calls = _safe_int(render_profile.get("execute_text_shape_calls"), 0)
+    render_execute_atlas_upload_ms = _safe_float(render_profile.get("execute_atlas_upload_ms"), 0.0)
+    render_execute_atlas_upload_bytes = _safe_int(
+        render_profile.get("execute_atlas_upload_bytes"), 0
+    )
+    render_execute_atlas_upload_count = _safe_int(
+        render_profile.get("execute_atlas_upload_count"), 0
+    )
+    render_execute_packet_translate_count = _safe_int(
+        render_profile.get("execute_packet_translate_count"), 0
+    )
+    render_execute_rect_count = _safe_int(render_profile.get("execute_rect_count"), 0)
+    render_execute_text_quad_count = _safe_int(render_profile.get("execute_text_quad_count"), 0)
+    render_execute_draw_calls = _safe_int(render_profile.get("execute_draw_calls"), 0)
+    render_execute_pipeline_binds = _safe_int(render_profile.get("execute_pipeline_binds"), 0)
+    render_execute_vertex_buffer_binds = _safe_int(
+        render_profile.get("execute_vertex_buffer_binds"), 0
+    )
+    render_execute_bind_group_binds = _safe_int(
+        render_profile.get("execute_bind_group_binds"), 0
+    )
+    render_execute_bundle_replays = _safe_int(render_profile.get("execute_bundle_replays"), 0)
+    render_execute_cffi_type_miss_total = _safe_int(
+        render_profile.get("execute_cffi_type_miss_total"), 0
+    )
+    render_execute_cffi_type_miss_delta = _safe_int(
+        render_profile.get("execute_cffi_type_miss_delta"), 0
+    )
+    render_execute_cffi_type_miss_unique = _safe_int(
+        render_profile.get("execute_cffi_type_miss_unique"), 0
+    )
+    render_execute_cffi_type_miss_top = _safe_sorted_counts(
+        render_profile.get("execute_cffi_type_miss_top")
+    )
     render_execute_pass_packet_counts = _safe_sorted_counts(
         render_profile.get("execute_pass_packet_counts")
     )
     render_execute_kind_packet_counts = _safe_sorted_counts(
         render_profile.get("execute_kind_packet_counts")
     )
+    render_execute_kind_rect_counts = _safe_sorted_counts(
+        render_profile.get("execute_kind_rect_counts")
+    )
+    render_execute_kind_text_quad_counts = _safe_sorted_counts(
+        render_profile.get("execute_kind_text_quad_counts")
+    )
     frame_profile = _latest_dict_event_value(snapshot, "perf.frame_profile")
     top_system_name = "n/a"
     top_system_ms = 0.0
+    top_systems: tuple[tuple[str, float], ...] = ()
     python_current_mb = 0.0
     process_rss_mb = 0.0
+    profile_capture_state = "off"
+    profile_capture_frames = 0
+    profile_capture_target_frames = 0
+    profile_capture_report_path = ""
+    profile_capture_error = ""
     systems = frame_profile.get("systems")
     if isinstance(systems, dict):
         top = systems.get("top_system")
         if isinstance(top, dict):
             top_system_name = str(top.get("name", "n/a"))
             top_system_ms = _safe_float(top.get("ms"), 0.0)
+        top_rows = systems.get("top_systems")
+        if isinstance(top_rows, (list, tuple)):
+            parsed_rows: list[tuple[str, float]] = []
+            for row in top_rows:
+                if not isinstance(row, dict):
+                    continue
+                parsed_rows.append(
+                    (
+                        str(row.get("name", "")),
+                        _safe_float(row.get("ms"), 0.0),
+                    )
+                )
+            top_systems = tuple(parsed_rows)
     memory = frame_profile.get("memory")
     if isinstance(memory, dict):
         python_current_mb = _safe_float(memory.get("python_current_mb"), 0.0)
         process_rss_mb = _safe_float(memory.get("process_rss_mb"), 0.0)
+    capture = frame_profile.get("capture")
+    if isinstance(capture, dict):
+        profile_capture_state = str(capture.get("state", "off"))
+        profile_capture_frames = _safe_int(capture.get("captured_frames"), 0)
+        profile_capture_target_frames = _safe_int(capture.get("target_frames"), 0)
+        profile_capture_report_path = str(capture.get("report_path", ""))
+        profile_capture_error = str(capture.get("error", ""))
     if top_span_name == "n/a":
         block_candidates = (
             ("render.build", render_build_ms),
@@ -200,10 +353,14 @@ def build_performance_breakdown_model(
         render_present_ms=render_present_ms,
         render_total_ms=render_total_ms,
         render_mem_delta_mb=render_mem_delta_mb,
+        render_present_mode=render_present_mode,
         render_execute_packet_count=render_execute_packet_count,
         render_execute_pass_count=render_execute_pass_count,
         render_execute_static_packet_count=render_execute_static_packet_count,
         render_execute_dynamic_packet_count=render_execute_dynamic_packet_count,
+        render_execute_packet_build_ms=render_execute_packet_build_ms,
+        render_execute_auto_static_ms=render_execute_auto_static_ms,
+        render_execute_static_packet_cache_hits=render_execute_static_packet_cache_hits,
         render_execute_static_reused=render_execute_static_reused,
         render_execute_static_bundle_replayed=render_execute_static_bundle_replayed,
         render_execute_static_upload_bytes=render_execute_static_upload_bytes,
@@ -211,12 +368,43 @@ def build_performance_breakdown_model(
         render_execute_static_rebuild_count=render_execute_static_rebuild_count,
         render_execute_static_run_count=render_execute_static_run_count,
         render_execute_dynamic_run_count=render_execute_dynamic_run_count,
+        render_execute_stage_upload_ms=render_execute_stage_upload_ms,
+        render_execute_translate_ms=render_execute_translate_ms,
+        render_execute_expand_ms=render_execute_expand_ms,
+        render_execute_rect_batch_ms=render_execute_rect_batch_ms,
+        render_execute_text_batch_ms=render_execute_text_batch_ms,
+        render_execute_text_layout_ms=render_execute_text_layout_ms,
+        render_execute_text_shape_ms=render_execute_text_shape_ms,
+        render_execute_text_shape_calls=render_execute_text_shape_calls,
+        render_execute_atlas_upload_ms=render_execute_atlas_upload_ms,
+        render_execute_atlas_upload_bytes=render_execute_atlas_upload_bytes,
+        render_execute_atlas_upload_count=render_execute_atlas_upload_count,
+        render_execute_packet_translate_count=render_execute_packet_translate_count,
+        render_execute_rect_count=render_execute_rect_count,
+        render_execute_text_quad_count=render_execute_text_quad_count,
+        render_execute_draw_calls=render_execute_draw_calls,
+        render_execute_pipeline_binds=render_execute_pipeline_binds,
+        render_execute_vertex_buffer_binds=render_execute_vertex_buffer_binds,
+        render_execute_bind_group_binds=render_execute_bind_group_binds,
+        render_execute_bundle_replays=render_execute_bundle_replays,
+        render_execute_cffi_type_miss_total=render_execute_cffi_type_miss_total,
+        render_execute_cffi_type_miss_delta=render_execute_cffi_type_miss_delta,
+        render_execute_cffi_type_miss_unique=render_execute_cffi_type_miss_unique,
+        render_execute_cffi_type_miss_top=render_execute_cffi_type_miss_top,
         render_execute_pass_packet_counts=render_execute_pass_packet_counts,
         render_execute_kind_packet_counts=render_execute_kind_packet_counts,
+        render_execute_kind_rect_counts=render_execute_kind_rect_counts,
+        render_execute_kind_text_quad_counts=render_execute_kind_text_quad_counts,
         top_system_name=top_system_name,
         top_system_ms=top_system_ms,
+        top_systems=top_systems,
         python_current_mb=python_current_mb,
         process_rss_mb=process_rss_mb,
+        profile_capture_state=profile_capture_state,
+        profile_capture_frames=profile_capture_frames,
+        profile_capture_target_frames=profile_capture_target_frames,
+        profile_capture_report_path=profile_capture_report_path,
+        profile_capture_error=profile_capture_error,
         render_stage_event_counts=sorted_stage_counts,
     )
 
