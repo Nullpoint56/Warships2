@@ -423,6 +423,31 @@ User-visible result:
 Exit:
 1. Success target: at least 5x FPS improvement versus current reported low (80 FPS scenes -> 400+ class on same machine profile) and materially improved UI fidelity.
 
+Phase 8 execution note (2026-02-21):
+1. Executed renderer hot-path tuning in `engine/rendering/wgpu_renderer.py`:
+- geometry path migrated from per-color pipeline specialization to a single geometry pipeline with per-vertex color attributes
+- rect batching changed to contiguous stream emission with collapsed run submission (single-run upload path per static/dynamic rect stream)
+- static render bundle replay path updated to replay collapsed draw runs
+- command batch build now uses "already sorted" fast-path and avoids full sort work when inputs are monotonic
+2. Scope intentionally excluded Phase 9 native-backed migrations (`numpy`, direct GLFW backend migration, diagnostics serializer replacement), which remain Phase 9 only.
+3. Diagnostics compatibility preserved:
+- execute packet counters unchanged
+- static/dynamic run counters still emitted, but now represent collapsed run submissions
+
+Phase 8 locked acceptance checklist:
+1. Visual correctness:
+- no color tint regressions in menu/new-game/preset/battle HUD
+- no button/panel artifact regressions introduced by batching changes
+2. Execute-path efficiency (renderer lane):
+- `top_render_span=render.execute` remains dominant only in dense scenes; target mean execute share <= 70% in menu/list scenes under `dev-fast`
+- `execute_static_packets` should remain high in idle/static-heavy UI scenes (expected >= 80% of total packets)
+- `execute_static_reused=True` in stable idle scenes after warmup
+3. Submission efficiency:
+- collapsed run path should keep `execute_static_run_count + execute_dynamic_run_count` materially below packet count in static-heavy scenes
+- no per-frame static upload in stable scenes (`execute_static_upload_bytes=0` after warmup)
+4. Stability:
+- no present/acquire regression versus Phase 7 (failure counters remain 0 in normal operation)
+
 ### Phase 9: Native-Backed Acceleration and Platform Hardening (Must-Have Final Pass)
 
 Implementation:

@@ -536,14 +536,19 @@ class WgpuRenderer:
         batches: list[_RenderPassBatch] = []
         for render_pass in snapshot.passes:
             descriptor = _resolve_pass_descriptor(render_pass.name)
-            indexed_commands = tuple(enumerate(render_pass.commands))
-            sorted_indexed = tuple(
-                sorted(
-                    indexed_commands,
-                    key=lambda indexed: _command_sort_key(indexed[1], indexed[0]),
-                )
-            )
-            commands = tuple(command for _, command in sorted_indexed)
+            keyed: list[tuple[tuple[object, ...], RenderCommand]] = []
+            already_sorted = True
+            previous_key: tuple[object, ...] | None = None
+            for ordinal, command in enumerate(render_pass.commands):
+                key = _command_sort_key(command, ordinal)
+                if previous_key is not None and key < previous_key:
+                    already_sorted = False
+                previous_key = key
+                keyed.append((key, command))
+            if already_sorted:
+                commands = tuple(command for _, command in keyed)
+            else:
+                commands = tuple(command for _, command in sorted(keyed, key=lambda item: item[0]))
             batches.append(_RenderPassBatch(name=descriptor.canonical_name, commands=commands))
         return tuple(sorted(batches, key=lambda batch: _resolve_pass_descriptor(batch.name).priority))
 
@@ -821,8 +826,6 @@ def _command_sort_key(command: RenderCommand, ordinal: int) -> tuple[object, ...
         str(command.sort_key),
         str(command.kind),
         _command_key(command),
-        tuple((str(key), _stable_sort_value(value)) for key, value in command.data),
-        tuple(_stable_sort_value(float(value)) for value in command.transform.values),
         int(ordinal),
     )
 
@@ -1253,7 +1256,7 @@ class _WgpuBackend:
     _draw_vertex_buffer_dynamic: object | None = field(init=False, default=None)
     _draw_vertex_buffer_dynamic_capacity: int = field(init=False, default=0)
     _static_draw_cache_key: tuple[object, ...] | None = field(init=False, default=None)
-    _static_draw_runs: tuple[tuple[tuple[float, float, float, float], int, int], ...] = field(
+    _static_draw_runs: tuple[tuple[int, int], ...] = field(
         init=False, default_factory=tuple
     )
     _static_render_bundle: object | None = field(init=False, default=None)
@@ -2166,10 +2169,11 @@ class _WgpuBackend:
                 "entry_point": "vs_main",
                 "buffers": [
                     {
-                        "array_stride": 8,
+                        "array_stride": 24,
                         "step_mode": "vertex",
                         "attributes": [
                             {"shader_location": 0, "offset": 0, "format": "float32x2"},
+                            {"shader_location": 1, "offset": 8, "format": "float32x4"},
                         ],
                     }
                 ],
@@ -2183,35 +2187,8 @@ class _WgpuBackend:
         }
 
     def _pipeline_for_color(self, color: tuple[float, float, float, float]) -> object | None:
-        cached = self._geometry_pipeline_cache.get(color)
-        if cached is not None:
-            return cached
-        create_shader_module = getattr(self._device, "create_shader_module", None)
-        create_render_pipeline = getattr(self._device, "create_render_pipeline", None)
-        if not callable(create_shader_module) or not callable(create_render_pipeline):
-            return self._geometry_pipeline
-        shader_src = _geometry_wgsl_for_color(color)
-        shader = create_shader_module(code=shader_src)
-        color_target = {
-            "format": self._surface_format,
-            "blend": {
-                "color": {
-                    "src_factor": "src-alpha",
-                    "dst_factor": "one-minus-src-alpha",
-                    "operation": "add",
-                },
-                "alpha": {
-                    "src_factor": "one",
-                    "dst_factor": "one-minus-src-alpha",
-                    "operation": "add",
-                },
-            },
-            "write_mask": 0xF,
-        }
-        descriptor = self._geometry_pipeline_descriptor(color_target, shader)
-        pipeline = cast(object, create_render_pipeline(**descriptor))
-        self._geometry_pipeline_cache[color] = pipeline
-        return pipeline
+        _ = color
+        return self._geometry_pipeline
 
     def _packet_draw_rects(
         self,
@@ -2716,32 +2693,21 @@ class _WgpuBackend:
                     return
                 set_vertex_buffer(0, self._draw_vertex_buffer_static)
                 self._execute_static_run_count_frame += int(len(self._static_draw_runs))
-                for color, run_first_vertex, run_vertex_count in self._static_draw_runs:
-                    pipeline = self._pipeline_for_color(color)
-                    if pipeline is None:
-                        continue
-                    set_pipeline(pipeline)
+                pipeline = self._pipeline_for_color((1.0, 1.0, 1.0, 1.0))
+                if pipeline is None:
+                    return
+                set_pipeline(pipeline)
+                for run_first_vertex, run_vertex_count in self._static_draw_runs:
                     draw(run_vertex_count, 1, run_first_vertex, 0)
                 return
-
-        runs = self._iter_material_runs(draw_rects)
-        if not runs:
-            return
-        packed_vertices: list[float] = []
-        run_draws: list[tuple[tuple[float, float, float, float], int, int]] = []
-        first_vertex = 0
-        for _layer, color, color_rects in runs:
-            vertices = self._batch_vertices_for_rects(tuple(color_rects))
-            vertex_count = int(len(vertices) // 2)
-            if vertex_count <= 0:
-                continue
-            packed_vertices.extend(vertices)
-            run_draws.append((color, first_vertex, vertex_count))
-            first_vertex += vertex_count
+        packed_vertices = self._batch_vertices_for_rects(draw_rects)
         vertex_buffer, total_vertex_count, uploaded_bytes = self._create_vertex_buffer_from_positions(
             packed_vertices,
             stream_kind=stream_kind,
         )
+        if total_vertex_count <= 0:
+            return
+        run_draws = ((0, int(total_vertex_count)),)
         if stream_kind == "static":
             self._execute_static_upload_bytes_frame += int(uploaded_bytes)
             self._execute_static_rebuild_count_frame += 1
@@ -2761,12 +2727,12 @@ class _WgpuBackend:
             self._execute_dynamic_run_count_frame += int(len(run_draws))
         if vertex_buffer is None or total_vertex_count <= 0:
             return
+        pipeline = self._pipeline_for_color((1.0, 1.0, 1.0, 1.0))
+        if pipeline is None:
+            return
+        set_pipeline(pipeline)
         set_vertex_buffer(0, vertex_buffer)
-        for color, run_first_vertex, run_vertex_count in run_draws:
-            pipeline = self._pipeline_for_color(color)
-            if pipeline is None:
-                continue
-            set_pipeline(pipeline)
+        for run_first_vertex, run_vertex_count in run_draws:
             draw(run_vertex_count, 1, run_first_vertex, 0)
 
     def _draw_text_batches(
@@ -2985,7 +2951,7 @@ class _WgpuBackend:
     def _build_static_render_bundle(
         self,
         *,
-        run_draws: tuple[tuple[tuple[float, float, float, float], int, int], ...],
+        run_draws: tuple[tuple[int, int], ...],
         vertex_buffer: object,
     ) -> object | None:
         create_bundle_encoder = getattr(self._device, "create_render_bundle_encoder", None)
@@ -3009,47 +2975,15 @@ class _WgpuBackend:
             return None
         try:
             set_vertex_buffer(0, vertex_buffer)
-            for color, run_first_vertex, run_vertex_count in run_draws:
-                pipeline = self._pipeline_for_color(color)
-                if pipeline is None:
-                    continue
-                set_pipeline(pipeline)
+            pipeline = self._pipeline_for_color((1.0, 1.0, 1.0, 1.0))
+            if pipeline is None:
+                return None
+            set_pipeline(pipeline)
+            for run_first_vertex, run_vertex_count in run_draws:
                 draw(run_vertex_count, 1, run_first_vertex, 0)
             return cast(object, finish())
         except Exception:
             return None
-
-    def _iter_material_runs(
-        self, draw_rects: tuple["_DrawRect", ...]
-    ) -> tuple[tuple[int, tuple[float, float, float, float], list[_DrawRect]], ...]:
-        if not draw_rects:
-            return ()
-        runs: list[tuple[int, tuple[float, float, float, float], list[_DrawRect]]] = []
-        current_layer = int(draw_rects[0].layer)
-        current_color = (
-            float(draw_rects[0].color[0]),
-            float(draw_rects[0].color[1]),
-            float(draw_rects[0].color[2]),
-            float(draw_rects[0].color[3]),
-        )
-        current_rects: list[_DrawRect] = [draw_rects[0]]
-        for rect in draw_rects[1:]:
-            layer = int(rect.layer)
-            color = (
-                float(rect.color[0]),
-                float(rect.color[1]),
-                float(rect.color[2]),
-                float(rect.color[3]),
-            )
-            if layer == current_layer and color == current_color:
-                current_rects.append(rect)
-                continue
-            runs.append((current_layer, current_color, current_rects))
-            current_layer = layer
-            current_color = color
-            current_rects = [rect]
-        runs.append((current_layer, current_color, current_rects))
-        return tuple(runs)
 
     def _batch_vertices_for_rects(self, rects: tuple["_DrawRect", ...]) -> list[float]:
         vertices: list[float] = []
@@ -3068,19 +3002,14 @@ class _WgpuBackend:
         x1 = ((rx + rw) / width) * 2.0 - 1.0
         y0 = 1.0 - ((ry / height) * 2.0)
         y1 = 1.0 - (((ry + rh) / height) * 2.0)
+        r, g, b, a = rect.color
         return (
-            x0,
-            y0,
-            x1,
-            y0,
-            x0,
-            y1,
-            x0,
-            y1,
-            x1,
-            y0,
-            x1,
-            y1,
+            x0, y0, r, g, b, a,
+            x1, y0, r, g, b, a,
+            x0, y1, r, g, b, a,
+            x0, y1, r, g, b, a,
+            x1, y0, r, g, b, a,
+            x1, y1, r, g, b, a,
         )
 
     def _create_vertex_buffer_from_positions(
@@ -3107,7 +3036,7 @@ class _WgpuBackend:
                 return None, 0, 0
         else:
             return None, 0, 0
-        return buffer, int(len(values) // 2), int(len(raw))
+        return buffer, int(len(values) // 6), int(len(raw))
 
     def _apply_draw_rect(
         self,
@@ -3535,16 +3464,25 @@ def _ortho_projection(*, width: float, height: float) -> tuple[float, ...]:
 _GEOMETRY_WGSL = """
 struct VsIn {
     @location(0) pos: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+struct VsOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) color: vec4<f32>,
 };
 
 @vertex
-fn vs_main(input: VsIn) -> @builtin(position) vec4<f32> {
-    return vec4<f32>(input.pos, 0.0, 1.0);
+fn vs_main(input: VsIn) -> VsOut {
+    var out: VsOut;
+    out.position = vec4<f32>(input.pos, 0.0, 1.0);
+    out.color = input.color;
+    return out;
 }
 
 @fragment
-fn fs_main() -> @location(0) vec4<f32> {
-    return vec4<f32>(0.1, 0.1, 0.1, 1.0);
+fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
+    return input.color;
 }
 """
 
