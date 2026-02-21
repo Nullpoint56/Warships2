@@ -366,6 +366,20 @@ User-visible result:
 Exit:
 1. No stale/blank rendering in rapid resize stress runs.
 
+Phase 6 execution note (2026-02-21):
+1. Added resize burst hardening in `RenderCanvasWindow`:
+- coalesces multiple queued resize events into the latest event per poll
+- debounces redraw requests during rapid resize bursts (`ENGINE_WINDOW_RESIZE_REDRAW_MIN_INTERVAL_MS`)
+- exposes per-burst telemetry via `consume_resize_telemetry()`
+2. Added window diagnostics event `window.resize_burst` in `HostedWindowFrontend`, including coalesced/skipped/redraw counters.
+3. Added adaptive surface recovery policy in `_WgpuBackend`:
+- dynamic retry limit escalation based on failure streak
+- temporary recovery backoff window after repeated failures
+- adaptive present mode stabilization fallback to `fifo` when repeated failures persist
+4. Exposed recovery/burst data in diagnostics summary path:
+- `render.profile_frame` now includes acquire/present/reconfigure failure counters plus recovery/backoff/switch counters
+- `DiagnosticsMetricsStore` aggregates resize burst + recovery counters into snapshot metrics.
+
 ### Phase 7: Runtime Mode and Diagnostics Budget Control
 
 Implementation:

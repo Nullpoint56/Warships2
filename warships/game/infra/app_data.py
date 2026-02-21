@@ -102,9 +102,6 @@ def apply_runtime_path_defaults() -> dict[str, Path]:
     )
     replay_dir = _normalize_runtime_path_env("ENGINE_DIAGNOSTICS_REPLAY_EXPORT_DIR", paths["replay"])
     crash_dir = _normalize_runtime_path_env("ENGINE_DIAGNOSTICS_CRASH_DIR", paths["crash"])
-    if not os.getenv("ENGINE_RUNTIME_GAME_NAME", "").strip():
-        game_name = os.getenv("WARSHIPS_GAME_NAME", "warships").strip() or "warships"
-        os.environ["ENGINE_RUNTIME_GAME_NAME"] = game_name
 
     log_dir.mkdir(parents=True, exist_ok=True)
     presets_dir.mkdir(parents=True, exist_ok=True)

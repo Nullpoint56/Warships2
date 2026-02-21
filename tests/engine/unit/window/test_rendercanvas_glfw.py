@@ -235,6 +235,32 @@ def test_window_port_accepts_resize_width_height_shape(monkeypatch: pytest.Monke
     assert events[0].physical_height == 750
 
 
+def test_window_port_coalesces_resize_bursts_and_exposes_telemetry(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    glfw = _FakeGlfw()
+    _install_fake_rendercanvas_glfw(monkeypatch, glfw)
+    monkeypatch.setenv("ENGINE_WINDOW_RESIZE_REDRAW_MIN_INTERVAL_MS", "1000")
+    canvas = _Canvas()
+    window = RenderCanvasWindow(canvas=canvas)
+
+    canvas.emit("resize", size=(640.0, 480.0), pixel_ratio=1.0)
+    canvas.emit("resize", size=(800.0, 600.0), pixel_ratio=1.0)
+    canvas.emit("resize", size=(1024.0, 768.0), pixel_ratio=1.0)
+
+    events = window.poll_events()
+    assert len(events) == 1
+    assert isinstance(events[0], WindowResizeEvent)
+    assert events[0].logical_width == 1024.0
+    assert events[0].logical_height == 768.0
+    telemetry = window.consume_resize_telemetry()
+    assert telemetry["resize_received_total"] == 3
+    assert telemetry["resize_emitted_total"] == 1
+    assert telemetry["resize_coalesced_total"] == 2
+    assert telemetry["resize_redraw_requested_total"] == 1
+    assert telemetry["resize_redraw_skipped_total"] >= 1
+
+
 def test_window_port_accepts_object_style_input_events(monkeypatch: pytest.MonkeyPatch) -> None:
     glfw = _FakeGlfw()
     _install_fake_rendercanvas_glfw(monkeypatch, glfw)

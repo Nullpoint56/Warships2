@@ -190,4 +190,5 @@ def test_draw_frame_processes_window_events_and_close_request() -> None:
     assert host.is_closed()
     names = [str(item.get("name", "")) for item in host.diagnostics_hub.events]
     assert "window.resize" in names
+    assert "window.resize_burst" in names
     assert "window.close_requested" in names

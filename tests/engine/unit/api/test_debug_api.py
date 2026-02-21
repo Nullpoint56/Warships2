@@ -67,6 +67,13 @@ def test_debug_api_returns_metrics_snapshot(monkeypatch) -> None:
     assert metrics.resize_count >= 0
     assert metrics.resize_event_to_apply_p95_ms >= 0.0
     assert metrics.resize_apply_to_frame_p95_ms >= 0.0
+    assert metrics.resize_burst_count >= 0
+    assert metrics.resize_coalesced_total >= 0
+    assert metrics.resize_redraw_skipped_total >= 0
+    assert metrics.acquire_failures_total >= 0
+    assert metrics.present_failures_total >= 0
+    assert metrics.recovery_backoff_events_total >= 0
+    assert metrics.adaptive_present_mode_switches_total >= 0
 
 
 def test_debug_api_returns_profiling_snapshot(monkeypatch) -> None:

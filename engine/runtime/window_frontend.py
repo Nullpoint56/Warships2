@@ -66,8 +66,10 @@ class HostedWindowFrontend:
             return
         hub = getattr(self._host, "diagnostics_hub", None)
         tick = int(self._host.current_frame_index())
+        resize_events_seen = 0
         for event in events:
             if isinstance(event, WindowResizeEvent):
+                resize_events_seen += 1
                 apply_window_resize = getattr(self._renderer, "apply_window_resize", None)
                 if callable(apply_window_resize):
                     apply_window_resize(event)
@@ -112,6 +114,26 @@ class HostedWindowFrontend:
                         value={"requested": bool(event.requested)},
                     )
                 self._host.close()
+        if resize_events_seen > 0 and hub is not None and hasattr(hub, "emit_fast"):
+            consume_resize_telemetry = getattr(self._window, "consume_resize_telemetry", None)
+            resize_telemetry = (
+                consume_resize_telemetry() if callable(consume_resize_telemetry) else {}
+            )
+            if not isinstance(resize_telemetry, dict):
+                resize_telemetry = {}
+            hub.emit_fast(
+                category="window",
+                name="window.resize_burst",
+                tick=tick,
+                value={
+                    "resize_events_seen": int(resize_events_seen),
+                    **{
+                        str(key): int(value)
+                        for key, value in resize_telemetry.items()
+                        if isinstance(value, (int, float))
+                    },
+                },
+            )
 
     def _build_input_snapshot(self) -> InputSnapshot:
         window_raw_input = self._window.poll_input_events()

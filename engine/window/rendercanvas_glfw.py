@@ -6,7 +6,8 @@ from collections import deque
 from dataclasses import dataclass, field
 import logging
 import os
-from typing import Any
+import time
+from typing import Any, cast
 
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.window import (
@@ -124,11 +125,25 @@ class RenderCanvasWindow(WindowPort):
     _input_events: deque[PointerEvent | KeyEvent | WheelEvent] = field(default_factory=deque)
     _rc_auto: Any | None = field(default=None, repr=False)
     _debug_events: bool = field(default=False, repr=False)
+    _resize_redraw_min_interval_s: float = field(default=1.0 / 60.0, repr=False)
+    _last_resize_redraw_ts: float = field(default=0.0, repr=False)
+    _resize_received_total: int = field(default=0, repr=False)
+    _resize_emitted_total: int = field(default=0, repr=False)
+    _resize_coalesced_total: int = field(default=0, repr=False)
+    _resize_redraw_requested_total: int = field(default=0, repr=False)
+    _resize_redraw_skipped_total: int = field(default=0, repr=False)
 
     def __post_init__(self) -> None:
         self._debug_events = (
             os.getenv("ENGINE_WINDOW_EVENTS_TRACE_ENABLED", "0").strip().lower()
             in {"1", "true", "yes", "on"}
+        )
+        self._resize_redraw_min_interval_s = (
+            max(
+                0.0,
+                _env_float("ENGINE_WINDOW_RESIZE_REDRAW_MIN_INTERVAL_MS", 16.0),
+            )
+            / 1000.0
         )
         if self._rc_auto is None:
             try:
@@ -144,7 +159,9 @@ class RenderCanvasWindow(WindowPort):
     def poll_events(self) -> tuple[WindowEvent, ...]:
         drained = tuple(self._events)
         self._events.clear()
-        return drained
+        if not drained:
+            return drained
+        return self._coalesce_resize_events(drained)
 
     def poll_input_events(self) -> tuple[PointerEvent | KeyEvent | WheelEvent, ...]:
         drained = tuple(self._input_events)
@@ -233,7 +250,8 @@ class RenderCanvasWindow(WindowPort):
                 dpi_scale=dpi_scale,
             )
         )
-        self._request_redraw()
+        self._resize_received_total += 1
+        self._request_redraw_resize_debounced()
 
     def _on_focus(self, event: object) -> None:
         focused = _event_value(event, "focused")
@@ -302,6 +320,18 @@ class RenderCanvasWindow(WindowPort):
             except TypeError:
                 return
 
+    def _request_redraw_resize_debounced(self) -> None:
+        now = time.perf_counter()
+        if (
+            self._last_resize_redraw_ts > 0.0
+            and (now - self._last_resize_redraw_ts) < self._resize_redraw_min_interval_s
+        ):
+            self._resize_redraw_skipped_total += 1
+            return
+        self._request_redraw()
+        self._last_resize_redraw_ts = now
+        self._resize_redraw_requested_total += 1
+
     def _try_add_event_handler(self, add_handler: Any, handler: Any, event_type: str) -> None:
         try:
             add_handler(handler, event_type)
@@ -315,6 +345,37 @@ class RenderCanvasWindow(WindowPort):
         if event_type == "before_draw":
             return
         _LOG.debug("window_event type=%s payload=%r", event_type, event)
+
+    def _coalesce_resize_events(self, events: tuple[WindowEvent, ...]) -> tuple[WindowEvent, ...]:
+        resize_indices = [index for index, item in enumerate(events) if isinstance(item, WindowResizeEvent)]
+        if len(resize_indices) <= 1:
+            if len(resize_indices) == 1:
+                self._resize_emitted_total += 1
+            return events
+        first_index = int(resize_indices[0])
+        latest_resize = cast(WindowResizeEvent, events[resize_indices[-1]])
+        out: list[WindowEvent] = [
+            item for item in events if not isinstance(item, WindowResizeEvent)
+        ]
+        out.insert(first_index, latest_resize)
+        self._resize_coalesced_total += len(resize_indices) - 1
+        self._resize_emitted_total += 1
+        return tuple(out)
+
+    def consume_resize_telemetry(self) -> dict[str, int]:
+        payload = {
+            "resize_received_total": int(self._resize_received_total),
+            "resize_emitted_total": int(self._resize_emitted_total),
+            "resize_coalesced_total": int(self._resize_coalesced_total),
+            "resize_redraw_requested_total": int(self._resize_redraw_requested_total),
+            "resize_redraw_skipped_total": int(self._resize_redraw_skipped_total),
+        }
+        self._resize_received_total = 0
+        self._resize_emitted_total = 0
+        self._resize_coalesced_total = 0
+        self._resize_redraw_requested_total = 0
+        self._resize_redraw_skipped_total = 0
+        return payload
 
 
 def create_rendercanvas_window(
@@ -418,6 +479,16 @@ def _is_pointer_type_match(raw_type: str, expected_type: str) -> bool:
     }
     allowed = aliases.get(expected_type, (expected_type,))
     return raw_type in allowed
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return float(default)
+    try:
+        return float(raw.strip())
+    except ValueError:
+        return float(default)
 
 
 def _install_wgpu_physical_size_guard() -> None:

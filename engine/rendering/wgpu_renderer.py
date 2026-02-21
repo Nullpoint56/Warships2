@@ -695,6 +695,20 @@ class WgpuRenderer:
             value["mem_delta_mb"] = mem_delta
         if execute_summary:
             value.update(execute_summary)
+        resize_telemetry = self._backend.resize_telemetry()
+        value.update(
+            {
+                "acquire_failures": _as_int(resize_telemetry.get("acquire_failures", 0)),
+                "present_failures": _as_int(resize_telemetry.get("present_failures", 0)),
+                "reconfigure_failures": _as_int(resize_telemetry.get("reconfigure_failures", 0)),
+                "recovery_backoff_events": _as_int(
+                    resize_telemetry.get("recovery_backoff_events", 0)
+                ),
+                "adaptive_present_mode_switches": _as_int(
+                    resize_telemetry.get("adaptive_present_mode_switches", 0)
+                ),
+            }
+        )
         hub.emit_fast(
             category="render",
             name="render.profile_frame",
@@ -1273,6 +1287,14 @@ class _WgpuBackend:
     _present_failures: int = field(init=False, default=0)
     _present_recoveries: int = field(init=False, default=0)
     _last_present_error: str = field(init=False, default="")
+    _acquire_failure_streak: int = field(init=False, default=0)
+    _present_failure_streak: int = field(init=False, default=0)
+    _recovery_backoff_until_s: float = field(init=False, default=0.0)
+    _recovery_backoff_events: int = field(init=False, default=0)
+    _adaptive_present_mode_switches: int = field(init=False, default=0)
+    _recovery_failure_streak_threshold: int = field(init=False, default=3)
+    _recovery_cooldown_s: float = field(init=False, default=0.05)
+    _reconfigure_retry_limit_max: int = field(init=False, default=4)
     _vsync_enabled: bool = field(init=False, default=True)
     _present_mode_supported: tuple[str, ...] = field(init=False, default=("fifo", "mailbox", "immediate"))
     _static_packet_rect_cache: dict[tuple[object, ...], tuple[_DrawRect, ...]] = field(
@@ -1291,6 +1313,21 @@ class _WgpuBackend:
             "ENGINE_RENDER_INTERNAL_SCALE",
             1.0,
             minimum=0.1,
+        )
+        self._recovery_failure_streak_threshold = _env_int(
+            "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD",
+            3,
+            minimum=1,
+        )
+        self._recovery_cooldown_s = _env_float(
+            "ENGINE_WGPU_RECOVERY_COOLDOWN_MS",
+            50.0,
+            minimum=0.0,
+        ) / 1000.0
+        self._reconfigure_retry_limit_max = _env_int(
+            "ENGINE_WGPU_RECOVERY_MAX_RETRY_LIMIT",
+            4,
+            minimum=max(2, int(self._reconfigure_retry_limit)),
         )
         self._window_width = int(max(1, self._target_width))
         self._window_height = int(max(1, self._target_height))
@@ -1455,26 +1492,32 @@ class _WgpuBackend:
         encoder = self._command_encoder
         if encoder is None:
             return
+        if self._is_recovery_backoff_active():
+            return
         finish = getattr(encoder, "finish", None)
         if not callable(finish):
             return
         self._present_attempts_last = 0
-        for attempt in range(1, self._reconfigure_retry_limit + 1):
+        retry_limit = self._effective_retry_limit(streak=self._present_failure_streak)
+        for attempt in range(1, retry_limit + 1):
             self._present_attempts_last = attempt
             try:
                 command_buffer = finish()
                 submit = getattr(self._queue, "submit", None)
                 if callable(submit):
                     submit([command_buffer])
+                self._present_failure_streak = 0
                 return
             except Exception as exc:
                 self._present_failures += 1
+                self._present_failure_streak += 1
                 self._last_present_error = f"{exc.__class__.__name__}: {exc}"
+                self._record_recovery_failure(kind="present")
                 recovered = self._recover_surface_context(reason="present_submit")
                 if recovered:
                     self._present_recoveries += 1
                     continue
-                if attempt >= self._reconfigure_retry_limit:
+                if attempt >= retry_limit:
                     raise RuntimeError(
                         "wgpu_present_failed "
                         f"attempts={self._present_attempts_last} "
@@ -1583,6 +1626,17 @@ class _WgpuBackend:
             "present_failures": int(self._present_failures),
             "present_recoveries": int(self._present_recoveries),
             "last_present_error": str(self._last_present_error),
+            "acquire_failure_streak": int(self._acquire_failure_streak),
+            "present_failure_streak": int(self._present_failure_streak),
+            "recovery_backoff_active": bool(self._is_recovery_backoff_active()),
+            "recovery_backoff_events": int(self._recovery_backoff_events),
+            "adaptive_present_mode_switches": int(self._adaptive_present_mode_switches),
+            "effective_retry_limit": int(
+                max(
+                    self._effective_retry_limit(streak=self._acquire_failure_streak),
+                    self._effective_retry_limit(streak=self._present_failure_streak),
+                )
+            ),
         }
 
     def _resolve_internal_render_size(self, width: int, height: int) -> tuple[int, int]:
@@ -1990,20 +2044,26 @@ class _WgpuBackend:
         context = self._canvas_context
         if context is None:
             return None
+        if self._is_recovery_backoff_active():
+            return None
         get_current_texture = getattr(context, "get_current_texture", None)
         if not callable(get_current_texture):
             return None
         self._acquire_attempts_last = 0
-        for attempt in range(1, self._reconfigure_retry_limit + 1):
+        retry_limit = self._effective_retry_limit(streak=self._acquire_failure_streak)
+        for attempt in range(1, retry_limit + 1):
             self._acquire_attempts_last = attempt
             try:
                 texture = get_current_texture()
                 create_view = getattr(texture, "create_view", None)
+                self._acquire_failure_streak = 0
                 if callable(create_view):
                     return cast(object, create_view())
                 return cast(object, texture)
             except Exception:
                 self._acquire_failures += 1
+                self._acquire_failure_streak += 1
+                self._record_recovery_failure(kind="acquire")
                 if self._recover_surface_context(reason="acquire_current_texture"):
                     self._acquire_recoveries += 1
                     continue
@@ -2053,7 +2113,44 @@ class _WgpuBackend:
             rebuilt = True
         except Exception:
             rebuilt = False
+        if configured or rebuilt:
+            self._maybe_apply_adaptive_present_mode()
         return bool(configured or rebuilt)
+
+    def _effective_retry_limit(self, *, streak: int) -> int:
+        extra = max(0, int(streak)) // max(1, int(self._recovery_failure_streak_threshold))
+        return min(
+            int(self._reconfigure_retry_limit_max),
+            int(self._reconfigure_retry_limit) + extra,
+        )
+
+    def _record_recovery_failure(self, *, kind: str) -> None:
+        _ = kind
+        streak = max(int(self._acquire_failure_streak), int(self._present_failure_streak))
+        if streak < int(self._recovery_failure_streak_threshold):
+            return
+        now = time.perf_counter()
+        self._recovery_backoff_until_s = max(
+            float(self._recovery_backoff_until_s),
+            now + float(self._recovery_cooldown_s),
+        )
+        self._recovery_backoff_events += 1
+
+    def _is_recovery_backoff_active(self) -> bool:
+        return time.perf_counter() < float(self._recovery_backoff_until_s)
+
+    def _maybe_apply_adaptive_present_mode(self) -> None:
+        if self._present_mode == "fifo":
+            return
+        if "fifo" not in self._present_mode_supported:
+            return
+        if max(self._acquire_failure_streak, self._present_failure_streak) < int(
+            self._recovery_failure_streak_threshold
+        ):
+            return
+        self._present_mode = "fifo"
+        if self._configure_canvas_context():
+            self._adaptive_present_mode_switches += 1
 
     def _geometry_pipeline_descriptor(self, color_target: object, shader: object) -> dict[str, object]:
         return {
@@ -3287,6 +3384,21 @@ def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
     except ValueError:
         value = float(default)
     return max(float(minimum), float(value))
+
+
+def _as_int(value: object, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return int(default)
+    return int(default)
 
 
 def _resolve_ui_design_dimensions(*, default_width: int, default_height: int) -> tuple[int, int]:

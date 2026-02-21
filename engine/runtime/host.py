@@ -54,6 +54,7 @@ class EngineHostConfig:
     window_mode: str = "windowed"
     width: int = 1280
     height: int = 800
+    runtime_name: str = "game"
 
 
 class EngineHost(HostControl):
@@ -67,6 +68,7 @@ class EngineHost(HostControl):
     ) -> None:
         self._module = module
         self._config = config or EngineHostConfig()
+        self._runtime_name = self._resolve_runtime_name(self._config.runtime_name)
         self._frame_index = 0
         self._closed = False
         self._started = False
@@ -116,7 +118,7 @@ class EngineHost(HostControl):
         self._replay_recorder = ReplayRecorder(
             enabled=diag_cfg.replay_capture,
             seed=_resolve_replay_seed(),
-            build=self._runtime_metadata(),
+            build=self._runtime_metadata(self._runtime_name),
             hash_interval=diag_cfg.replay_hash_interval,
             hub=self._diagnostics_hub,
         )
@@ -183,7 +185,7 @@ class EngineHost(HostControl):
             tick=self._frame_index,
             diagnostics_hub=self._diagnostics_hub,
             reason="manual_debug_api_export",
-            runtime_metadata=self._runtime_metadata(),
+            runtime_metadata=self._runtime_metadata(self._runtime_name),
             profiling_snapshot={
                 "frame_profile": self._frame_profiler.latest_payload or {},
                 "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
@@ -478,15 +480,15 @@ class EngineHost(HostControl):
             return None
 
     @staticmethod
-    def _runtime_metadata() -> dict[str, object]:
+    def _runtime_metadata(runtime_name: str = "game") -> dict[str, object]:
         versions: dict[str, str] = {}
         for pkg in ("wgpu", "rendercanvas"):
             try:
                 versions[pkg] = version(pkg)
             except PackageNotFoundError:
                 versions[pkg] = "unknown"
-        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
-        return {"engine_versions": versions, "game_name": game_name}
+        normalized_name = str(runtime_name).strip().lower() or "game"
+        return {"engine_versions": versions, "game_name": normalized_name}
 
     def _try_start_diagnostics_http(self) -> None:
         enabled_raw = os.getenv("ENGINE_DIAGNOSTICS_HTTP_ENABLED", "1").strip().lower()
@@ -517,9 +519,8 @@ class EngineHost(HostControl):
         if manifest.command_count <= 0:
             return
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
         out_dir = Path(self._diag_cfg.replay_export_dir)
-        out_path = out_dir / f"{game_name}_replay_session_{stamp}.json"
+        out_path = out_dir / f"{self._runtime_name}_replay_session_{stamp}.json"
         try:
             exported = self._replay_recorder.export_json(path=out_path)
         except OSError:
@@ -533,9 +534,8 @@ class EngineHost(HostControl):
         if not spans:
             return
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
-        game_name = os.getenv("ENGINE_RUNTIME_GAME_NAME", "game").strip() or "game"
         out_dir = Path(self._diag_cfg.profile_export_dir)
-        out_path = out_dir / f"{game_name}_profiling_data_{stamp}.jsonl"
+        out_path = out_dir / f"{self._runtime_name}_profiling_data_{stamp}.jsonl"
         out_dir.mkdir(parents=True, exist_ok=True)
         try:
             with out_path.open("w", encoding="utf-8") as out:
@@ -555,6 +555,11 @@ class EngineHost(HostControl):
             _LOG.warning("profiling_export_failed path=%s", out_path)
             return
         _LOG.info("profiling_export_written path=%s spans=%d", out_path, len(spans))
+
+    @staticmethod
+    def _resolve_runtime_name(value: str) -> str:
+        normalized = str(value).strip().lower()
+        return normalized or "game"
 
 
 class _OverlaySnapshotRecorder:

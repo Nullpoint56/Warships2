@@ -17,6 +17,7 @@ class HostedRuntimeConfig:
     window_mode: str = "windowed"
     width: int = 1280
     height: int = 800
+    runtime_name: str = "game"
 
 
 def run_hosted_runtime(
@@ -35,5 +36,6 @@ def run_hosted_runtime(
             window_mode=config.window_mode,
             width=config.width,
             height=config.height,
+            runtime_name=config.runtime_name,
         ),
     )
