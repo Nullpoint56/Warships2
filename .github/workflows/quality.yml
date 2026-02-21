@@ -73,7 +73,7 @@ jobs:
               - 'docs/**'
               - '**/*.md'
 
-  lint_format_typecheck:
+  inspect_code_types:
     needs: detect_changes
     if: github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.rerun_everything == 'true' || needs.detect_changes.outputs.engine_src == 'true' || needs.detect_changes.outputs.warships_src == 'true' || needs.detect_changes.outputs.tests_engine == 'true' || needs.detect_changes.outputs.tests_warships == 'true' || needs.detect_changes.outputs.tools_src == 'true'
     runs-on: ubuntu-latest
@@ -95,9 +95,9 @@ jobs:
       - name: Lint, format check, and mypy
         run: uv run python scripts/check.py --skip-engine-tests --skip-warships-tests
 
-  lint_docs:
+  lint_markdown_docs:
     needs: detect_changes
-    if: github.event_name != 'workflow_dispatch' && needs.detect_changes.outputs.docs == 'true' && needs.detect_changes.outputs.rerun_everything != 'true' && needs.detect_changes.outputs.engine_src != 'true' && needs.detect_changes.outputs.warships_src != 'true' && needs.detect_changes.outputs.tests_engine != 'true' && needs.detect_changes.outputs.tests_warships != 'true' && needs.detect_changes.outputs.tools_src != 'true'
+    if: github.event_name == 'workflow_dispatch' || needs.detect_changes.outputs.docs == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout

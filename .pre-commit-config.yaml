@@ -3,23 +3,16 @@ default_stages: [pre-commit]
 repos:
   - repo: local
     hooks:
-      - id: check-engine-or-warships
-        name: quality check (engine/warships/tests)
-        entry: uv run python scripts/check.py
-        language: system
-        pass_filenames: false
-        files: ^(engine/|warships/|tests/engine/|tests/warships/)
-
-      - id: check-tools
-        name: quality check (tools)
-        entry: uv run python scripts/check.py --skip-lint-format-typecheck --skip-engine-tests --skip-warships-tests
-        language: system
-        pass_filenames: false
-        files: ^tools/
-
-      - id: check-rerun-everything
-        name: quality check (config/scripts/workflows)
+      - id: inspect-code-types
+        name: quality check (code type inspection)
         entry: uv run python scripts/check.py --skip-engine-tests --skip-warships-tests
         language: system
         pass_filenames: false
-        files: ^(pyproject\.toml|pytest\.ini|uv\.lock|scripts/|\.github/)
+        files: ^(engine/|warships/|tests/engine/|tests/warships/|tools/|pyproject\.toml|pytest\.ini|uv\.lock|scripts/|\.github/)
+
+      - id: lint-markdown-docs
+        name: quality check (docs markdown lint)
+        entry: uv run python scripts/check_docs.py
+        language: system
+        pass_filenames: false
+        files: ^(docs/|.*\.md$)
