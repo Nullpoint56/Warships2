@@ -72,6 +72,40 @@ def test_game_view_build_snapshot_contains_scalar_render_payloads() -> None:
                 assert value is None or isinstance(value, (bool, int, float, str))
 
 
+def test_game_view_snapshot_recorder_tolerates_new_style_rect_kwargs(monkeypatch) -> None:
+    renderer = _Render()
+    view = GameView(renderer, GridLayout())
+    ui = make_ui_state(state=AppState.MAIN_MENU)
+
+    def _draw_rounded_rect_with_extra(renderer_obj, *, key, x, y, w, h, radius, color, z) -> None:
+        renderer_obj.add_style_rect(
+            style_kind="rounded_rect",
+            key=key,
+            x=x,
+            y=y,
+            w=w,
+            h=h,
+            color=color,
+            z=z,
+            radius=radius,
+            edge_softness=0.25,
+        )
+
+    monkeypatch.setattr(
+        "warships.game.ui.game_view.draw_rounded_rect",
+        _draw_rounded_rect_with_extra,
+    )
+
+    snapshot, _labels = view.build_snapshot(
+        frame_index=8,
+        ui=ui,
+        debug_ui=False,
+        debug_labels_state=[],
+    )
+
+    assert snapshot.passes
+
+
 def test_game_view_fits_button_text_to_button_bounds() -> None:
     renderer = _Render()
     view = GameView(renderer, GridLayout())

@@ -416,7 +416,15 @@ class _SnapshotRecorder:
         thickness: float = 1.0,
         color_secondary: str = "",
         shadow_layers: float = 0.0,
+        **extra: object,
     ) -> None:
+        # Snapshot recorder is intentionally forward-compatible with new style
+        # rectangle fields to avoid runtime crashes when API evolves.
+        extra_pairs = tuple(
+            (str(name), value)
+            for name, value in sorted(extra.items())
+            if isinstance(value, (str, int, float, bool))
+        )
         self._commands.append(
             RenderCommand(
                 kind=str(style_kind),
@@ -435,6 +443,7 @@ class _SnapshotRecorder:
                     ("thickness", float(thickness)),
                     ("color_secondary", str(color_secondary)),
                     ("shadow_layers", float(shadow_layers)),
+                    *extra_pairs,
                 ),
             )
         )
