@@ -33,11 +33,18 @@ from engine.runtime.profiling import FrameProfiler
 from engine.runtime.scheduler import Scheduler
 from engine.runtime.snapshot_exchange import DoubleBufferedSnapshotExchange
 from engine.runtime.time import FrameClock
+from engine.runtime.ui_space import UISpaceTransform, resolve_ui_space_transform, scale_render_snapshot
 from engine.ui_runtime.debug_overlay import DebugOverlay
 
 _LOG = logging.getLogger("engine.runtime")
 _PROFILE_LOG = logging.getLogger("engine.profiling")
 _OVERLAY_TOGGLE_KEY = "f3"
+_PROFILE_LOG_ENABLED = os.getenv("ENGINE_PROFILING_LOG_PAYLOAD_ENABLED", "1").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,6 +125,12 @@ class EngineHost(HostControl):
         )
         self._last_snapshot_passes_identity: int = 0
         self._last_sanitized_passes: tuple[RenderPassSnapshot, ...] | None = None
+        self._module_ui_transform: UISpaceTransform | None = None
+        if self._render_api is not None:
+            self._module_ui_transform = resolve_ui_space_transform(
+                app=self._module,
+                renderer=self._render_api,
+            )
         self._diagnostics_http: DiagnosticsHttpServer | None = None
         self._try_start_diagnostics_http()
 
@@ -350,6 +363,11 @@ class EngineHost(HostControl):
                 "elapsed_seconds": time_context.elapsed_seconds,
             },
         )
+        if module_render_snapshot is not None and self._module_ui_transform is not None:
+            module_render_snapshot = scale_render_snapshot(
+                module_render_snapshot,
+                self._module_ui_transform,
+            )
         if (
             self._debug_overlay is not None
             and self._debug_overlay_visible
@@ -390,13 +408,14 @@ class EngineHost(HostControl):
                 tick=self._frame_index,
                 value=profile,
             )
-            _PROFILE_LOG.info(
-                "frame_profile frame=%d dt_ms=%.3f top=%s",
-                profile["frame_index"],
-                profile["dt_ms"],
-                profile["systems"]["top_system"]["name"],
-                extra={"profile": profile},
-            )
+            if _PROFILE_LOG_ENABLED:
+                _PROFILE_LOG.info(
+                    "frame_profile frame=%d dt_ms=%.3f top=%s",
+                    profile["frame_index"],
+                    profile["dt_ms"],
+                    profile["systems"]["top_system"]["name"],
+                    extra={"profile": profile},
+                )
         self._diagnostics_profiler.end_span(frame_span)
         state_hash = self._resolve_replay_state_hash()
         self._replay_recorder.mark_frame(tick=self._frame_index, state_hash=state_hash)

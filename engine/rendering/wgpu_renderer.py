@@ -90,6 +90,52 @@ class _DrawRect:
     color: tuple[float, float, float, float]
 
 
+@dataclass(frozen=True, slots=True)
+class _GlyphAtlasEntry:
+    u0: float
+    v0: float
+    u1: float
+    v1: float
+    width: float
+    height: float
+    bearing_x: float
+    bearing_y: float
+    advance: float
+
+
+@dataclass(frozen=True, slots=True)
+class _GlyphPlacement:
+    x: float
+    y: float
+    width: float
+    height: float
+    u0: float
+    v0: float
+    u1: float
+    v1: float
+
+
+@dataclass(frozen=True, slots=True)
+class _GlyphRunLayout:
+    width: float
+    height: float
+    placements: tuple[_GlyphPlacement, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _DrawTextQuad:
+    layer: int
+    x: float
+    y: float
+    w: float
+    h: float
+    u0: float
+    v0: float
+    u1: float
+    v1: float
+    color: tuple[float, float, float, float]
+
+
 @dataclass(slots=True)
 class WgpuRenderer:
     """Renderer scaffold using immutable snapshots and explicit stages."""
@@ -128,8 +174,12 @@ class WgpuRenderer:
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
-        self._design_width = int(self.width)
-        self._design_height = int(self.height)
+        design_w, design_h = _resolve_ui_design_dimensions(
+            default_width=max(1, int(self.width)),
+            default_height=max(1, int(self.height)),
+        )
+        self._design_width = int(design_w)
+        self._design_height = int(design_h)
         self._preserve_aspect = resolve_preserve_aspect()
         self._diag_stage_events_enabled = _env_flag(
             "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED", True
@@ -309,6 +359,10 @@ class WgpuRenderer:
             preserve_aspect=bool(self._preserve_aspect),
         )
         return (float(dx), float(dy))
+
+    def design_space_size(self) -> tuple[float, float]:
+        """Return active engine design-space dimensions."""
+        return (float(self._design_width), float(self._design_height))
 
     def invalidate(self) -> None:
         self._assert_owner_thread()
@@ -786,6 +840,75 @@ def _normalize_rgba(value: object) -> tuple[float, float, float, float]:
     return (rgba[0], rgba[1], rgba[2], rgba[3])
 
 
+def _packet_payload(packet: _DrawPacket) -> dict[str, object]:
+    raw_data = getattr(packet, "data", ())
+    payload: dict[str, object] = {}
+    if not isinstance(raw_data, tuple):
+        return payload
+    for item in raw_data:
+        if isinstance(item, tuple) and len(item) == 2:
+            payload[str(item[0])] = item[1]
+    return payload
+
+
+def _try_create_freetype_face(font_path: str) -> object | None:
+    if not font_path:
+        return None
+    try:
+        import freetype
+
+        return cast(object, freetype.Face(font_path))
+    except Exception:
+        return None
+
+
+def _rasterize_glyph_bitmap(
+    *,
+    face: object | None,
+    character: str,
+    size_px: int,
+) -> tuple[int, int, int, int, float, bytes] | None:
+    if face is None or not character:
+        return None
+    try:
+        set_pixel_sizes = getattr(face, "set_pixel_sizes", None)
+        load_char = getattr(face, "load_char", None)
+        glyph = getattr(face, "glyph", None)
+        if not callable(set_pixel_sizes) or not callable(load_char) or glyph is None:
+            return None
+        set_pixel_sizes(0, int(max(1, size_px)))
+        load_char(character)
+        bitmap = getattr(glyph, "bitmap", None)
+        if bitmap is None:
+            return None
+        width = int(getattr(bitmap, "width", 0))
+        rows = int(getattr(bitmap, "rows", 0))
+        pitch = int(getattr(bitmap, "pitch", width))
+        left = int(getattr(glyph, "bitmap_left", 0))
+        top = int(getattr(glyph, "bitmap_top", 0))
+        advance_raw = getattr(getattr(glyph, "advance", None), "x", 0)
+        advance = float(float(advance_raw) / 64.0) if isinstance(advance_raw, (int, float)) else 0.0
+        if width <= 0 or rows <= 0:
+            return (0, 0, left, top, max(advance, float(size_px) * 0.3), b"")
+        buffer_obj = getattr(bitmap, "buffer", b"")
+        raw = bytes(buffer_obj)
+        if pitch == width:
+            alpha = raw[: width * rows]
+        else:
+            out = bytearray()
+            row_pitch = max(width, abs(pitch))
+            for row in range(rows):
+                if pitch >= 0:
+                    start = row * row_pitch
+                else:
+                    start = (rows - 1 - row) * row_pitch
+                out.extend(raw[start : start + width])
+            alpha = bytes(out)
+        return (width, rows, left, top, max(advance, float(width)), alpha)
+    except Exception:
+        return None
+
+
 def _payload_float(payload: dict[str, object], key: str, default: float) -> float:
     raw = payload.get(key, default)
     if isinstance(raw, (int, float)):
@@ -1026,6 +1149,30 @@ class _WgpuBackend:
     _surface_format: str = field(init=False, default="bgra8unorm-srgb")
     _geometry_pipeline: object | None = field(init=False, default=None)
     _text_pipeline: object | None = field(init=False, default=None)
+    _text_bind_group: object | None = field(init=False, default=None)
+    _text_sampler: object | None = field(init=False, default=None)
+    _text_atlas_texture: object | None = field(init=False, default=None)
+    _text_atlas_view: object | None = field(init=False, default=None)
+    _text_atlas_width: int = field(init=False, default=1024)
+    _text_atlas_height: int = field(init=False, default=1024)
+    _text_atlas_pixels: bytearray = field(init=False, default_factory=bytearray)
+    _text_atlas_cursor_x: int = field(init=False, default=1)
+    _text_atlas_cursor_y: int = field(init=False, default=1)
+    _text_atlas_row_height: int = field(init=False, default=0)
+    _text_atlas_dirty: bool = field(init=False, default=False)
+    _text_face: object | None = field(init=False, default=None)
+    _glyph_atlas_cache: dict[tuple[int, str], _GlyphAtlasEntry] = field(init=False, default_factory=dict)
+    _glyph_run_cache: dict[tuple[str, int, str], _GlyphRunLayout] = field(
+        init=False, default_factory=dict
+    )
+    _draw_text_vertex_buffer_static: object | None = field(init=False, default=None)
+    _draw_text_vertex_buffer_static_capacity: int = field(init=False, default=0)
+    _draw_text_vertex_buffer_dynamic: object | None = field(init=False, default=None)
+    _draw_text_vertex_buffer_dynamic_capacity: int = field(init=False, default=0)
+    _static_text_cache_key: tuple[object, ...] | None = field(init=False, default=None)
+    _static_text_vertex_count: int = field(init=False, default=0)
+    _static_text_bundle: object | None = field(init=False, default=None)
+    _static_text_bundle_key: tuple[object, ...] | None = field(init=False, default=None)
     _frame_texture: object | None = field(init=False, default=None)
     _frame_texture_view: object | None = field(init=False, default=None)
     _frame_color_view: object | None = field(init=False, default=None)
@@ -1033,6 +1180,9 @@ class _WgpuBackend:
     _queued_packets: list[tuple[str, tuple[_DrawPacket, ...]]] = field(init=False, default_factory=list)
     _target_width: int = field(init=False, default=1200)
     _target_height: int = field(init=False, default=720)
+    _window_width: int = field(init=False, default=1200)
+    _window_height: int = field(init=False, default=720)
+    _internal_render_scale: float = field(init=False, default=1.0)
     _upload_threshold_packets: int = field(init=False, default=256)
     _upload_mode_last: str = field(init=False, default="none")
     _uploaded_packet_count: int = field(init=False, default=0)
@@ -1092,6 +1242,23 @@ class _WgpuBackend:
 
     def __post_init__(self) -> None:
         self._preserve_aspect = resolve_preserve_aspect()
+        design_w, design_h = _resolve_ui_design_dimensions(
+            default_width=max(1, int(self._target_width)),
+            default_height=max(1, int(self._target_height)),
+        )
+        self._design_width = int(design_w)
+        self._design_height = int(design_h)
+        self._internal_render_scale = _env_float(
+            "ENGINE_RENDER_INTERNAL_SCALE",
+            1.0,
+            minimum=0.1,
+        )
+        self._window_width = int(max(1, self._target_width))
+        self._window_height = int(max(1, self._target_height))
+        self._target_width, self._target_height = self._resolve_internal_render_size(
+            self._window_width,
+            self._window_height,
+        )
         try:
             import wgpu
         except Exception as exc:
@@ -1128,6 +1295,19 @@ class _WgpuBackend:
         self._surface_state = self._setup_surface_state()
         self._init_canvas_surface_context()
         self._setup_pipelines()
+        if not self._supports_text_atlas():
+            raise WgpuInitError(
+                "wgpu text atlas initialization failed",
+                details={
+                    "selected_backend": self._selected_backend,
+                    "adapter_info": dict(self._adapter_info),
+                    "font_path": str(self._font_path),
+                    "text_pipeline_ready": bool(self._text_pipeline is not None),
+                    "text_bind_group_ready": bool(self._text_bind_group is not None),
+                    "text_atlas_texture_ready": bool(self._text_atlas_texture is not None),
+                    "text_face_ready": bool(self._text_face is not None),
+                },
+            )
         self._rebuild_frame_targets()
         self._wgpu_loaded = True
 
@@ -1165,6 +1345,8 @@ class _WgpuBackend:
             return
         static_draw_rects: list[_DrawRect] = []
         dynamic_draw_rects: list[_DrawRect] = []
+        static_text_quads: list[_DrawTextQuad] = []
+        dynamic_text_quads: list[_DrawTextQuad] = []
         sx, sy, ox, oy = viewport_transform(
             width=max(1, int(self._target_width)),
             height=max(1, int(self._target_height)),
@@ -1173,6 +1355,14 @@ class _WgpuBackend:
             preserve_aspect=bool(self._preserve_aspect),
         )
         for packet in packets:
+            if str(packet.kind) == "text" and self._supports_text_atlas():
+                text_quads = self._packet_text_quads(packet, sx=sx, sy=sy, ox=ox, oy=oy)
+                if text_quads:
+                    if _packet_is_static(packet):
+                        static_text_quads.extend(text_quads)
+                    else:
+                        dynamic_text_quads.extend(text_quads)
+                    continue
             packet_rects = self._packet_draw_rects_cached(packet, sx=sx, sy=sy, ox=ox, oy=oy)
             if not packet_rects:
                 continue
@@ -1180,7 +1370,7 @@ class _WgpuBackend:
                 static_draw_rects.extend(packet_rects)
             else:
                 dynamic_draw_rects.extend(packet_rects)
-        if not static_draw_rects and not dynamic_draw_rects:
+        if not static_draw_rects and not dynamic_draw_rects and not static_text_quads and not dynamic_text_quads:
             return
         color_attachments = [
             {
@@ -1203,6 +1393,18 @@ class _WgpuBackend:
                 self._draw_rect_batches(
                     render_pass,
                     tuple(dynamic_draw_rects),
+                    stream_kind="dynamic",
+                )
+            if static_text_quads:
+                self._draw_text_batches(
+                    render_pass,
+                    tuple(static_text_quads),
+                    stream_kind="static",
+                )
+            if dynamic_text_quads:
+                self._draw_text_batches(
+                    render_pass,
+                    tuple(dynamic_text_quads),
                     stream_kind="dynamic",
                 )
         finally:
@@ -1251,16 +1453,32 @@ class _WgpuBackend:
     def close(self) -> None:
         self._queued_packets.clear()
         self._static_packet_rect_cache.clear()
+        self._glyph_atlas_cache.clear()
+        self._glyph_run_cache.clear()
         self._upload_stream_buffer = None
         self._upload_stream_buffer_capacity = 0
         self._draw_vertex_buffer_static = None
         self._draw_vertex_buffer_static_capacity = 0
         self._draw_vertex_buffer_dynamic = None
         self._draw_vertex_buffer_dynamic_capacity = 0
+        self._draw_text_vertex_buffer_static = None
+        self._draw_text_vertex_buffer_static_capacity = 0
+        self._draw_text_vertex_buffer_dynamic = None
+        self._draw_text_vertex_buffer_dynamic_capacity = 0
         self._static_draw_cache_key = None
         self._static_draw_runs = ()
         self._static_render_bundle = None
         self._static_render_bundle_key = None
+        self._static_text_cache_key = None
+        self._static_text_vertex_count = 0
+        self._static_text_bundle = None
+        self._static_text_bundle_key = None
+        self._text_bind_group = None
+        self._text_sampler = None
+        self._text_atlas_texture = None
+        self._text_atlas_view = None
+        self._text_atlas_pixels = bytearray()
+        self._text_face = None
         self._frame_texture = None
         self._frame_texture_view = None
         self._frame_color_view = None
@@ -1271,10 +1489,16 @@ class _WgpuBackend:
         self._title = str(title)
 
     def reconfigure(self, event: WindowResizeEvent) -> None:
-        self._target_width = max(1, int(event.physical_width))
-        self._target_height = max(1, int(event.physical_height))
-        self._surface_state["physical_width"] = self._target_width
-        self._surface_state["physical_height"] = self._target_height
+        self._window_width = max(1, int(event.physical_width))
+        self._window_height = max(1, int(event.physical_height))
+        self._target_width, self._target_height = self._resolve_internal_render_size(
+            self._window_width,
+            self._window_height,
+        )
+        self._surface_state["physical_width"] = self._window_width
+        self._surface_state["physical_height"] = self._window_height
+        self._surface_state["render_width"] = self._target_width
+        self._surface_state["render_height"] = self._target_height
         self._surface_state["dpi_scale"] = float(event.dpi_scale)
         self._configure_canvas_context()
         self._rebuild_frame_targets_with_retry()
@@ -1283,6 +1507,10 @@ class _WgpuBackend:
         self._static_draw_runs = ()
         self._static_render_bundle = None
         self._static_render_bundle_key = None
+        self._static_text_cache_key = None
+        self._static_text_vertex_count = 0
+        self._static_text_bundle = None
+        self._static_text_bundle_key = None
         return
 
     def resize_telemetry(self) -> dict[str, object]:
@@ -1303,6 +1531,11 @@ class _WgpuBackend:
             "surface_format": str(self._surface_format),
             "width": int(self._target_width),
             "height": int(self._target_height),
+            "window_width": int(self._window_width),
+            "window_height": int(self._window_height),
+            "render_width": int(self._target_width),
+            "render_height": int(self._target_height),
+            "render_scale": float(self._internal_render_scale),
             "dpi_scale": dpi,
             "acquire_attempts": int(self._acquire_attempts_last),
             "acquire_failures": int(self._acquire_failures),
@@ -1312,6 +1545,17 @@ class _WgpuBackend:
             "present_recoveries": int(self._present_recoveries),
             "last_present_error": str(self._last_present_error),
         }
+
+    def _resolve_internal_render_size(self, width: int, height: int) -> tuple[int, int]:
+        window_w = max(1, int(width))
+        window_h = max(1, int(height))
+        scale = max(0.1, float(self._internal_render_scale))
+        if abs(scale - 1.0) < 1e-6:
+            return (window_w, window_h)
+        return (
+            max(1, int(round(float(window_w) * scale))),
+            max(1, int(round(float(window_h) * scale))),
+        )
 
     def _request_adapter(self) -> tuple[object, str]:
         gpu = getattr(self._wgpu, "gpu", None)
@@ -1401,8 +1645,10 @@ class _WgpuBackend:
         state: dict[str, object] = {
             "surface_id": "",
             "backend": "unknown",
-            "physical_width": self._target_width,
-            "physical_height": self._target_height,
+            "physical_width": self._window_width,
+            "physical_height": self._window_height,
+            "render_width": self._target_width,
+            "render_height": self._target_height,
             "format": self._surface_format,
         }
         if self.surface is not None:
@@ -1420,6 +1666,7 @@ class _WgpuBackend:
         if not callable(create_shader_module) or not callable(create_render_pipeline):
             self._geometry_pipeline = {"kind": "geometry", "format": self._surface_format}
             self._text_pipeline = {"kind": "text", "format": self._surface_format}
+            self._setup_text_resources()
             return
         geometry_shader = create_shader_module(code=_GEOMETRY_WGSL)
         self._geometry_shader_module = geometry_shader
@@ -1428,17 +1675,49 @@ class _WgpuBackend:
         geometry_descriptor = self._geometry_pipeline_descriptor(color_target, geometry_shader)
         text_descriptor = {
             "layout": "auto",
-            "vertex": {"module": text_shader, "entry_point": "vs_main", "buffers": []},
+            "vertex": {
+                "module": text_shader,
+                "entry_point": "vs_main",
+                "buffers": [
+                    {
+                        "array_stride": 32,
+                        "step_mode": "vertex",
+                        "attributes": [
+                            {"shader_location": 0, "offset": 0, "format": "float32x2"},
+                            {"shader_location": 1, "offset": 8, "format": "float32x2"},
+                            {"shader_location": 2, "offset": 16, "format": "float32x4"},
+                        ],
+                    }
+                ],
+            },
             "fragment": {
                 "module": text_shader,
                 "entry_point": "fs_main",
-                "targets": [color_target],
+                "targets": [
+                    {
+                        "format": self._surface_format,
+                        "blend": {
+                            "color": {
+                                "src_factor": "src-alpha",
+                                "dst_factor": "one-minus-src-alpha",
+                                "operation": "add",
+                            },
+                            "alpha": {
+                                "src_factor": "one",
+                                "dst_factor": "one-minus-src-alpha",
+                                "operation": "add",
+                            },
+                        },
+                        "write_mask": 0xF,
+                    }
+                ],
             },
             "primitive": {"topology": "triangle-list"},
         }
         self._geometry_pipeline = create_render_pipeline(**geometry_descriptor)
         self._text_pipeline = create_render_pipeline(**text_descriptor)
         self._geometry_pipeline_cache[(0.1, 0.1, 0.1, 1.0)] = self._geometry_pipeline
+        self._setup_text_resources()
 
     def _rebuild_frame_targets(self) -> None:
         create_texture = getattr(self._device, "create_texture", None)
@@ -1475,6 +1754,106 @@ class _WgpuBackend:
                         f"format={self._surface_format} "
                         f"present_mode={self._present_mode}"
                     ) from None
+
+    def _setup_text_resources(self) -> None:
+        self._text_bind_group = None
+        self._text_sampler = None
+        self._text_atlas_texture = None
+        self._text_atlas_view = None
+        self._text_atlas_pixels = bytearray(
+            int(self._text_atlas_width) * int(self._text_atlas_height)
+        )
+        self._text_atlas_cursor_x = 1
+        self._text_atlas_cursor_y = 1
+        self._text_atlas_row_height = 0
+        self._text_atlas_dirty = False
+        self._glyph_atlas_cache.clear()
+        self._glyph_run_cache.clear()
+        self._text_face = _try_create_freetype_face(self._font_path)
+
+        create_texture = getattr(self._device, "create_texture", None)
+        if not callable(create_texture):
+            return
+        texture_usage = _resolve_text_texture_usage(self._wgpu)
+        try:
+            texture = create_texture(
+                size=(int(self._text_atlas_width), int(self._text_atlas_height), 1),
+                dimension="2d",
+                format="r8unorm",
+                usage=texture_usage,
+            )
+        except Exception:
+            return
+        create_view = getattr(texture, "create_view", None)
+        if not callable(create_view):
+            return
+        view = create_view()
+        create_sampler = getattr(self._device, "create_sampler", None)
+        if not callable(create_sampler):
+            return
+        try:
+            sampler = create_sampler(
+                mag_filter="linear",
+                min_filter="linear",
+                mipmap_filter="nearest",
+                address_mode_u="clamp-to-edge",
+                address_mode_v="clamp-to-edge",
+            )
+        except Exception:
+            return
+        if self._text_pipeline is None:
+            return
+        get_bind_group_layout = getattr(self._text_pipeline, "get_bind_group_layout", None)
+        create_bind_group = getattr(self._device, "create_bind_group", None)
+        if not callable(get_bind_group_layout) or not callable(create_bind_group):
+            return
+        try:
+            layout = get_bind_group_layout(0)
+            bind_group = create_bind_group(
+                layout=layout,
+                entries=[
+                    {"binding": 0, "resource": view},
+                    {"binding": 1, "resource": sampler},
+                ],
+            )
+        except Exception:
+            return
+        self._text_atlas_texture = cast(object, texture)
+        self._text_atlas_view = cast(object, view)
+        self._text_sampler = cast(object, sampler)
+        self._text_bind_group = cast(object, bind_group)
+
+    def _supports_text_atlas(self) -> bool:
+        return (
+            self._text_face is not None
+            and self._text_pipeline is not None
+            and self._text_bind_group is not None
+            and self._text_atlas_texture is not None
+        )
+
+    def _upload_text_atlas_if_needed(self) -> None:
+        if not self._text_atlas_dirty:
+            return
+        if self._text_atlas_texture is None:
+            return
+        write_texture = getattr(self._queue, "write_texture", None)
+        if not callable(write_texture):
+            return
+        payload = bytes(self._text_atlas_pixels)
+        try:
+            write_texture(
+                {"texture": self._text_atlas_texture, "origin": (0, 0, 0)},
+                payload,
+                {
+                    "offset": 0,
+                    "bytes_per_row": int(self._text_atlas_width),
+                    "rows_per_image": int(self._text_atlas_height),
+                },
+                (int(self._text_atlas_width), int(self._text_atlas_height), 1),
+            )
+        except Exception:
+            return
+        self._text_atlas_dirty = False
 
     def _resolve_present_mode(self) -> str:
         raw_supported = os.getenv("ENGINE_WGPU_PRESENT_MODES", "").strip().lower()
@@ -1678,8 +2057,8 @@ class _WgpuBackend:
             for item in raw_data:
                 if isinstance(item, tuple) and len(item) == 2:
                     payload[str(item[0])] = item[1]
-        srgb = payload.get("srgb_rgba", (1.0, 1.0, 1.0, 1.0))
-        color = _normalize_rgba(srgb)
+        linear = payload.get("linear_rgba", (1.0, 1.0, 1.0, 1.0))
+        color = _normalize_rgba(linear)
         kind = str(getattr(packet, "kind", ""))
         if not kind:
             return ()
@@ -1770,6 +2149,205 @@ class _WgpuBackend:
             int(self._design_height),
             bool(self._preserve_aspect),
         )
+
+    def _packet_text_quads(
+        self,
+        packet: _DrawPacket,
+        *,
+        sx: float,
+        sy: float,
+        ox: float,
+        oy: float,
+    ) -> tuple[_DrawTextQuad, ...]:
+        if not self._supports_text_atlas():
+            return ()
+        payload = _packet_payload(packet)
+        text_raw = payload.get("text", "")
+        if not isinstance(text_raw, str):
+            return ()
+        text = text_raw.strip("\n")
+        if not text:
+            return ()
+        font_size_px = max(6, int(round(_payload_float(payload, "font_size", 18.0))))
+        run = self._layout_glyph_run(text=text, font_size_px=font_size_px)
+        if run is None or not run.placements:
+            return ()
+        x = _payload_float(payload, "x", 0.0)
+        y = _payload_float(payload, "y", 0.0)
+        anchor_raw = payload.get("anchor", "top-left")
+        anchor = str(anchor_raw).strip().lower() if isinstance(anchor_raw, str) else "top-left"
+        origin_x, origin_y = _anchor_to_origin(anchor, x, y, run.width, run.height)
+        color = _normalize_rgba(payload.get("linear_rgba", (1.0, 1.0, 1.0, 1.0)))
+        layer = int(getattr(packet, "layer", 0))
+        out: list[_DrawTextQuad] = []
+        for placement in run.placements:
+            mx = (float(origin_x) + placement.x) * sx + ox
+            my = (float(origin_y) + placement.y) * sy + oy
+            mw = max(1.0, placement.width * sx)
+            mh = max(1.0, placement.height * sy)
+            out.append(
+                _DrawTextQuad(
+                    layer=layer,
+                    x=mx,
+                    y=my,
+                    w=mw,
+                    h=mh,
+                    u0=float(placement.u0),
+                    v0=float(placement.v0),
+                    u1=float(placement.u1),
+                    v1=float(placement.v1),
+                    color=color,
+                )
+            )
+        return tuple(out)
+
+    def _layout_glyph_run(self, *, text: str, font_size_px: int) -> _GlyphRunLayout | None:
+        if self._text_face is None:
+            return None
+        run_key = (self._font_path, int(font_size_px), str(text))
+        cached = self._glyph_run_cache.get(run_key)
+        if cached is not None:
+            return cached
+        pen_x = 0.0
+        placements_raw: list[tuple[float, float, float, float, float, float, float, float]] = []
+        min_x = 0.0
+        min_y = 0.0
+        max_x = 0.0
+        max_y = 0.0
+        for ch in text:
+            entry = self._glyph_atlas_entry(ch=ch, font_size_px=font_size_px)
+            if entry is None:
+                continue
+            gx = pen_x + float(entry.bearing_x)
+            gy = 0.0 - float(entry.bearing_y)
+            gw = max(0.0, float(entry.width))
+            gh = max(0.0, float(entry.height))
+            if gw > 0.0 and gh > 0.0:
+                placements_raw.append((gx, gy, gw, gh, entry.u0, entry.v0, entry.u1, entry.v1))
+                min_x = min(min_x, gx)
+                min_y = min(min_y, gy)
+                max_x = max(max_x, gx + gw)
+                max_y = max(max_y, gy + gh)
+            pen_x += max(1.0, float(entry.advance))
+        if not placements_raw:
+            return None
+        width = max(1.0, max_x - min_x)
+        height = max(1.0, max_y - min_y)
+        placements = tuple(
+            _GlyphPlacement(
+                x=(gx - min_x),
+                y=(gy - min_y),
+                width=gw,
+                height=gh,
+                u0=u0,
+                v0=v0,
+                u1=u1,
+                v1=v1,
+            )
+            for gx, gy, gw, gh, u0, v0, u1, v1 in placements_raw
+        )
+        layout = _GlyphRunLayout(width=width, height=height, placements=placements)
+        self._glyph_run_cache[run_key] = layout
+        return layout
+
+    def _glyph_atlas_entry(self, *, ch: str, font_size_px: int) -> _GlyphAtlasEntry | None:
+        key = (int(font_size_px), str(ch))
+        cached = self._glyph_atlas_cache.get(key)
+        if cached is not None:
+            return cached
+        raster = _rasterize_glyph_bitmap(
+            face=self._text_face,
+            character=ch,
+            size_px=font_size_px,
+        )
+        if raster is None:
+            return None
+        width, rows, left, top, advance, alpha_bytes = raster
+        if width <= 0 or rows <= 0:
+            entry = _GlyphAtlasEntry(
+                u0=0.0,
+                v0=0.0,
+                u1=0.0,
+                v1=0.0,
+                width=0.0,
+                height=0.0,
+                bearing_x=float(left),
+                bearing_y=float(top),
+                advance=float(max(1.0, advance)),
+            )
+            self._glyph_atlas_cache[key] = entry
+            return entry
+        atlas_xy = self._pack_atlas_region(width=width, height=rows)
+        if atlas_xy is None:
+            return None
+        dst_x, dst_y = atlas_xy
+        self._blit_alpha_to_atlas(
+            x=dst_x,
+            y=dst_y,
+            width=width,
+            height=rows,
+            data=alpha_bytes,
+        )
+        atlas_w = max(1, int(self._text_atlas_width))
+        atlas_h = max(1, int(self._text_atlas_height))
+        entry = _GlyphAtlasEntry(
+            u0=float(dst_x) / float(atlas_w),
+            v0=float(dst_y) / float(atlas_h),
+            u1=float(dst_x + width) / float(atlas_w),
+            v1=float(dst_y + rows) / float(atlas_h),
+            width=float(max(1, width)),
+            height=float(max(1, rows)),
+            bearing_x=float(left),
+            bearing_y=float(top),
+            advance=float(max(1, advance)),
+        )
+        self._glyph_atlas_cache[key] = entry
+        return entry
+
+    def _pack_atlas_region(self, *, width: int, height: int) -> tuple[int, int] | None:
+        region_w = max(1, int(width))
+        region_h = max(1, int(height))
+        atlas_w = max(2, int(self._text_atlas_width))
+        atlas_h = max(2, int(self._text_atlas_height))
+        if region_w + 2 >= atlas_w or region_h + 2 >= atlas_h:
+            return None
+        cursor_x = int(self._text_atlas_cursor_x)
+        cursor_y = int(self._text_atlas_cursor_y)
+        row_h = int(self._text_atlas_row_height)
+        if cursor_x + region_w + 1 >= atlas_w:
+            cursor_x = 1
+            cursor_y += row_h + 1
+            row_h = 0
+        if cursor_y + region_h + 1 >= atlas_h:
+            return None
+        self._text_atlas_cursor_x = cursor_x + region_w + 1
+        self._text_atlas_cursor_y = cursor_y
+        self._text_atlas_row_height = max(row_h, region_h)
+        return (cursor_x, cursor_y)
+
+    def _blit_alpha_to_atlas(
+        self,
+        *,
+        x: int,
+        y: int,
+        width: int,
+        height: int,
+        data: bytes,
+    ) -> None:
+        atlas_w = max(1, int(self._text_atlas_width))
+        atlas_h = max(1, int(self._text_atlas_height))
+        if not self._text_atlas_pixels:
+            return
+        if x < 0 or y < 0 or x + width > atlas_w or y + height > atlas_h:
+            return
+        index = 0
+        for row in range(height):
+            dst_row = y + row
+            dst_offset = (dst_row * atlas_w) + x
+            row_end = index + width
+            self._text_atlas_pixels[dst_offset : dst_offset + width] = data[index:row_end]
+            index = row_end
+        self._text_atlas_dirty = True
 
     def _map_design_rect(
         self,
@@ -1892,6 +2470,219 @@ class _WgpuBackend:
                 continue
             set_pipeline(pipeline)
             draw(run_vertex_count, 1, run_first_vertex, 0)
+
+    def _draw_text_batches(
+        self,
+        render_pass: object,
+        text_quads: tuple[_DrawTextQuad, ...],
+        *,
+        stream_kind: str,
+    ) -> None:
+        if not text_quads:
+            return
+        if not self._supports_text_atlas():
+            return
+        text_pipeline = self._text_pipeline
+        text_bind_group = self._text_bind_group
+        if text_pipeline is None or text_bind_group is None:
+            return
+        set_pipeline = getattr(render_pass, "set_pipeline", None)
+        set_bind_group = getattr(render_pass, "set_bind_group", None)
+        set_vertex_buffer = getattr(render_pass, "set_vertex_buffer", None)
+        draw = getattr(render_pass, "draw", None)
+        if (
+            not callable(set_pipeline)
+            or not callable(set_bind_group)
+            or not callable(set_vertex_buffer)
+            or not callable(draw)
+        ):
+            return
+        self._upload_text_atlas_if_needed()
+        if stream_kind == "static":
+            cache_key = _text_quads_cache_key(text_quads)
+            if (
+                cache_key == self._static_text_cache_key
+                and self._draw_text_vertex_buffer_static is not None
+                and self._static_text_vertex_count > 0
+            ):
+                self._execute_static_reused_frame = True
+                execute_bundles = getattr(render_pass, "execute_bundles", None)
+                if (
+                    callable(execute_bundles)
+                    and self._static_text_bundle is not None
+                    and self._static_text_bundle_key == cache_key
+                ):
+                    execute_bundles([self._static_text_bundle])
+                    return
+                set_pipeline(text_pipeline)
+                set_bind_group(0, text_bind_group, [], 0, 999999)
+                set_vertex_buffer(0, self._draw_text_vertex_buffer_static)
+                draw(self._static_text_vertex_count, 1, 0, 0)
+                return
+        vertices = self._text_vertices_for_quads(text_quads)
+        text_buffer, vertex_count, uploaded_bytes = self._create_text_vertex_buffer(
+            values=vertices,
+            stream_kind=stream_kind,
+        )
+        if stream_kind == "static":
+            self._execute_static_upload_bytes_frame += int(uploaded_bytes)
+            self._execute_static_rebuild_count_frame += 1
+            cache_key = _text_quads_cache_key(text_quads)
+            self._static_text_cache_key = cache_key
+            self._static_text_vertex_count = int(vertex_count)
+            self._static_text_bundle = self._build_static_text_bundle(
+                vertex_buffer=text_buffer,
+                vertex_count=int(vertex_count),
+            )
+            self._static_text_bundle_key = (
+                cache_key if self._static_text_bundle is not None else None
+            )
+        else:
+            self._execute_dynamic_upload_bytes_frame += int(uploaded_bytes)
+        if text_buffer is None or vertex_count <= 0:
+            return
+        set_pipeline(text_pipeline)
+        set_bind_group(0, text_bind_group, [], 0, 999999)
+        set_vertex_buffer(0, text_buffer)
+        draw(vertex_count, 1, 0, 0)
+
+    def _text_vertices_for_quads(self, text_quads: tuple[_DrawTextQuad, ...]) -> list[float]:
+        if not text_quads:
+            return []
+        sorted_quads = tuple(
+            sorted(
+                text_quads,
+                key=lambda quad: (
+                    int(quad.layer),
+                    round(float(quad.y), 3),
+                    round(float(quad.x), 3),
+                ),
+            )
+        )
+        out: list[float] = []
+        width = max(1.0, float(self._target_width))
+        height = max(1.0, float(self._target_height))
+        for quad in sorted_quads:
+            if float(quad.w) <= 0.0 or float(quad.h) <= 0.0:
+                continue
+            x0 = (float(quad.x) / width) * 2.0 - 1.0
+            x1 = ((float(quad.x) + float(quad.w)) / width) * 2.0 - 1.0
+            y0 = 1.0 - ((float(quad.y) / height) * 2.0)
+            y1 = 1.0 - (((float(quad.y) + float(quad.h)) / height) * 2.0)
+            u0 = float(quad.u0)
+            v0 = float(quad.v0)
+            u1 = float(quad.u1)
+            v1 = float(quad.v1)
+            r, g, b, a = quad.color
+            out.extend((x0, y0, u0, v0, r, g, b, a))
+            out.extend((x1, y0, u1, v0, r, g, b, a))
+            out.extend((x0, y1, u0, v1, r, g, b, a))
+            out.extend((x0, y1, u0, v1, r, g, b, a))
+            out.extend((x1, y0, u1, v0, r, g, b, a))
+            out.extend((x1, y1, u1, v1, r, g, b, a))
+        return out
+
+    def _create_text_vertex_buffer(
+        self,
+        *,
+        values: list[float],
+        stream_kind: str,
+    ) -> tuple[object | None, int, int]:
+        if not values:
+            return None, 0, 0
+        payload = array("f", values)
+        raw = payload.tobytes()
+        buffer = self._ensure_text_vertex_buffer_capacity(
+            stream_kind=stream_kind,
+            minimum_bytes=len(raw),
+        )
+        if buffer is None:
+            return None, 0, 0
+        write_buffer = getattr(self._queue, "write_buffer", None)
+        if not callable(write_buffer):
+            return None, 0, 0
+        try:
+            write_buffer(buffer, 0, raw)
+        except Exception:
+            return None, 0, 0
+        return buffer, int(len(values) // 8), int(len(raw))
+
+    def _ensure_text_vertex_buffer_capacity(
+        self,
+        *,
+        stream_kind: str,
+        minimum_bytes: int,
+    ) -> object | None:
+        required = max(256, int(minimum_bytes))
+        if stream_kind == "static":
+            current = self._draw_text_vertex_buffer_static
+            current_cap = int(self._draw_text_vertex_buffer_static_capacity)
+        else:
+            current = self._draw_text_vertex_buffer_dynamic
+            current_cap = int(self._draw_text_vertex_buffer_dynamic_capacity)
+        if current is not None and current_cap >= required:
+            return current
+        create_buffer = getattr(self._device, "create_buffer", None)
+        if not callable(create_buffer):
+            return None
+        usage = _resolve_buffer_usage(self._wgpu)
+        capacity = 4096
+        while capacity < required:
+            capacity *= 2
+        try:
+            created = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
+        except Exception:
+            return None
+        if stream_kind == "static":
+            self._draw_text_vertex_buffer_static = cast(object, created)
+            self._draw_text_vertex_buffer_static_capacity = int(capacity)
+        else:
+            self._draw_text_vertex_buffer_dynamic = cast(object, created)
+            self._draw_text_vertex_buffer_dynamic_capacity = int(capacity)
+        return cast(object, created)
+
+    def _build_static_text_bundle(
+        self,
+        *,
+        vertex_buffer: object | None,
+        vertex_count: int,
+    ) -> object | None:
+        if vertex_buffer is None or vertex_count <= 0:
+            return None
+        if self._text_pipeline is None or self._text_bind_group is None:
+            return None
+        create_bundle_encoder = getattr(self._device, "create_render_bundle_encoder", None)
+        if not callable(create_bundle_encoder):
+            return None
+        try:
+            bundle_encoder = create_bundle_encoder(
+                color_formats=[self._surface_format],
+                depth_stencil_format=None,
+                sample_count=1,
+            )
+        except Exception:
+            return None
+        set_pipeline = getattr(bundle_encoder, "set_pipeline", None)
+        set_bind_group = getattr(bundle_encoder, "set_bind_group", None)
+        set_vertex_buffer = getattr(bundle_encoder, "set_vertex_buffer", None)
+        draw = getattr(bundle_encoder, "draw", None)
+        finish = getattr(bundle_encoder, "finish", None)
+        if (
+            not callable(set_pipeline)
+            or not callable(set_bind_group)
+            or not callable(set_vertex_buffer)
+            or not callable(draw)
+            or not callable(finish)
+        ):
+            return None
+        try:
+            set_pipeline(self._text_pipeline)
+            set_bind_group(0, self._text_bind_group, [], 0, 999999)
+            set_vertex_buffer(0, vertex_buffer)
+            draw(vertex_count, 1, 0, 0)
+            return cast(object, finish())
+        except Exception:
+            return None
 
     def _build_static_render_bundle(
         self,
@@ -2219,6 +3010,31 @@ def _draw_rects_cache_key(draw_rects: tuple[_DrawRect, ...]) -> tuple[object, ..
     return tuple(frozen)
 
 
+def _text_quads_cache_key(text_quads: tuple[_DrawTextQuad, ...]) -> tuple[object, ...]:
+    if not text_quads:
+        return ()
+    frozen: list[tuple[object, ...]] = []
+    for quad in text_quads:
+        frozen.append(
+            (
+                int(quad.layer),
+                round(float(quad.x), 4),
+                round(float(quad.y), 4),
+                round(float(quad.w), 4),
+                round(float(quad.h), 4),
+                round(float(quad.u0), 6),
+                round(float(quad.v0), 6),
+                round(float(quad.u1), 6),
+                round(float(quad.v1), 6),
+                round(float(quad.color[0]), 4),
+                round(float(quad.color[1]), 4),
+                round(float(quad.color[2]), 4),
+                round(float(quad.color[3]), 4),
+            )
+        )
+    return tuple(frozen)
+
+
 def _resolve_buffer_usage(wgpu_mod: object) -> int:
     buffer_usage = getattr(wgpu_mod, "BufferUsage", None)
     if buffer_usage is None:
@@ -2226,6 +3042,15 @@ def _resolve_buffer_usage(wgpu_mod: object) -> int:
     vertex = int(getattr(buffer_usage, "VERTEX", 0x80))
     copy_dst = int(getattr(buffer_usage, "COPY_DST", 0x20))
     return vertex | copy_dst
+
+
+def _resolve_text_texture_usage(wgpu_mod: object) -> int:
+    texture_usage = getattr(wgpu_mod, "TextureUsage", None)
+    if texture_usage is None:
+        return 0x04 | 0x08  # TEXTURE_BINDING | COPY_DST fallback
+    texture_binding = int(getattr(texture_usage, "TEXTURE_BINDING", 0x04))
+    copy_dst = int(getattr(texture_usage, "COPY_DST", 0x08))
+    return texture_binding | copy_dst
 
 
 def _resolve_backend_priority() -> tuple[str, ...]:
@@ -2256,6 +3081,35 @@ def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
     except ValueError:
         value = int(default)
     return max(minimum, value)
+
+
+def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
+    raw = os.getenv(name)
+    if raw is None:
+        return max(float(minimum), float(default))
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        value = float(default)
+    return max(float(minimum), float(value))
+
+
+def _resolve_ui_design_dimensions(*, default_width: int, default_height: int) -> tuple[int, int]:
+    raw = os.getenv("ENGINE_UI_RESOLUTION", "").strip().lower()
+    if raw:
+        normalized = raw.replace(" ", "")
+        for sep in ("x", ",", ":"):
+            if sep in normalized:
+                left, right = normalized.split(sep, 1)
+                try:
+                    width = max(1, int(left))
+                    height = max(1, int(right))
+                except ValueError:
+                    break
+                return (width, height)
+    design_w = _env_int("ENGINE_UI_DESIGN_WIDTH", int(default_width), minimum=1)
+    design_h = _env_int("ENGINE_UI_DESIGN_HEIGHT", int(default_height), minimum=1)
+    return (int(design_w), int(design_h))
 
 
 def _resolve_system_font_path() -> str:
@@ -2383,19 +3237,34 @@ fn fs_main() -> @location(0) vec4<f32> {
 
 
 _TEXT_WGSL = """
+struct VsIn {
+    @location(0) pos: vec2<f32>,
+    @location(1) uv: vec2<f32>,
+    @location(2) color: vec4<f32>,
+};
+
+struct VsOut {
+    @builtin(position) position: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+    @location(1) color: vec4<f32>,
+};
+
+@group(0) @binding(0) var atlas_tex: texture_2d<f32>;
+@group(0) @binding(1) var atlas_sampler: sampler;
+
 @vertex
-fn vs_main(@builtin(vertex_index) vertex_index: u32) -> @builtin(position) vec4<f32> {
-    var pos = array<vec2<f32>, 3>(
-        vec2<f32>(-1.0, -1.0),
-        vec2<f32>( 3.0, -1.0),
-        vec2<f32>(-1.0,  3.0),
-    );
-    return vec4<f32>(pos[vertex_index], 0.0, 1.0);
+fn vs_main(input: VsIn) -> VsOut {
+    var out: VsOut;
+    out.position = vec4<f32>(input.pos, 0.0, 1.0);
+    out.uv = input.uv;
+    out.color = input.color;
+    return out;
 }
 
 @fragment
-fn fs_main() -> @location(0) vec4<f32> {
-    return vec4<f32>(1.0, 1.0, 1.0, 1.0);
+fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
+    let alpha = textureSample(atlas_tex, atlas_sampler, input.uv).r;
+    return vec4<f32>(input.color.rgb, input.color.a * alpha);
 }
 """
 

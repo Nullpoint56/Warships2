@@ -20,6 +20,7 @@ from engine.api.ui_primitives import (
     route_modal_pointer_event,
     route_non_modal_key_event,
 )
+from engine.runtime.ui_space import UISpaceTransform, resolve_ui_space_transform
 
 
 class EngineUIFramework:
@@ -29,6 +30,10 @@ class EngineUIFramework:
         self._app = app
         self._renderer = renderer
         self._layout = layout
+        self._ui_transform: UISpaceTransform = resolve_ui_space_transform(
+            app=app,
+            renderer=renderer,
+        )
         self._modal_state = ModalInputState()
         self._trace_input = os.getenv("ENGINE_INPUT_TRACE_ENABLED", "0").strip().lower() in {
             "1",
@@ -45,26 +50,29 @@ class EngineUIFramework:
     def handle_pointer_event(self, event: PointerEvent) -> bool:
         """Route pointer event to app actions."""
         x, y = self._renderer.to_design_space(event.x, event.y)
+        app_x, app_y = self._ui_transform.engine_to_app(x, y)
         if self._trace_input:
             self._trace_log.info(
-                "pointer_event type=%s raw=(%.2f,%.2f) design=(%.2f,%.2f) button=%d",
+                "pointer_event type=%s raw=(%.2f,%.2f) design=(%.2f,%.2f) app=(%.2f,%.2f) button=%d",
                 event.event_type,
                 float(event.x),
                 float(event.y),
                 float(x),
                 float(y),
+                float(app_x),
+                float(app_y),
                 int(event.button),
             )
         if event.event_type == "pointer_move":
-            return self._app.on_pointer_move(x=x, y=y)
+            return self._app.on_pointer_move(x=app_x, y=app_y)
         if event.event_type == "pointer_up":
-            return self._app.on_pointer_release(x=x, y=y, button=event.button)
+            return self._app.on_pointer_release(x=app_x, y=app_y, button=event.button)
         if event.event_type != "pointer_down":
             return False
 
         modal = self._app.modal_widget()
         if modal is not None:
-            route = route_modal_pointer_event(modal, self._modal_state, x, y, event.button)
+            route = route_modal_pointer_event(modal, self._modal_state, app_x, app_y, event.button)
             if route.focus_input is not None:
                 self._modal_state.input_focused = route.focus_input
             if route.button_id is not None:
@@ -73,13 +81,17 @@ class EngineUIFramework:
 
         interactions = self._app.interaction_plan()
         if event.button == 1:
-            button_id = resolve_pointer_button(interactions, x, y)
+            button_id = resolve_pointer_button(interactions, app_x, app_y)
             if self._trace_input:
                 self._trace_log.info("pointer_down resolve_button=%s", button_id)
             if button_id is not None:
                 return self._app.on_button(button_id)
             if interactions.cell_click_surface is not None:
-                grid_cell = self._layout.screen_to_cell(interactions.cell_click_surface, x, y)
+                grid_cell = self._layout.screen_to_cell(
+                    interactions.cell_click_surface,
+                    app_x,
+                    app_y,
+                )
                 if self._trace_input:
                     self._trace_log.info(
                         "pointer_down cell_surface=%s cell=%s",
@@ -90,7 +102,7 @@ class EngineUIFramework:
                     return self._app.on_cell_click(
                         interactions.cell_click_surface, grid_cell.row, grid_cell.col
                     )
-        handled = self._app.on_pointer_down(x=x, y=y, button=event.button)
+        handled = self._app.on_pointer_down(x=app_x, y=app_y, button=event.button)
         if self._trace_input:
             self._trace_log.info("pointer_down fallback_handled=%s", bool(handled))
         return handled
@@ -128,10 +140,11 @@ class EngineUIFramework:
     def handle_wheel_event(self, event: WheelEvent) -> bool:
         """Route wheel event to app actions."""
         x, y = self._renderer.to_design_space(event.x, event.y)
+        app_x, app_y = self._ui_transform.engine_to_app(x, y)
         interactions = self._app.interaction_plan()
-        if not can_scroll_with_wheel(interactions, x, y):
+        if not can_scroll_with_wheel(interactions, app_x, app_y):
             return False
-        return self._app.on_wheel(x=x, y=y, dy=event.dy)
+        return self._app.on_wheel(x=app_x, y=app_y, dy=event.dy)
 
     def handle_input_snapshot(self, snapshot: InputSnapshot) -> bool:
         """Route one immutable input snapshot through framework handlers."""

@@ -83,7 +83,7 @@ from engine.api.render_snapshot import (
     create_render_snapshot,
 )
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
-from engine.api.ui_framework import UIFramework, create_ui_framework
+from engine.api.ui_framework import UIFramework, create_app_render_api, create_ui_framework
 from engine.api.ui_primitives import (
     Button,
     CellCoord,
@@ -219,6 +219,7 @@ __all__ = [
     "configure_logging",
     "get_logger",
     "create_ui_framework",
+    "create_app_render_api",
     "discover_debug_sessions",
     "export_crash_bundle",
     "export_replay_session",

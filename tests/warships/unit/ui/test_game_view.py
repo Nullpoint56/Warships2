@@ -88,3 +88,4 @@ def test_game_view_fits_button_text_to_button_bounds() -> None:
     assert isinstance(text_payload.get("text"), str)
     assert len(text_payload["text"]) < len("this_is_a_very_long_button_label_for_testing")
     assert float(text_payload.get("font_size", 99.0)) <= 17.0
+

@@ -1,3 +1,5 @@
+import pytest
+
 from engine.input.input_controller import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot, KeyboardSnapshot, MouseSnapshot
 from engine.runtime.framework_engine import EngineUIFramework
@@ -151,3 +153,28 @@ def test_input_snapshot_routes_through_framework_handlers() -> None:
     assert "on_key" in call_names
     assert "on_char" in call_names
     assert "on_wheel" in call_names
+
+
+def test_framework_maps_engine_design_space_to_app_design_space() -> None:
+    app = FakeApp()
+    app.set_ui_design_resolution(1200.0, 720.0)
+    app.set_plan(
+        FakeInteractionPlan(
+            buttons=(FakeButton("new_game", True, Box(100, 100, 100, 50)),),
+            wheel_scroll_regions=(Box(0, 0, 1200, 720),),
+        )
+    )
+    renderer = FakeRenderer(design_width=1920.0, design_height=1080.0)
+    framework = EngineUIFramework(app=app, renderer=renderer, layout=GridLayout())
+
+    changed_click = framework.handle_pointer_event(PointerEvent("pointer_down", 170.0, 170.0, 1))
+    changed_wheel = framework.handle_wheel_event(WheelEvent(170.0, 170.0, 1.0))
+
+    assert changed_click
+    assert changed_wheel
+    assert app.calls[0] == ("on_button", ("new_game",))
+    assert app.calls[1][0] == "on_wheel"
+    wheel_x, wheel_y, wheel_dy = app.calls[1][1]
+    assert wheel_x == pytest.approx(106.25)
+    assert wheel_y == pytest.approx(113.33333333333333)
+    assert wheel_dy == pytest.approx(1.0)

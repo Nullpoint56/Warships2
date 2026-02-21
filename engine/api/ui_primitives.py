@@ -201,24 +201,30 @@ def fit_text_to_rect(
     pad_x: float = 10.0,
     pad_y: float = 6.0,
 ) -> tuple[str, float]:
-    """Fit label text inside a rectangle with deterministic engine text metrics."""
+    """Fit label text inside a rectangle using conservative glyph-atlas-friendly estimates."""
     normalized = str(text)
     if not normalized:
         return "", float(base_font_size)
     avail_w = max(1.0, float(rect_w) - (2.0 * float(pad_x)))
     avail_h = max(1.0, float(rect_h) - (2.0 * float(pad_y)))
-    min_pixel = max(1, int(round(float(min_font_size) / 8.0)))
-    preferred_pixel = max(min_pixel, int(round(float(base_font_size) / 8.0)))
-    max_pixel_by_height = max(1, int(avail_h // 7.0))
-    pixel = min(preferred_pixel, max_pixel_by_height)
-    while pixel >= min_pixel:
-        max_chars = int(((avail_w / float(pixel)) + 1.0) // 6.0)
+    min_size = max(1.0, float(min_font_size))
+    size = max(min_size, float(base_font_size))
+    # Conservative metrics to avoid vertical clipping with ascenders/descenders.
+    est_char_w_factor = 0.62
+    est_line_h_factor = 1.25
+    while size >= min_size:
+        est_line_h = float(size) * est_line_h_factor
+        if est_line_h > avail_h:
+            size -= 1.0
+            continue
+        est_char_w = max(1.0, float(size) * est_char_w_factor)
+        max_chars = int(avail_w // est_char_w)
         if max_chars >= len(normalized):
-            return normalized, float(pixel * 8)
+            return normalized, float(size)
         if max_chars > 0:
-            return truncate_text(normalized, max_chars), float(pixel * 8)
-        pixel -= 1
-    return truncate_text(normalized, 1), float(min_pixel * 8)
+            return truncate_text(normalized, max_chars), float(size)
+        size -= 1.0
+    return truncate_text(normalized, 1), float(min_size)
 
 
 def clamp_child_rect_to_parent(

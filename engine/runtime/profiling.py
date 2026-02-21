@@ -21,9 +21,13 @@ class FrameProfiler:
     _sample_counter: int = 0
     _tracemalloc_started: bool = False
     _last_payload: dict[str, Any] | None = None
+    _include_system_timings: bool = False
+    _include_event_topics: bool = False
 
     def __post_init__(self) -> None:
         self._sampling_n = max(1, int(self.sampling_n))
+        self._include_system_timings = _env_flag("ENGINE_PROFILING_INCLUDE_SYSTEM_TIMINGS", False)
+        self._include_event_topics = _env_flag("ENGINE_PROFILING_INCLUDE_EVENT_TOPICS", False)
         if self.enabled:
             tracemalloc.start()
             self._tracemalloc_started = True
@@ -41,22 +45,44 @@ class FrameProfiler:
             return None
 
         frame = snapshot.last_frame
-        systems = dict(frame.system_timings_ms)
-        top_system = max(systems.items(), key=lambda item: item[1], default=("", 0.0))
-        events = dict(frame.event_publish_by_topic)
-        top_event = max(events.items(), key=lambda item: item[1], default=("", 0))
+        top_system_name = ""
+        top_system_ms = 0.0
+        for system_id, elapsed_ms in frame.system_timings_ms.items():
+            ms = float(elapsed_ms)
+            if ms > top_system_ms:
+                top_system_name = str(system_id)
+                top_system_ms = ms
+        top_event_name = ""
+        top_event_count = 0
+        for topic, count in frame.event_publish_by_topic.items():
+            topic_count = int(count)
+            if topic_count > top_event_count:
+                top_event_name = str(topic)
+                top_event_count = topic_count
         memory = self._collect_memory()
 
         bottlenecks: list[str] = []
         if frame.dt_ms >= 25.0:
             bottlenecks.append("frame_hitch")
-        if top_system[0]:
-            bottlenecks.append(f"system:{top_system[0]}")
-        if top_event[0]:
-            bottlenecks.append(f"event:{top_event[0]}")
+        if top_system_name:
+            bottlenecks.append(f"system:{top_system_name}")
+        if top_event_name:
+            bottlenecks.append(f"event:{top_event_name}")
         if frame.scheduler_queue_size > 0:
             bottlenecks.append("scheduler_queue")
 
+        events_payload: dict[str, Any] = {
+            "publish_count": frame.event_publish_count,
+            "top_topic": {"name": top_event_name, "count": int(top_event_count)},
+        }
+        systems_payload: dict[str, Any] = {
+            "top_system": {"name": top_system_name, "ms": float(top_system_ms)},
+            "exception_count": frame.system_exception_count,
+        }
+        if self._include_event_topics:
+            events_payload["publish_by_topic"] = dict(frame.event_publish_by_topic)
+        if self._include_system_timings:
+            systems_payload["timings_ms"] = dict(frame.system_timings_ms)
         payload = {
             "schema": "frame_profile_v1",
             "frame_index": frame.frame_index,
@@ -67,16 +93,8 @@ class FrameProfiler:
                 "enqueued": frame.scheduler_enqueued_count,
                 "dequeued": frame.scheduler_dequeued_count,
             },
-            "events": {
-                "publish_count": frame.event_publish_count,
-                "publish_by_topic": events,
-                "top_topic": {"name": top_event[0], "count": int(top_event[1])},
-            },
-            "systems": {
-                "timings_ms": systems,
-                "top_system": {"name": top_system[0], "ms": float(top_system[1])},
-                "exception_count": frame.system_exception_count,
-            },
+            "events": events_payload,
+            "systems": systems_payload,
             "memory": memory,
             "bottlenecks": bottlenecks,
         }
@@ -177,3 +195,15 @@ def _process_rss_mb() -> float | None:
         return rss / 1024.0
     except Exception:
         return None
+
+
+def _env_flag(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return bool(default)
+    value = str(raw).strip().lower()
+    if value in {"1", "true", "yes", "on"}:
+        return True
+    if value in {"0", "false", "no", "off"}:
+        return False
+    return bool(default)

@@ -8,7 +8,7 @@ from pathlib import Path
 
 from engine.api.hosted_runtime import HostedRuntimeConfig, run_hosted_runtime
 from engine.api.render import RenderAPI
-from engine.api.ui_framework import create_ui_framework
+from engine.api.ui_framework import create_app_render_api, create_ui_framework
 from engine.api.ui_primitives import GridLayout
 from warships.game.app.controller import GameController
 from warships.game.app.engine_adapter import WarshipsAppAdapter
@@ -46,8 +46,9 @@ def _build_module(
     layout: GridLayout,
     debug_ui: bool,
 ) -> WarshipsGameModule:
-    view = GameView(renderer, layout)
     app = WarshipsAppAdapter(controller)
+    app_renderer = create_app_render_api(app=app, renderer=renderer)
+    view = GameView(app_renderer, layout)
     framework = create_ui_framework(app=app, renderer=renderer, layout=layout)
     return WarshipsGameModule(
         controller=controller,

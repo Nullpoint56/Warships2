@@ -23,6 +23,7 @@ from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_framework import UIFramework
 from warships.game.app.controller import GameController
 from warships.game.app.ui_state import AppUIState
+from warships.game.ui.layout_metrics import DESIGN_HEIGHT, DESIGN_WIDTH
 from warships.game.ui.game_view import GameView
 
 
@@ -200,6 +201,10 @@ class WarshipsGameModule(GameModule):
 
     def should_close(self) -> bool:
         return False
+
+    def ui_design_resolution(self) -> tuple[float, float]:
+        """Authored Warships UI design-space exposed for engine snapshot scaling."""
+        return (float(DESIGN_WIDTH), float(DESIGN_HEIGHT))
 
     def on_shutdown(self) -> None:
         self._graph.shutdown_all(self._context)

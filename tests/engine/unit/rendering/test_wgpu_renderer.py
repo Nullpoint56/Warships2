@@ -515,6 +515,14 @@ class _FakeTexture:
         return object()
 
 
+class _FakePipeline:
+    def __init__(self, descriptor: dict[str, object]) -> None:
+        self.descriptor = descriptor
+
+    def get_bind_group_layout(self, index: int) -> object:
+        return {"index": int(index)}
+
+
 class _FakeDevice:
     def __init__(self) -> None:
         self.queue = _FakeQueue()
@@ -536,7 +544,7 @@ class _FakeDevice:
 
     def create_render_pipeline(self, **descriptor):
         self.pipelines.append(descriptor)
-        return descriptor
+        return _FakePipeline(descriptor)
 
     def create_texture(self, **kwargs):
         size = kwargs.get("size")
@@ -548,6 +556,14 @@ class _FakeDevice:
 
     def create_buffer(self, **kwargs):
         self.buffers.append(tuple(kwargs.items()))
+        return object()
+
+    def create_sampler(self, **kwargs):
+        _ = kwargs
+        return object()
+
+    def create_bind_group(self, **kwargs):
+        _ = kwargs
         return object()
 
 
@@ -644,6 +660,41 @@ def test_wgpu_backend_resize_reconfigure_reuses_device_and_retries(monkeypatch) 
     assert int(telemetry["reconfigure_attempts"]) >= 1
     assert int(telemetry["reconfigure_failures"]) >= 0
     assert float(telemetry["dpi_scale"]) == 2.0
+
+
+def test_wgpu_backend_separates_window_and_internal_render_resolution(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    monkeypatch.setenv("ENGINE_RENDER_INTERNAL_SCALE", "0.5")
+    backend = _WgpuBackend()
+    event = WindowResizeEvent(
+        logical_width=640.0,
+        logical_height=480.0,
+        physical_width=1600,
+        physical_height=1200,
+        dpi_scale=2.0,
+    )
+
+    backend.reconfigure(event)
+    telemetry = backend.resize_telemetry()
+
+    assert int(telemetry["window_width"]) == 1600
+    assert int(telemetry["window_height"]) == 1200
+    assert int(telemetry["render_width"]) == 800
+    assert int(telemetry["render_height"]) == 600
+    assert int(telemetry["width"]) == 800
+    assert int(telemetry["height"]) == 600
+
+
+def test_resolve_ui_design_dimensions_supports_ui_resolution_env(monkeypatch) -> None:
+    monkeypatch.setenv("ENGINE_UI_RESOLUTION", "1600x900")
+
+    width, height = wgpu_renderer._resolve_ui_design_dimensions(  # noqa: SLF001
+        default_width=1200,
+        default_height=720,
+    )
+
+    assert width == 1600
+    assert height == 900
 
 
 def test_wgpu_backend_present_mode_fallback_chain(monkeypatch) -> None:
@@ -764,6 +815,94 @@ def test_wgpu_backend_fails_when_system_font_discovery_fails(monkeypatch) -> Non
     with pytest.raises(WgpuInitError, match="wgpu backend initialization failed") as exc_info:
         _WgpuBackend()
     assert "font_candidates_checked" in exc_info.value.details
+
+
+def test_wgpu_backend_glyph_run_cache_keyed_by_font_size_and_text(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._text_face = object()  # noqa: SLF001
+    backend._text_pipeline = object()  # noqa: SLF001
+    backend._text_bind_group = object()  # noqa: SLF001
+    backend._text_atlas_texture = object()  # noqa: SLF001
+
+    def _fake_rasterize_glyph_bitmap(*, face: object | None, character: str, size_px: int):
+        _ = (face, character, size_px)
+        return (2, 3, 0, 3, 2.0, b"\xff" * 6)
+
+    monkeypatch.setattr(wgpu_renderer, "_rasterize_glyph_bitmap", _fake_rasterize_glyph_bitmap)
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="text",
+        layer=10,
+        sort_key="text",
+        transform=(),
+        data=(
+            ("text", "Menu"),
+            ("x", 100.0),
+            ("y", 50.0),
+            ("font_size", 16.0),
+            ("anchor", "top-left"),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+
+    first = backend._packet_text_quads(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+    second = backend._packet_text_quads(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+
+    assert first
+    assert second == first
+    assert len(backend._glyph_run_cache) == 1  # noqa: SLF001
+
+    larger = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="text",
+        layer=10,
+        sort_key="text",
+        transform=(),
+        data=(
+            ("text", "Menu"),
+            ("x", 100.0),
+            ("y", 50.0),
+            ("font_size", 24.0),
+            ("anchor", "top-left"),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+    backend._packet_text_quads(larger, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+    assert len(backend._glyph_run_cache) == 2  # noqa: SLF001
+
+
+def test_wgpu_backend_text_layout_skips_zero_bitmap_glyphs(monkeypatch) -> None:
+    _install_fake_wgpu_module(monkeypatch)
+    backend = _WgpuBackend()
+    backend._text_face = object()  # noqa: SLF001
+    backend._text_pipeline = object()  # noqa: SLF001
+    backend._text_bind_group = object()  # noqa: SLF001
+    backend._text_atlas_texture = object()  # noqa: SLF001
+
+    def _fake_rasterize_glyph_bitmap(*, face: object | None, character: str, size_px: int):
+        _ = (face, size_px)
+        if character == " ":
+            return (0, 0, 0, 0, 6.0, b"")
+        return (2, 3, 0, 3, 2.0, b"\xff" * 6)
+
+    monkeypatch.setattr(wgpu_renderer, "_rasterize_glyph_bitmap", _fake_rasterize_glyph_bitmap)
+    packet = wgpu_renderer._DrawPacket(  # noqa: SLF001
+        kind="text",
+        layer=10,
+        sort_key="text",
+        transform=(),
+        data=(
+            ("text", "A A"),
+            ("x", 100.0),
+            ("y", 50.0),
+            ("font_size", 16.0),
+            ("anchor", "top-left"),
+            ("linear_rgba", (1.0, 1.0, 1.0, 1.0)),
+        ),
+    )
+
+    quads = backend._packet_text_quads(packet, sx=1.0, sy=1.0, ox=0.0, oy=0.0)  # noqa: SLF001
+    assert quads
+    assert all(float(quad.w) > 0.0 and float(quad.h) > 0.0 for quad in quads)
 
 
 def test_wgpu_backend_acquire_frame_view_recovers_after_one_failure(monkeypatch) -> None:

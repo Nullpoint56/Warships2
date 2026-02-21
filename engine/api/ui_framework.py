@@ -40,3 +40,10 @@ def create_ui_framework(
     from engine.runtime.framework_engine import EngineUIFramework
 
     return EngineUIFramework(app=app, renderer=renderer, layout=layout)
+
+
+def create_app_render_api(*, app: EngineAppPort, renderer: RenderAPI) -> RenderAPI:
+    """Create app-facing renderer with authored-space scaling when app provides it."""
+    from engine.runtime.ui_space import create_app_render_api as _create
+
+    return _create(app=app, renderer=renderer)

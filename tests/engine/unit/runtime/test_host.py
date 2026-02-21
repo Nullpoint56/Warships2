@@ -120,6 +120,9 @@ class _FakeRenderer:
                     self.text_calls.append(str(key))
                     self.text_values.append(str(text))
 
+    def design_space_size(self) -> tuple[float, float]:
+        return (1920.0, 1080.0)
+
 
 class _SnapshotModule(FakeModule):
     def __init__(self) -> None:
@@ -127,11 +130,17 @@ class _SnapshotModule(FakeModule):
         self.payload: list[str] = ["base"]
 
     def build_render_snapshot(self) -> RenderSnapshot:
-        command = RenderCommand(kind="text", data=(("key", "mod:text"), ("text", self.payload)))
+        command = RenderCommand(
+            kind="text",
+            data=(("key", "mod:text"), ("text", self.payload), ("x", 100.0), ("y", 100.0)),
+        )
         return RenderSnapshot(
             frame_index=len(self.frames),
             passes=(RenderPassSnapshot(name="main", commands=(command,)),),
         )
+
+    def ui_design_resolution(self) -> tuple[float, float]:
+        return (1200.0, 720.0)
 
 
 def test_engine_host_lifecycle_and_close() -> None:
@@ -160,6 +169,9 @@ def test_engine_host_submits_module_snapshot_to_renderer() -> None:
     submitted = renderer.snapshots[0]
     assert submitted.frame_index == len(module.frames)
     assert submitted.passes[0].commands[0].kind == "text"
+    payload = dict(submitted.passes[0].commands[0].data)
+    assert payload["x"] == pytest.approx(160.0)
+    assert payload["y"] == pytest.approx(150.0)
 
 
 def test_engine_host_detaches_snapshot_payload_from_live_state() -> None:

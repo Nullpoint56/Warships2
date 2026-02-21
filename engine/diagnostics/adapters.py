@@ -2,9 +2,20 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from engine.diagnostics.hub import DiagnosticHub
+
+_EMIT_SYSTEM_TIMINGS = os.getenv("ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS", "0").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+_EMIT_EVENT_TOPIC_BREAKDOWN = os.getenv(
+    "ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN", "0"
+).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def emit_frame_metrics(hub: DiagnosticHub, snapshot: Any) -> None:
@@ -35,9 +46,13 @@ def emit_frame_metrics(hub: DiagnosticHub, snapshot: Any) -> None:
         name="events.publish_count",
         tick=tick,
         value=frame.event_publish_count,
-        metadata={"by_topic": dict(frame.event_publish_by_topic)},
+        metadata=(
+            {"by_topic": dict(frame.event_publish_by_topic)}
+            if _EMIT_EVENT_TOPIC_BREAKDOWN
+            else None
+        ),
     )
-    if frame.system_timings_ms:
+    if _EMIT_SYSTEM_TIMINGS and frame.system_timings_ms:
         for system_id, elapsed_ms in frame.system_timings_ms.items():
             hub.emit_fast(
                 category="system",

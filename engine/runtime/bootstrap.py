@@ -29,6 +29,10 @@ def run_hosted_runtime(
     setup_engine_logging()
     layout = GridLayout()
     config = host_config or EngineHostConfig()
+    panel_width, panel_height = _resolve_initial_panel_size(
+        fallback_width=int(config.width),
+        fallback_height=int(config.height),
+    )
     if _resolve_engine_headless():
         renderer: RenderAPI = _HeadlessRenderer()
         module = module_factory(renderer, layout)
@@ -41,8 +45,8 @@ def run_hosted_runtime(
     update_mode = "continuous" if loop_cfg.mode == "continuous" else "ondemand"
     max_fps = loop_cfg.fps_cap if loop_cfg.fps_cap > 0.0 else 240.0
     window_layer = create_rendercanvas_window(
-        width=1200,
-        height=720,
+        width=int(panel_width),
+        height=int(panel_height),
         title="Engine Runtime",
         update_mode=update_mode,
         min_fps=0.0,
@@ -51,7 +55,11 @@ def run_hosted_runtime(
     )
     surface = window_layer.create_surface()
     try:
-        renderer = WgpuRenderer(surface=surface)
+        renderer = _create_renderer_for_panel(
+            surface=surface,
+            panel_width=int(panel_width),
+            panel_height=int(panel_height),
+        )
     except Exception as exc:
         selected_backend = "unknown"
         adapter_info: dict[str, object] = {}
@@ -87,7 +95,12 @@ def run_hosted_runtime(
         input_controller=input_controller,
         host=host,
     )
-    _apply_window_mode(window, host.config.window_mode, host.config.width, host.config.height)
+    _apply_window_mode(
+        window,
+        host.config.window_mode,
+        int(panel_width),
+        int(panel_height),
+    )
     window.sync_ui()
     window.run()
 
@@ -114,6 +127,22 @@ def _resolve_wgpu_backend_priority() -> tuple[str, ...]:
         return ("vulkan", "metal", "dx12")
     values = tuple(item.strip().lower() for item in raw.split(",") if item.strip())
     return values or ("vulkan", "metal", "dx12")
+
+
+def _resolve_initial_panel_size(*, fallback_width: int, fallback_height: int) -> tuple[int, int]:
+    raw = os.getenv("ENGINE_UI_PANEL_RESOLUTION", "").strip().lower()
+    if raw:
+        normalized = raw.replace(" ", "")
+        for sep in ("x", ",", ":"):
+            if sep in normalized:
+                left, right = normalized.split(sep, 1)
+                try:
+                    width = max(1, int(left))
+                    height = max(1, int(right))
+                except ValueError:
+                    break
+                return (width, height)
+    return (max(1, int(fallback_width)), max(1, int(fallback_height)))
 
 
 class _HeadlessRenderer(RenderAPI):
@@ -193,3 +222,19 @@ class _HeadlessRenderer(RenderAPI):
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         _ = snapshot
         return
+
+
+def _create_renderer_for_panel(
+    *,
+    surface: Any,
+    panel_width: int,
+    panel_height: int,
+) -> RenderAPI:
+    try:
+        return WgpuRenderer(
+            surface=surface,
+            width=int(panel_width),
+            height=int(panel_height),
+        )
+    except TypeError:
+        return WgpuRenderer(surface=surface)
