@@ -172,6 +172,76 @@ Primary closure-set modules requiring refactor:
 Closure note:
 This pass covers all current `engine` modules for this criterion with static and runtime smoke validation. Remaining risk is architectural intent mismatch (intentional transitional coupling), not discovery coverage.
 
+## Criteria Review: Potentially Unsustainable Code or Architecture
+
+### Findings (Condensed, Complete)
+
+1. Critical: complexity concentration in core runtime/renderer.
+   - `engine/rendering/wgpu_renderer.py` (4885 LOC, 192 defs; `_WgpuBackend` 68 methods; `draw_packets` 247 lines).
+   - `engine/runtime/host.py` (820 LOC; `EngineHost.frame` 162 lines, multi-domain and branch-heavy).
+2. High: broad exception swallowing is overused.
+   - 80 `except Exception` uses total; concentrated in renderer/window/profiling paths.
+3. High: reflective runtime behavior is pervasive.
+   - 243 `getattr` uses total; largest concentrations in renderer, debug API, and host runtime.
+4. High: third-party/private API patching occurs inside high-traffic modules.
+   - Window layer touches private backend internals and patches canvas behavior.
+   - Renderer patches `wgpu_native` internals and stores custom patch state.
+5. High: duplicated runtime logic creates sustained dual-maintenance burden.
+   - Parallel implementations across `engine/api/ui_primitives.py` and `engine/ui_runtime/*` (grid/prompt/modal/interactions/keymap/scroll/list helpers).
+6. High: configuration surface is large and fragmented.
+   - 83 unique `ENGINE_*`/`WARSHIPS_*` tokens observed; env parsing helpers duplicated across modules.
+7. High: import-cycle density is non-trivial.
+   - 12 strongly-connected module components, including multi-module runtime/bootstrap/debug cycles and repeated API<->runtime two-node cycles.
+8. High: import-boundary tests have a blind spot.
+   - API purity test currently checks top-level imports only (`top_level_only=True`), allowing function-scoped coupling drift.
+9. Medium: global cache/state strategy is uneven.
+   - Multiple global/module caches and clear-all thresholds (notably renderer/ui-space) can create latency cliffs and opaque tuning behavior.
+10. Medium: defaults/parsing overlap and drift.
+   - Resolution defaults differ by subsystem (`1280x800` vs `1200x720`), with duplicated resolution parsing across bootstrap/ui-space/renderer.
+11. Medium: renderer still contains domain-leaning defaults and implicit string protocols.
+   - Game-leaning text-prewarm labels in generic renderer path.
+   - Large `kind`/`stream_kind` string-dispatch chains in hot paths.
+   - Private metadata keys (`_engine_static`, `_engine_version`) act as hidden protocol.
+12. Medium: optional dependency behavior is bound at import-time.
+   - Optional imports (`numpy`, `uharfbuzz`, `orjson`) define behavior by environment at import moment, reducing reproducibility.
+13. Medium: public export surfaces are oversized.
+   - `engine/api/__init__.py` exports 144 symbols; `engine/runtime/__init__.py` exports 31.
+14. Medium: helper-family proliferation and ownership ambiguity continue.
+   - Repeated `_env_*` / `_flag` helpers and overlapping module responsibilities increase drift risk.
+15. Medium: direct module-test touch is uneven for wrapper/barrel modules.
+   - Indirection-heavy modules have weaker direct references, raising regression risk during wiring refactors.
+
+### Criterion Outcome
+
+Status: **confirmed present** (high confidence).
+
+### Criterion Backlog (Focused)
+
+1. Define and enforce maintainability budgets:
+   - max file size,
+   - max function length/branch complexity,
+   - broad-exception budget with justified allowlist.
+2. Split sustainability hotspots first:
+   - `engine/rendering/wgpu_renderer.py`,
+   - `engine/runtime/host.py`,
+   - `engine/window/rendercanvas_glfw.py`,
+   - `engine/runtime/profiling.py`.
+3. Replace broad exception patterns with typed handling + explicit fallback telemetry.
+4. Reduce reflection in required paths by explicit typed extension interfaces and adapters.
+5. Isolate third-party/private API patching to a narrow compatibility module with version guards and tests.
+6. Consolidate duplicate runtime logic (`engine/api/ui_primitives.py` vs `engine/ui_runtime/*`).
+7. Centralize config parsing and publish one canonical engine config catalog.
+8. Align default design resolution policy across host/renderer/ui-space.
+9. Strengthen architecture tests:
+   - enforce API purity for all imports (not only top-level),
+   - add checks for broad exceptions and module budget thresholds.
+10. Add import-cycle guardrail in CI and target monotonic cycle reduction per phase.
+11. Reduce and tier public export surfaces (`engine.api`, `engine.runtime`) with explicit stability levels.
+12. Replace import-time env flag capture in runtime-critical modules with runtime-resolved config access or explicit refresh policy.
+13. Replace string-dispatch command handling with typed command registry/dispatcher where feasible.
+14. Promote private packet metadata keys to explicit typed fields/contracts (or isolate behind adapter boundary).
+15. Add targeted tests for currently low-direct-reference wrapper/barrel modules that encode critical wiring behavior.
+
 ## Refactoring Principles
 
 1. Contracts first: define target interfaces before moving implementations.
@@ -200,11 +270,13 @@ Work:
 2. Define explicit renderer/window/surface extension contracts (`StyleRenderAPI`, resize-capable renderer/window contracts, typed surface-provider contract replacing opaque `provider: object | None` assumptions).
 3. Replace `Any` host debug access with typed diagnostics host protocol.
 4. Remove `getattr`/`hasattr` boundary probing where capability is required.
+5. Harden boundary tests to detect function-scoped runtime/rendering imports in `engine/api`.
 
 Exit:
 1. `engine.api` has no direct runtime/diagnostics imports.
 2. Runtime/composition paths rely on explicit typed boundary protocols.
 3. Required boundary behavior no longer depends on reflection.
+4. API boundary test policy catches both top-level and lazy import violations.
 
 ### Phase 3: UI Runtime Consolidation
 
@@ -230,6 +302,8 @@ Work:
 2. Keep `EngineHost` as orchestration facade with narrow dependencies.
 3. `HostedWindowFrontend` depends on host protocol rather than concrete `EngineHost`.
 4. Replace weakly typed context/service-locator usage with typed context surfaces where required.
+5. Remove import-time toggle capture in host-critical paths; use explicit runtime config snapshots/refresh policy.
+6. Reduce broad exception/fallback blocks in host/neighboring runtime orchestration paths with typed error handling.
 
 Exit:
 1. `EngineHost` is coordination-oriented, not feature-heavy.
@@ -248,6 +322,11 @@ Work:
 2. Establish internal interfaces to reduce cross-cutting state mutation.
 3. Move window-backend loop/startup helpers out of `engine/rendering/scene_runtime.py` to window/composition layer.
 4. Remove rendering->window backend coupling from rendering runtime helpers.
+5. Isolate wgpu-native CFFI fastpath/patch logic into compatibility adapter module with explicit version guards and rollback switch.
+6. Remove game-leaning text-prewarm defaults from generic renderer core; move to configurable profile/preset layer.
+7. Replace large string-dispatch command handling (`kind`/`stream_kind`) with typed/registered dispatch.
+8. Replace private packet metadata key protocol (`_engine_static`, `_engine_version`) with explicit typed contract fields/adapters.
+9. Split/contain window-layer private API patching (`rendercanvas` guards) in a dedicated compatibility boundary.
 
 Exit:
 1. Renderer subsystem is modular with bounded file size/responsibility.
@@ -261,10 +340,24 @@ Work:
 3. Audit snapshot transform/sanitization path to avoid repeated deep rebuilds when data identity is unchanged.
 4. Centralize env/config parsing helpers to reduce duplicated parsing paths and config drift.
 5. Split oversized barrel exports and minimize cross-layer import churn (`engine/runtime/__init__.py`, `engine/api/__init__.py`).
+6. Set and enforce sustainability budgets (file size, function complexity, broad exception policy) via CI tests.
+7. Standardize design-resolution defaults/parsing across host, renderer, and UI-space.
+8. Add import-cycle checks and fail on new cycles in engine package.
+9. Introduce export-surface budgets and explicit public/internal API tiers.
+10. Remove import-time env captures for diagnostics/profiling toggles in favor of explicit config snapshots.
+11. Start migration from string-based render command dispatch to typed registry pattern.
+12. Define and enforce explicit metadata contract for renderer static/version hints.
+13. Add CI checks for broad exception budget, file/function complexity budget, and top import-cycle non-regression.
+14. Reduce export-surface bloat with explicit public/internal API tiers and symbol budgets.
+15. Add targeted wiring tests for low-direct-reference wrapper/barrel modules.
 
 Exit:
 1. Hot-path allocations and latency spikes are reduced and measured.
 2. Frame-time p95 does not regress; target improvement in input/render heavy scenarios.
+3. Maintainability budget checks pass and prevent regression of core hotspots.
+4. Engine import-cycle count trends downward and does not regress.
+5. Runtime behavior does not depend on hidden import-time env capture for critical toggles.
+6. Sustainability budgets and API/export-surface checks prevent hotspot regression.
 
 ## Work Breakdown Priority
 
