@@ -63,3 +63,4 @@ jobs:
         with:
           name: Warships-windows
           path: dist/Warships/
+          include-hidden-files: true
