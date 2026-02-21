@@ -1,5 +1,6 @@
 import random
 
+import warships.game.app.services.battle as battle_service
 from warships.game.app.services.battle import build_ai_strategy, resolve_player_turn, start_game
 from warships.game.core.models import Coord, ShotResult, Turn
 from warships.game.core.rules import create_session
@@ -59,3 +60,41 @@ def test_build_ai_strategy_defaults_unknown_difficulty_to_normal() -> None:
     ai = build_ai_strategy("Impossible", random.Random(4))
     # "Normal" maps to hunt-target.
     assert ai.__class__.__name__ == "HuntTargetAI"
+
+
+def test_resolve_player_turn_keeps_player_sink_feedback_when_ai_responds(monkeypatch) -> None:
+    session = create_session(_fleet_for_test(), _fleet_for_test())
+
+    def _fake_player_fire(session_obj, coord):
+        _ = coord
+        session_obj.last_message = "You fired at (2, 3): sunk DESTROYER."
+        session_obj.turn = Turn.AI
+        return ShotResult.SUNK
+
+    def _fake_ai_turn(session_obj, ai_strategy):
+        _ = ai_strategy
+        session_obj.last_message = "AI fired at (4, 4): miss."
+        session_obj.turn = Turn.PLAYER
+
+    monkeypatch.setattr(battle_service, "player_fire", _fake_player_fire)
+    monkeypatch.setattr(battle_service, "_run_ai_turn", _fake_ai_turn)
+
+    result = resolve_player_turn(session, build_ai_strategy("Easy", random.Random(9)), Coord(2, 3))
+    assert result.shot_result is ShotResult.SUNK
+    assert "sunk DESTROYER" in result.status
+    assert "AI fired at (4, 4): miss." in result.status
+
+
+def _fleet_for_test():
+    from warships.game.core.models import Coord as _Coord
+    from warships.game.core.models import FleetPlacement, Orientation, ShipPlacement, ShipType
+
+    return FleetPlacement(
+        ships=[
+            ShipPlacement(ShipType.CARRIER, _Coord(0, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.BATTLESHIP, _Coord(2, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.CRUISER, _Coord(4, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.SUBMARINE, _Coord(6, 0), Orientation.HORIZONTAL),
+            ShipPlacement(ShipType.DESTROYER, _Coord(8, 0), Orientation.HORIZONTAL),
+        ]
+    )

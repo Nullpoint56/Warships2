@@ -26,6 +26,9 @@ def draw_status_bar(
         return
     active_theme = theme or theme_for_state(state)
     status_box = status_rect()
+    status_lower = str(status).strip().lower()
+    sink_alert = "sunk" in status_lower
+    border_color = TOKENS.warning if sink_alert else active_theme.status_border
     draw_rounded_rect(
         renderer,
         key="status:bg",
@@ -44,9 +47,32 @@ def draw_status_bar(
         y=status_box.y,
         w=status_box.w,
         h=status_box.h,
-        color=active_theme.status_border,
+        color=border_color,
         z=1.01,
+        thickness=2.0 if sink_alert else 1.0,
     )
+    if sink_alert:
+        draw_rounded_rect(
+            renderer,
+            key="status:alert:bg",
+            x=status_box.x + status_box.w - 220.0,
+            y=status_box.y + 6.0,
+            w=200.0,
+            h=18.0,
+            radius=4.0,
+            color="#7a4e00",
+            z=1.02,
+        )
+        renderer.add_text(
+            key="status:alert",
+            text="SHIP SUNK!",
+            x=status_box.x + status_box.w - 120.0,
+            y=status_box.y + 15.0,
+            font_size=12.0,
+            color=TOKENS.warning,
+            anchor="middle-center",
+            z=3.2,
+        )
     show_placement_hint = state is AppState.PLACEMENT_EDIT and len(placements) < len(ship_order)
     status_text_value = status
     if show_placement_hint:
