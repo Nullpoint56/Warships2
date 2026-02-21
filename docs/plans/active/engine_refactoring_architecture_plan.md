@@ -83,6 +83,37 @@ Current engine architecture has gone through several feature additions. It is ne
 3. Runtime smoke checks: module import smoke, headless hosted-runtime smoke, API factory smoke, debug API smoke all passed.
 4. Per-module verdict matrix: 17 `needs_refactor`, 79 `clean_for_criterion`.
 
+### Concrete Checks Evaluation (2026-02-21)
+
+1. Check: layer dependency direction (`engine.api` must not depend on runtime/rendering/window/diagnostics implementations).
+   - Result: **Fail**.
+   - Evidence: 12 API modules import forbidden implementation layers (`engine/api/action_dispatch.py`, `engine/api/commands.py`, `engine/api/context.py`, `engine/api/events.py`, `engine/api/flow.py`, `engine/api/hosted_runtime.py`, `engine/api/interaction_modes.py`, `engine/api/module_graph.py`, `engine/api/screens.py`, `engine/api/ui_framework.py`, `engine/api/debug.py`, `engine/api/logging.py`).
+2. Check: composition root placement (wiring/building concrete runtime objects must be outside contract modules).
+   - Result: **Fail**.
+   - Evidence: API factory entry points construct runtime implementations through function-scoped imports (for example `engine/api/hosted_runtime.py:29`, `engine/api/hosted_runtime.py:30`, `engine/api/ui_framework.py:40`, `engine/api/ui_framework.py:47`, plus `create_*` factories in action/commands/events/flow/context/module_graph/screens).
+3. Check: boundary contract completeness (required runtime capabilities must be explicit protocol members).
+   - Result: **Fail**.
+   - Evidence:
+     - `RenderAPI` omits style/resize extensions used at runtime (`engine/api/render.py` vs `engine/runtime/ui_space.py:191`, `engine/runtime/window_frontend.py:73`).
+     - `WindowPort` omits members used by runtime frontend (`canvas`, `consume_resize_telemetry`) (`engine/api/window.py` vs `engine/runtime/window_frontend.py:47`, `engine/runtime/window_frontend.py:118`).
+     - `SurfaceHandle.provider` remains opaque (`object | None`) while renderer requires provider behavior (`get_context`) (`engine/api/window.py:17`, `engine/rendering/wgpu_renderer.py:2846`-`engine/rendering/wgpu_renderer.py:2849`, `engine/window/factory.py:36`).
+4. Check: cross-layer import policy (gameplay/rendering/ui-runtime modules avoid forbidden runtime/backend dependencies).
+   - Result: **Fail**.
+   - Evidence:
+     - `engine/gameplay/update_loop.py:10` imports `engine.runtime.time.FixedStepAccumulator`.
+     - `engine/rendering/scene_runtime.py:10` imports `engine.window.rendercanvas_glfw`.
+     - `engine/ui_runtime/debug_overlay.py:8` imports `engine.runtime.metrics`.
+5. Check: public barrel boundary hygiene (`__init__.py` exports must not blur layer boundaries).
+   - Result: **Fail**.
+   - Evidence:
+     - `engine/runtime/__init__.py` mixes API and runtime imports in one barrel (`engine/runtime/__init__.py:3`-`engine/runtime/__init__.py:29`).
+     - Export surfaces remain large (`engine/runtime/__init__.py` 31 exports, `engine/api/__init__.py` 144 exports).
+6. Check: config/env parsing ownership centralization (one canonical config owner, no duplicated parsing paths).
+   - Result: **Fail**.
+   - Evidence:
+     - Env/helper parsing spread across at least 6 modules (`engine/window/rendercanvas_glfw.py`, `engine/rendering/wgpu_renderer.py`, `engine/runtime/host.py`, `engine/runtime/profiling.py`, `engine/runtime/debug_config.py`, `engine/runtime/ui_space.py`).
+     - Duplicated resolution env parsing (`ENGINE_UI_RESOLUTION`) appears in both `engine/runtime/ui_space.py:123` and `engine/rendering/wgpu_renderer.py:4827`.
+
 ### Modules Requiring Refactor (Closure Set)
 
 1. `engine/api/__init__.py`
