@@ -436,12 +436,12 @@ def test_text_draw_rects_merges_pixel_runs_for_fewer_quads() -> None:
     assert all(rect.w >= 3.0 for rect in rects)
 
 
-def test_safe_uv_bounds_insets_by_half_texel() -> None:
+def test_safe_uv_bounds_uses_full_rect_for_multi_texel_glyphs() -> None:
     u0, u1 = wgpu_renderer._safe_uv_bounds(start_px=10, size_px=4, atlas_size_px=256)  # noqa: SLF001
     center0, center1 = wgpu_renderer._safe_uv_bounds(start_px=10, size_px=1, atlas_size_px=256)  # noqa: SLF001
 
-    assert u0 == pytest.approx(10.5 / 256.0)
-    assert u1 == pytest.approx(13.5 / 256.0)
+    assert u0 == pytest.approx(10.0 / 256.0)
+    assert u1 == pytest.approx(14.0 / 256.0)
     assert center0 == pytest.approx(center1)
     assert center0 == pytest.approx(10.5 / 256.0)
 

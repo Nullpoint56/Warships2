@@ -1588,8 +1588,10 @@ def _safe_uv_bounds(*, start_px: int, size_px: int, atlas_size_px: int) -> tuple
     if size <= 1:
         center = (float(start) + 0.5) / atlas
         return (center, center)
-    u0 = (float(start) + 0.5) / atlas
-    u1 = (float(start + size) - 0.5) / atlas
+    # Sample the full glyph rect in atlas space; half-texel inset can visibly
+    # trim edge coverage on all sides for small/medium UI text.
+    u0 = float(start) / atlas
+    u1 = float(start + size) / atlas
     return (u0, u1)
 
 
