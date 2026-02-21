@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -43,15 +44,23 @@ def load_default_env_files(
 
     Precedence is left-to-right because later loads may overwrite previous values.
     Default order:
-    1) .env.engine
-    2) .env.engine.local
-    3) .env.app
-    4) .env.app.local
+    1) appdata/config/.env.engine
+    2) appdata/config/.env.engine.local
+    3) appdata/config/.env.app
+    4) appdata/config/.env.app.local
+    5) .env.engine (legacy fallback)
+    6) .env.engine.local (legacy fallback)
+    7) .env.app (legacy fallback)
+    8) .env.app.local (legacy fallback)
     """
     to_load = (
         tuple(paths)
         if paths is not None
         else (
+            "appdata/config/.env.engine",
+            "appdata/config/.env.engine.local",
+            "appdata/config/.env.app",
+            "appdata/config/.env.app.local",
             ".env.engine",
             ".env.engine.local",
             ".env.app",
@@ -63,10 +72,23 @@ def load_default_env_files(
 
 
 def _resolve_env_path(path: str) -> Path:
-    """Resolve env path from cwd first, then project root."""
+    """Resolve env path from cwd, frozen exe dir, then project root."""
     candidate = Path(path)
     if candidate.exists():
         return candidate
+
+    if getattr(sys, "frozen", False):
+        executable = getattr(sys, "executable", "")
+        if executable:
+            frozen_dir_candidate = Path(executable).resolve().parent / path
+            if frozen_dir_candidate.exists():
+                return frozen_dir_candidate
+
+    meipass = getattr(sys, "_MEIPASS", "")
+    if meipass:
+        meipass_candidate = Path(str(meipass)) / path
+        if meipass_candidate.exists():
+            return meipass_candidate
 
     # Fallback for IDE run configs with different working directory.
     project_root = Path(__file__).resolve().parents[3]

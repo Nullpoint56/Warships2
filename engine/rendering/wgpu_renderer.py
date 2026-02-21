@@ -2440,16 +2440,24 @@ class _WgpuBackend:
         request_adapter_sync = getattr(gpu, "request_adapter_sync", None)
         adapter = None
         selected_backend = "unknown"
+        backend_errors: dict[str, str] = {}
         if callable(request_adapter_sync):
             for backend_name in backend_order:
                 selected_backend = str(backend_name)
                 try:
-                    adapter = request_adapter_sync(
-                        power_preference="high-performance",
-                        backend=backend_name,
-                    )
+                    try:
+                        adapter = request_adapter_sync(
+                            power_preference="high-performance",
+                            backend=backend_name,
+                        )
+                    except TypeError:
+                        adapter = request_adapter_sync(power_preference="high-performance")
                 except TypeError:
                     adapter = request_adapter_sync(power_preference="high-performance")
+                except Exception as exc:
+                    backend_errors[selected_backend] = f"{exc.__class__.__name__}: {exc}"
+                    adapter = None
+                    continue
                 if adapter is not None:
                     break
         else:
@@ -2465,12 +2473,19 @@ class _WgpuBackend:
             for backend_name in backend_order:
                 selected_backend = str(backend_name)
                 try:
-                    adapter = request_adapter(
-                        power_preference="high-performance",
-                        backend=backend_name,
-                    )
+                    try:
+                        adapter = request_adapter(
+                            power_preference="high-performance",
+                            backend=backend_name,
+                        )
+                    except TypeError:
+                        adapter = request_adapter(power_preference="high-performance")
                 except TypeError:
                     adapter = request_adapter(power_preference="high-performance")
+                except Exception as exc:
+                    backend_errors[selected_backend] = f"{exc.__class__.__name__}: {exc}"
+                    adapter = None
+                    continue
                 if adapter is not None:
                     break
         if adapter is None:
@@ -2479,6 +2494,7 @@ class _WgpuBackend:
                 details={
                     "selected_backend": selected_backend,
                     "attempted_backends": tuple(backend_order),
+                    "backend_errors": dict(backend_errors),
                     "adapter_info": {},
                 },
             )
