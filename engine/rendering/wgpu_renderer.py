@@ -276,6 +276,41 @@ class WgpuRenderer:
         )
         self._submit_command(command)
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+    ) -> None:
+        command = RenderCommand(
+            kind=str(style_kind),
+            layer=int(round(float(z) * 100.0)),
+            data=(
+                ("key", str(key)),
+                ("x", float(x)),
+                ("y", float(y)),
+                ("w", float(w)),
+                ("h", float(h)),
+                ("color", str(color)),
+                ("z", float(z)),
+                ("static", bool(static)),
+                ("radius", float(radius)),
+                ("thickness", float(thickness)),
+                ("color_secondary", str(color_secondary)),
+            ),
+        )
+        self._submit_command(command)
+
     def add_grid(
         self,
         key: str,
@@ -838,6 +873,10 @@ def _normalize_rgba(value: object) -> tuple[float, float, float, float]:
         else:
             rgba.append(1.0)
     return (rgba[0], rgba[1], rgba[2], rgba[3])
+
+
+def _lerp(a: float, b: float, t: float) -> float:
+    return float(a) + ((float(b) - float(a)) * float(t))
 
 
 def _packet_payload(packet: _DrawPacket) -> dict[str, object]:
@@ -1671,7 +1710,22 @@ class _WgpuBackend:
         geometry_shader = create_shader_module(code=_GEOMETRY_WGSL)
         self._geometry_shader_module = geometry_shader
         text_shader = create_shader_module(code=_TEXT_WGSL)
-        color_target = {"format": self._surface_format, "blend": None, "write_mask": 0xF}
+        color_target = {
+            "format": self._surface_format,
+            "blend": {
+                "color": {
+                    "src_factor": "src-alpha",
+                    "dst_factor": "one-minus-src-alpha",
+                    "operation": "add",
+                },
+                "alpha": {
+                    "src_factor": "one",
+                    "dst_factor": "one-minus-src-alpha",
+                    "operation": "add",
+                },
+            },
+            "write_mask": 0xF,
+        }
         geometry_descriptor = self._geometry_pipeline_descriptor(color_target, geometry_shader)
         text_descriptor = {
             "layout": "auto",
@@ -2035,7 +2089,22 @@ class _WgpuBackend:
             return self._geometry_pipeline
         shader_src = _geometry_wgsl_for_color(color)
         shader = create_shader_module(code=shader_src)
-        color_target = {"format": self._surface_format, "blend": None, "write_mask": 0xF}
+        color_target = {
+            "format": self._surface_format,
+            "blend": {
+                "color": {
+                    "src_factor": "src-alpha",
+                    "dst_factor": "one-minus-src-alpha",
+                    "operation": "add",
+                },
+                "alpha": {
+                    "src_factor": "one",
+                    "dst_factor": "one-minus-src-alpha",
+                    "operation": "add",
+                },
+            },
+            "write_mask": 0xF,
+        }
         descriptor = self._geometry_pipeline_descriptor(color_target, shader)
         pipeline = cast(object, create_render_pipeline(**descriptor))
         self._geometry_pipeline_cache[color] = pipeline
@@ -2089,6 +2158,132 @@ class _WgpuBackend:
                     color=color,
                 ),
             )
+        if kind == "rounded_rect":
+            if not payload:
+                return ()
+            mapped = self._map_design_rect(
+                _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
+            )
+            return (self._with_layer(mapped, layer),)
+        if kind == "gradient_rect":
+            if not payload:
+                return ()
+            top_color = _normalize_rgba(_parse_hex_color(str(payload.get("color", "#ffffff"))))
+            secondary_raw = payload.get("color_secondary", payload.get("color", "#ffffff"))
+            bottom_color = _normalize_rgba(_parse_hex_color(str(secondary_raw)))
+            mapped = self._map_design_rect(
+                _rect_from_payload(payload, color=top_color), sx=sx, sy=sy, ox=ox, oy=oy
+            )
+            steps = max(2, min(6, int(round(_payload_float(payload, "thickness", 3.0)))))
+            step_h = max(1.0, mapped.h / float(steps))
+            gradient_rects: list[_DrawRect] = []
+            for i in range(steps):
+                t = float(i) / float(max(1, steps - 1))
+                c = (
+                    _lerp(top_color[0], bottom_color[0], t),
+                    _lerp(top_color[1], bottom_color[1], t),
+                    _lerp(top_color[2], bottom_color[2], t),
+                    _lerp(top_color[3], bottom_color[3], t),
+                )
+                gradient_rects.append(
+                    self._with_layer(
+                        _DrawRect(
+                            layer=layer,
+                            x=mapped.x,
+                            y=mapped.y + (float(i) * step_h),
+                            w=mapped.w,
+                            h=max(1.0, step_h + 0.5),
+                            color=c,
+                        ),
+                        layer,
+                    )
+                )
+            return tuple(gradient_rects)
+        if kind == "stroke_rect":
+            if not payload:
+                return ()
+            mapped = self._map_design_rect(
+                _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
+            )
+            thickness = max(1.0, _payload_float(payload, "thickness", 1.0))
+            return (
+                self._with_layer(
+                    _DrawRect(
+                        layer=layer,
+                        x=mapped.x,
+                        y=mapped.y,
+                        w=mapped.w,
+                        h=thickness,
+                        color=color,
+                    ),
+                    layer,
+                ),
+                self._with_layer(
+                    _DrawRect(
+                        layer=layer,
+                        x=mapped.x,
+                        y=mapped.y + mapped.h - thickness,
+                        w=mapped.w,
+                        h=thickness,
+                        color=color,
+                    ),
+                    layer,
+                ),
+                self._with_layer(
+                    _DrawRect(
+                        layer=layer,
+                        x=mapped.x,
+                        y=mapped.y,
+                        w=thickness,
+                        h=mapped.h,
+                        color=color,
+                    ),
+                    layer,
+                ),
+                self._with_layer(
+                    _DrawRect(
+                        layer=layer,
+                        x=mapped.x + mapped.w - thickness,
+                        y=mapped.y,
+                        w=thickness,
+                        h=mapped.h,
+                        color=color,
+                    ),
+                    layer,
+                ),
+            )
+        if kind == "shadow_rect":
+            if not payload:
+                return ()
+            mapped = self._map_design_rect(
+                _rect_from_payload(payload, color=color), sx=sx, sy=sy, ox=ox, oy=oy
+            )
+            spread = max(1.0, _payload_float(payload, "thickness", 2.0))
+            layers = max(1, min(2, int(round(_payload_float(payload, "radius", 2.0)))))
+            shadow_rects: list[_DrawRect] = []
+            for idx in range(layers, 0, -1):
+                t = float(idx) / float(layers)
+                pad = spread * t
+                rgba = (
+                    color[0],
+                    color[1],
+                    color[2],
+                    color[3] * (0.35 * t),
+                )
+                shadow_rects.append(
+                    self._with_layer(
+                        _DrawRect(
+                            layer=layer,
+                            x=mapped.x - pad,
+                            y=mapped.y - pad,
+                            w=mapped.w + (2.0 * pad),
+                            h=mapped.h + (2.0 * pad),
+                            color=rgba,
+                        ),
+                        layer,
+                    )
+                )
+            return tuple(shadow_rects)
         if kind == "grid":
             return tuple(
                 self._with_layer(

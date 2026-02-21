@@ -14,6 +14,11 @@ from engine.api.render_snapshot import (
 )
 from engine.api.render import RenderAPI as Render2D
 from engine.api.ui_primitives import Button, GridLayout, fit_text_to_rect
+from engine.api.ui_style import (
+    DEFAULT_UI_STYLE_TOKENS,
+    draw_rounded_rect,
+    draw_stroke_rect,
+)
 from warships.game.app.state_machine import AppState
 from warships.game.app.ui_state import AppUIState
 from warships.game.ui.framework.widgets import (
@@ -32,6 +37,7 @@ from warships.game.ui.views import (
 )
 
 logger = logging.getLogger(__name__)
+TOKENS = DEFAULT_UI_STYLE_TOKENS
 
 
 class GameView:
@@ -49,7 +55,7 @@ class GameView:
     ) -> list[str]:
         """Draw current app state and return latest button labels for debug."""
         self._renderer.begin_frame()
-        self._renderer.fill_window("bg:window", "#0b132b", z=-100.0)
+        self._renderer.fill_window("bg:window", TOKENS.window_bg, z=-100.0)
 
         labels = self._draw_buttons(ui.buttons)
         if ui.state in (AppState.PLACEMENT_EDIT, AppState.BATTLE, AppState.RESULT):
@@ -98,16 +104,29 @@ class GameView:
         for button in buttons:
             if is_new_game_custom_button(button.id):
                 continue
-            color = "#1f6feb" if button.enabled else "#384151"
+            color = TOKENS.accent if button.enabled else TOKENS.accent_muted
             z = 10.4 if button.id.startswith("prompt_") else 1.0
-            self._renderer.add_rect(
-                f"button:bg:{button.id}",
-                button.x,
-                button.y,
-                button.w,
-                button.h,
-                color,
+            draw_rounded_rect(
+                self._renderer,
+                key=f"button:bg:{button.id}",
+                x=button.x,
+                y=button.y,
+                w=button.w,
+                h=button.h,
+                radius=8.0,
+                color=color,
                 z=z,
+            )
+            draw_stroke_rect(
+                self._renderer,
+                key=f"button:border:{button.id}",
+                x=button.x,
+                y=button.y,
+                w=button.w,
+                h=button.h,
+                color=TOKENS.border_accent if button.enabled else TOKENS.border_subtle,
+                thickness=1.0,
+                z=z + 0.02,
             )
             label = button_label(button.id)
             fitted_label, fitted_font_size = fit_text_to_rect(
@@ -123,7 +142,7 @@ class GameView:
                 x=button.x + button.w / 2.0,
                 y=button.y + button.h / 2.0,
                 font_size=fitted_font_size,
-                color="#e5e7eb",
+                color=TOKENS.text_on_accent,
                 anchor="middle-center",
                 z=10.5 if button.id.startswith("prompt_") else 3.0,
             )
@@ -185,6 +204,43 @@ class _SnapshotRecorder:
             )
         )
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+    ) -> None:
+        self._commands.append(
+            RenderCommand(
+                kind=str(style_kind),
+                layer=int(round(float(z) * 100.0)),
+                transform=mat4_translation(Vec3(x=float(x), y=float(y), z=float(z))),
+                data=(
+                    ("key", str(key)),
+                    ("x", float(x)),
+                    ("y", float(y)),
+                    ("w", float(w)),
+                    ("h", float(h)),
+                    ("color", str(color)),
+                    ("z", float(z)),
+                    ("static", bool(static)),
+                    ("radius", float(radius)),
+                    ("thickness", float(thickness)),
+                    ("color_secondary", str(color_secondary)),
+                ),
+            )
+        )
+
     def add_grid(
         self,
         key: str,
@@ -223,7 +279,7 @@ class _SnapshotRecorder:
         x: float,
         y: float,
         font_size: float = 18.0,
-        color: str = "#ffffff",
+        color: str = DEFAULT_UI_STYLE_TOKENS.text_primary,
         anchor: str = "top-left",
         z: float = 2.0,
         static: bool = False,

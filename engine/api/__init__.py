@@ -84,6 +84,14 @@ from engine.api.render_snapshot import (
 )
 from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
 from engine.api.ui_framework import UIFramework, create_app_render_api, create_ui_framework
+from engine.api.ui_style import (
+    DEFAULT_UI_STYLE_TOKENS,
+    UIStyleTokens,
+    draw_gradient_rect,
+    draw_rounded_rect,
+    draw_shadow_rect,
+    draw_stroke_rect,
+)
 from engine.api.ui_primitives import (
     Button,
     CellCoord,
@@ -220,6 +228,12 @@ __all__ = [
     "get_logger",
     "create_ui_framework",
     "create_app_render_api",
+    "UIStyleTokens",
+    "DEFAULT_UI_STYLE_TOKENS",
+    "draw_rounded_rect",
+    "draw_stroke_rect",
+    "draw_gradient_rect",
+    "draw_shadow_rect",
     "discover_debug_sessions",
     "export_crash_bundle",
     "export_replay_session",

@@ -161,6 +161,42 @@ class _ScaledRenderAPI:
             static=static,
         )
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+    ) -> None:
+        add_style_rect = getattr(self._inner, "add_style_rect", None)
+        if not callable(add_style_rect):
+            self.add_rect(key, x, y, w, h, color, z=z, static=static)
+            return
+        ex, ey = self._transform.app_to_engine(x, y)
+        add_style_rect(
+            style_kind=str(style_kind),
+            key=str(key),
+            x=ex,
+            y=ey,
+            w=float(w) * self._transform.scale_x,
+            h=float(h) * self._transform.scale_y,
+            color=str(color),
+            z=float(z),
+            static=bool(static),
+            radius=float(radius) * min(self._transform.scale_x, self._transform.scale_y),
+            thickness=float(thickness) * min(self._transform.scale_x, self._transform.scale_y),
+            color_secondary=str(color_secondary),
+        )
+
     def add_grid(
         self,
         key: str,
@@ -271,6 +307,9 @@ def _scale_render_command(command: RenderCommand, transform: UISpaceTransform) -
                 continue
             if name in {"y", "height", "h"}:
                 scaled_data.append((name, number * sy))
+                continue
+            if name in {"radius", "thickness"}:
+                scaled_data.append((name, number * font_scale))
                 continue
             if name == "font_size":
                 scaled_data.append((name, number * font_scale))

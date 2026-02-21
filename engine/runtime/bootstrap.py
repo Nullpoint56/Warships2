@@ -168,6 +168,38 @@ class _HeadlessRenderer(RenderAPI):
         _ = (key, x, y, w, h, color, z, static)
         return
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+    ) -> None:
+        _ = (
+            style_kind,
+            key,
+            x,
+            y,
+            w,
+            h,
+            color,
+            z,
+            static,
+            radius,
+            thickness,
+            color_secondary,
+        )
+        return
+
     def add_grid(
         self,
         key: str,

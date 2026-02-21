@@ -293,6 +293,40 @@ User-visible result:
 Exit:
 1. Warships main menu, new game, preset manager, and battle HUD all use tokenized styles.
 
+Phase 4 execution note (2026-02-21):
+1. Tokenization and style API migration were completed in code.
+2. Initial style primitive implementation used CPU-side rect strip composition (many extra packets per visual element).
+3. Result: visible artifacts (partial white overlays/unstable composite look) and major FPS regression (~40 FPS class drop in user validation).
+4. Emergency mitigation: style effects were gated behind `ENGINE_UI_STYLE_EFFECTS` and defaulted off, restoring stable visuals/performance.
+5. Conclusion: architectural migration is present, but Phase 4 visual acceptance is not satisfied in production runtime path yet.
+
+### Phase 4b: Style Primitive Recovery (GPU-Native)
+
+Why this phase is needed:
+1. Phase 4 CPU-composed effects are too expensive and visually fragile under current renderer packet model.
+2. Rich style effects must be implemented as GPU-native primitives, not expanded into many CPU-side rects.
+
+Implementation:
+1. Add native style command kinds in renderer path (single-command primitives):
+- `rounded_rect`
+- `stroke_rect`
+- `gradient_rect`
+- `shadow_rect` (or equivalent cheap blurless shadow primitive)
+2. Implement shader-backed decode for these primitives in `wgpu_renderer` with bounded parameter payloads.
+3. Keep fallback behavior:
+- if native style path is unavailable, fallback to plain rect (not multi-strip expansion).
+4. Re-enable style effects by default only after perf gate passes.
+5. Keep token model unchanged (no Warships-specific rendering rules).
+
+Validation gates:
+1. Scene-level packet count delta vs pre-Phase-4 baseline remains within agreed budget.
+2. No visual artifacts in main menu/new game/preset manager/battle HUD.
+3. No meaningful FPS regression versus pre-Phase-4 baseline in user-tested scenes.
+
+Exit:
+1. Rich visual style is enabled by default on GPU-native path.
+2. `ENGINE_UI_STYLE_EFFECTS` remains as explicit override/debug control, not as required production safety-off switch.
+
 ### Phase 5: Layout and Typography Rules Lock-In
 
 Implementation:
