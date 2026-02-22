@@ -359,7 +359,7 @@ class EngineHost(HostControl):
                 )
                 self._module.simulate(frame_context)
                 module_render_snapshot = self._module.build_render_snapshot()
-            except Exception as exc:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                 self._diagnostics_profiler.end_span(module_span)
                 bundle_path = self._crash_bundle_writer.capture_exception(
                     exc,
@@ -538,7 +538,7 @@ class EngineHost(HostControl):
     def _resolve_replay_state_hash(self) -> str | None:
         try:
             return _try_state_hash_provider(self._module)
-        except Exception:  # pylint: disable=broad-exception-caught
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):  # pylint: disable=broad-exception-caught
             _LOG.exception("replay_state_hash_provider_failed")
             return None
 
@@ -910,3 +910,4 @@ def _try_state_hash_provider(module: object) -> str | None:
     if isinstance(state_hash, str):
         return state_hash
     return str(state_hash)
+

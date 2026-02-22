@@ -61,7 +61,7 @@ class RuntimeUpdateLoop(UpdateLoop):
                 caught_exc: Exception | None = None
                 try:
                     spec.system.update(context, delta_seconds)
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                     caught_exc = exc
                     self._increment_system_exception_count(metrics)
                 finally:
@@ -88,7 +88,7 @@ class RuntimeUpdateLoop(UpdateLoop):
                 fixed_step_exc: Exception | None = None
                 try:
                     spec.system.update(context, step_seconds)
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                     fixed_step_exc = exc
                     self._increment_system_exception_count(metrics)
                 finally:
@@ -144,3 +144,4 @@ class RuntimeUpdateLoop(UpdateLoop):
         if metrics is None or not hasattr(metrics, "increment_system_exception_count"):
             return
         metrics.increment_system_exception_count(1)
+

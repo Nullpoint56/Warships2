@@ -10,7 +10,7 @@ from typing import Any
 def _optional_import(name: str) -> Any | None:
     try:
         return import_module(name)
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -37,7 +37,7 @@ def dumps_bytes(
             options |= int(getattr(_ORJSON, "OPT_SORT_KEYS", 0))
         try:
             return bytes(_ORJSON.dumps(payload, option=options))
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             raise
     text = json.dumps(
         payload,
@@ -65,3 +65,4 @@ def dumps_text(
 
 
 __all__ = ["dumps_bytes", "dumps_text"]
+

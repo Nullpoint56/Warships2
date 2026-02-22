@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from importlib import import_module
+import logging
 import os
 import re
 import sys
@@ -21,6 +22,7 @@ from engine.rendering.scene_runtime import resolve_preserve_aspect
 from engine.rendering.scene_viewport import to_design_space as viewport_to_design_space
 from engine.rendering.scene_viewport import viewport_transform
 from engine.runtime.config import RuntimeConfig, get_runtime_config, set_runtime_config
+from engine.runtime.errors import RECOVERABLE_RUNTIME_ERRORS, log_recoverable
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
@@ -28,7 +30,7 @@ if TYPE_CHECKING:
 def _optional_import(name: str) -> Any | None:
     try:
         return import_module(name)
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -44,6 +46,7 @@ _COMMAND_LINEAR_COLOR_CACHE: dict[
     tuple[float, float, float, float], tuple[float, float, float, float]
 ] = {}
 _TRANSFORM_VALUES_CACHE: dict[int, tuple[object, tuple[float, ...]]] = {}
+_LOG = logging.getLogger("engine.rendering.wgpu")
 
 
 class _Backend(Protocol):
@@ -488,14 +491,14 @@ class WgpuRenderer(RenderAPI):
                 try:
                     request_draw(draw_callback)
                 except TypeError:
-                    pass
+                    log_recoverable(_LOG, "request_draw_with_callback_failed; falling back to no-arg request")
             try:
                 request_draw()
                 return
             except TypeError:
-                pass
-            except Exception:
-                pass
+                log_recoverable(_LOG, "request_draw_noarg_type_error; using direct callback fallback")
+            except RECOVERABLE_RUNTIME_ERRORS:
+                log_recoverable(_LOG, "request_draw_noarg_failed; using direct callback fallback")
         if self._draw_callback is not None:
             self._draw_callback()
 
@@ -1058,13 +1061,13 @@ def _command_version_token(command: RenderCommand) -> object:
     payload_token: object
     try:
         payload_token = ("h", hash(payload), len(payload))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         payload_token = ("id", int(id(payload)), len(payload))
     transform_values = _transform_values_tuple(command.transform.values)
     transform_token: object
     try:
         transform_token = ("h", hash(transform_values), len(transform_values))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         transform_token = ("id", int(id(transform_values)), len(transform_values))
     return (
         str(command.kind),
@@ -1328,7 +1331,7 @@ def _try_create_freetype_face(font_path: str) -> object | None:
         import freetype
 
         return cast(object, freetype.Face(font_path))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -1338,7 +1341,7 @@ def _load_font_blob(font_path: str) -> bytes | None:
     try:
         with open(font_path, "rb") as handle:
             return handle.read()
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -1385,7 +1388,7 @@ def _rasterize_glyph_bitmap(
                 out.extend(raw[start : start + width])
             alpha = bytes(out)
         return (width, rows, left, top, max(advance, float(width)), alpha)
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -1432,7 +1435,7 @@ def _rasterize_glyph_index_bitmap(
                 out.extend(raw[start : start + width])
             alpha = bytes(out)
         return (width, rows, left, top, max(advance, float(width)), alpha)
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
 
 
@@ -1897,7 +1900,7 @@ class _WgpuBackend:
         )
         try:
             import wgpu
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
             raise WgpuInitError(
                 "wgpu dependency unavailable",
                 details={
@@ -1919,7 +1922,7 @@ class _WgpuBackend:
             self._adapter_info = self._extract_adapter_info(self._adapter)
             self._device = self._request_device(self._adapter)
             self._font_path = _resolve_system_font_path(runtime_config=runtime_config)
-        except Exception as exc:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
             details: dict[str, object] = {
                 "selected_backend": self._selected_backend,
                 "adapter_info": dict(self._adapter_info),
@@ -2271,7 +2274,7 @@ class _WgpuBackend:
                     submit([command_buffer])
                 self._present_failure_streak = 0
                 return
-            except Exception as exc:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                 self._present_failures += 1
                 self._present_failure_streak += 1
                 self._last_present_error = f"{exc.__class__.__name__}: {exc}"
@@ -2449,7 +2452,7 @@ class _WgpuBackend:
                         adapter = request_adapter_sync(power_preference="high-performance")
                 except TypeError:
                     adapter = request_adapter_sync(power_preference="high-performance")
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                     backend_errors[selected_backend] = f"{exc.__class__.__name__}: {exc}"
                     adapter = None
                     continue
@@ -2477,7 +2480,7 @@ class _WgpuBackend:
                         adapter = request_adapter(power_preference="high-performance")
                 except TypeError:
                     adapter = request_adapter(power_preference="high-performance")
-                except Exception as exc:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
                     backend_errors[selected_backend] = f"{exc.__class__.__name__}: {exc}"
                     adapter = None
                     continue
@@ -2642,7 +2645,7 @@ class _WgpuBackend:
             try:
                 self._rebuild_frame_targets()
                 return
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                 self._reconfigure_failures += 1
                 if attempt >= self._reconfigure_retry_limit:
                     raise RuntimeError(
@@ -2686,7 +2689,7 @@ class _WgpuBackend:
                 format="r8unorm",
                 usage=texture_usage,
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
         create_view = getattr(texture, "create_view", None)
         if not callable(create_view):
@@ -2703,7 +2706,7 @@ class _WgpuBackend:
                 address_mode_u="clamp-to-edge",
                 address_mode_v="clamp-to-edge",
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
         if self._text_pipeline is None:
             return
@@ -2720,7 +2723,7 @@ class _WgpuBackend:
                     {"binding": 1, "resource": sampler},
                 ],
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
         self._text_atlas_texture = cast(object, texture)
         self._text_atlas_view = cast(object, view)
@@ -2755,7 +2758,7 @@ class _WgpuBackend:
                 },
                 (int(self._text_atlas_width), int(self._text_atlas_height), 1),
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
         self._execute_atlas_upload_ms_frame += (time.perf_counter() - upload_started) * 1000.0
         self._execute_atlas_upload_bytes_frame += int(len(payload))
@@ -2823,7 +2826,7 @@ class _WgpuBackend:
             capacity *= 2
         try:
             buffer = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
         self._upload_stream_buffer = cast(object, buffer)
         self._upload_stream_buffer_capacity = int(capacity)
@@ -2861,7 +2864,7 @@ class _WgpuBackend:
                 if callable(create_view):
                     return cast(object, create_view())
                 return cast(object, texture)
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                 self._acquire_failures += 1
                 self._acquire_failure_streak += 1
                 self._record_recovery_failure(kind="acquire")
@@ -2901,9 +2904,9 @@ class _WgpuBackend:
                 try:
                     configure(device=self._device, format=self._surface_format)
                     return True
-                except Exception:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                     return False
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return False
 
     def _recover_surface_context(self, *, reason: str) -> bool:
@@ -2912,7 +2915,7 @@ class _WgpuBackend:
         try:
             self._rebuild_frame_targets_with_retry()
             rebuilt = True
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             rebuilt = False
         if configured or rebuilt:
             self._maybe_apply_adaptive_present_mode()
@@ -3467,7 +3470,7 @@ class _WgpuBackend:
             font.scale = (scale, scale)
             self._hb_font_cache[key] = cast(object, font)
             return cast(object, font)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
 
     def _layout_shaped_glyph_run(
@@ -3578,7 +3581,7 @@ class _WgpuBackend:
                 descent=descent,
                 line_height=line_height,
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             line_height = float(size_px)
             metrics = _FontVerticalMetrics(
                 ascent=line_height * 0.8,
@@ -4077,7 +4080,7 @@ class _WgpuBackend:
             return None, 0, 0
         try:
             write_buffer(buffer, 0, raw)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None, 0, 0
         return buffer, int(len(values) // 8), int(len(raw))
 
@@ -4105,7 +4108,7 @@ class _WgpuBackend:
             capacity *= 2
         try:
             created = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
         if stream_kind == "static":
             self._draw_text_vertex_buffer_static = cast(object, created)
@@ -4134,7 +4137,7 @@ class _WgpuBackend:
                 depth_stencil_format=None,
                 sample_count=1,
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
         set_pipeline = getattr(bundle_encoder, "set_pipeline", None)
         set_bind_group = getattr(bundle_encoder, "set_bind_group", None)
@@ -4155,7 +4158,7 @@ class _WgpuBackend:
             set_vertex_buffer(0, vertex_buffer)
             draw(vertex_count, 1, 0, 0)
             return cast(object, finish())
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
 
     def _bundle_replay_enabled_for_draw_count(self, draw_call_count: int) -> bool:
@@ -4176,7 +4179,7 @@ class _WgpuBackend:
                 depth_stencil_format=None,
                 sample_count=1,
             )
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
         set_pipeline = getattr(bundle_encoder, "set_pipeline", None)
         set_vertex_buffer = getattr(bundle_encoder, "set_vertex_buffer", None)
@@ -4195,7 +4198,7 @@ class _WgpuBackend:
             for run_first_vertex, run_vertex_count in run_draws:
                 draw(run_vertex_count, 1, run_first_vertex, 0)
             return cast(object, finish())
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
 
     def _prime_native_paths(self) -> None:
@@ -4219,7 +4222,7 @@ class _WgpuBackend:
             )
             if text_buffer is not None:
                 write_buffer(text_buffer, 0, text_raw)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
 
     def _prime_text_paths(self) -> None:
@@ -4245,16 +4248,19 @@ class _WgpuBackend:
             if seed_text:
                 try:
                     self._layout_glyph_run(text=seed_text, font_size_px=int(size))
-                except Exception:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+                    _LOG.debug("text_prewarm_seed_failed size=%s", size, exc_info=True)
                     continue
             for label in labels:
                 try:
                     self._layout_glyph_run(text=label, font_size_px=int(size))
-                except Exception:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+                    _LOG.debug("text_prewarm_label_failed size=%s label=%s", size, label, exc_info=True)
                     continue
         try:
             self._upload_text_atlas_if_needed()
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+            _LOG.debug("text_prewarm_upload_failed", exc_info=True)
             return
 
     def _prime_startup_render_paths(self) -> None:
@@ -4274,7 +4280,8 @@ class _WgpuBackend:
                     pass_signature=("engine_startup_prewarm",),
                 )
                 self.present()
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+                _LOG.debug("startup_render_prewarm_failed", exc_info=True)
                 break
             finally:
                 if self._frame_in_flight:
@@ -4434,7 +4441,7 @@ class _WgpuBackend:
         if callable(write_buffer):
             try:
                 write_buffer(buffer, 0, raw)
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                 return None, 0, 0
         else:
             return None, 0, 0
@@ -4556,7 +4563,7 @@ class _WgpuBackend:
             capacity *= 2
         try:
             buffer = create_buffer(size=capacity, usage=usage, mapped_at_creation=False)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return None
         if stream_kind == "static":
             self._draw_vertex_buffer_static = cast(object, buffer)
@@ -4661,7 +4668,7 @@ def _version_fingerprint(value: object) -> object:
         return value
     try:
         return ("h", int(hash(value)))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return ("id", int(id(value)))
 
 
@@ -4806,7 +4813,7 @@ def _iter_system_font_candidates(*, runtime_config: RuntimeConfig | None = None)
             continue
         try:
             entries = sorted(os.scandir(directory), key=lambda entry: entry.name.lower())
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             continue
         for entry in entries:
             if not entry.is_file():
@@ -4864,7 +4871,7 @@ def _patch_wgpu_native_struct_alloc_fastpath() -> None:
         return
     try:
         import wgpu.backends.wgpu_native._api as native_api
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return
     if bool(getattr(native_api, "_engine_struct_alloc_patched", False)):
         return
@@ -4945,7 +4952,7 @@ def _prewarm_wgpu_native_cffi_types() -> None:
         return
     try:
         import wgpu.backends.wgpu_native._api as native_api
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return
     ffi = getattr(native_api, "ffi", None)
     structs_mod = getattr(native_api, "structs", None)
@@ -4962,7 +4969,7 @@ def _prewarm_wgpu_native_cffi_types() -> None:
         for ctype in (f"{base} *", f"{base}[]"):
             try:
                 ffi.typeof(ctype)
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                 continue
     for ctype in (
         "WGPUChainedStruct *",
@@ -4977,13 +4984,13 @@ def _prewarm_wgpu_native_cffi_types() -> None:
     ):
         try:
             ffi.typeof(ctype)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             continue
     literal_max = max(128, int(renderer_config.cffi_prewarm_max_literals))
     for ctype in _discover_wgpu_native_ctype_literals(native_api)[:literal_max]:
         try:
             ffi.typeof(ctype)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             continue
 
 
@@ -4994,7 +5001,7 @@ def _discover_wgpu_native_ctype_literals(native_api: object) -> tuple[str, ...]:
     try:
         with open(source_path, "r", encoding="utf-8") as handle:
             text = handle.read()
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return ()
     # Capture literal ctypes used in ffi.new/new_array/new_struct*/ffi.cast/ffi.typeof.
     pattern = re.compile(
@@ -5021,7 +5028,7 @@ def _discover_wgpu_native_ctype_literals(native_api: object) -> tuple[str, ...]:
 def _resolve_wgpu_native_cffi_miss_store() -> dict[str, int] | None:
     try:
         import wgpu.backends.wgpu_native._api as native_api
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
     raw = getattr(native_api, "_engine_struct_alloc_misses", None)
     if not isinstance(raw, dict):
@@ -5115,3 +5122,4 @@ fn fs_main(input: VsOut) -> @location(0) vec4<f32> {
 
 
 __all__ = ["WgpuInitError", "WgpuRenderer"]
+

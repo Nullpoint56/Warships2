@@ -62,7 +62,7 @@ def get_canvas_logical_size(canvas: Any) -> tuple[float, float] | None:
         return None
     try:
         size = get_logical_size()
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
     if not (isinstance(size, (tuple, list)) and len(size) >= 2):
         return None
@@ -80,3 +80,4 @@ def run_backend_loop(rc_auto: Any) -> None:
 def stop_backend_loop(rc_auto: Any) -> None:
     """Compatibility wrapper to the window subsystem backend loop stopper."""
     _stop_backend_loop(rc_auto)
+

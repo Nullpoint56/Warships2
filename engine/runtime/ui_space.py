@@ -99,7 +99,7 @@ def _resolve_app_design_resolution(
         return None
     try:
         raw = provider.ui_design_resolution()
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return None
     if not isinstance(raw, tuple) or len(raw) != 2:
         return None
@@ -116,7 +116,7 @@ def _resolve_app_design_resolution(
 def _resolve_engine_design_resolution(renderer: RenderAPI) -> tuple[float, float]:
     try:
         raw = renderer.design_space_size()
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         raw = None
     if isinstance(raw, tuple) and len(raw) == 2:
         try:
@@ -385,3 +385,4 @@ def _scale_render_command_cached(
         _SCALED_COMMAND_CACHE.clear()
         _SCALED_COMMAND_CACHE[cache_key] = (command, scaled)
     return scaled
+

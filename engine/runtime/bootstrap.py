@@ -65,7 +65,7 @@ def run_hosted_runtime(
             panel_height=int(panel_height),
             runtime_config=runtime_config,
         )
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
         selected_backend = "unknown"
         adapter_info: dict[str, object] = {}
         if isinstance(exc, WgpuInitError):
@@ -264,3 +264,4 @@ def _create_renderer_for_panel(
         )
     except TypeError:
         return WgpuRenderer(surface=surface, runtime_config=runtime_config)
+

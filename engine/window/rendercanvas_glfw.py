@@ -19,13 +19,14 @@ from engine.api.window import (
     WindowResizeEvent,
 )
 from engine.runtime.config import get_runtime_config
+from engine.runtime.errors import RECOVERABLE_RUNTIME_ERRORS, log_recoverable
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
     """Apply startup mode via GLFW when backend internals are available."""
     try:
         import rendercanvas.glfw as rc_glfw
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return
     window = getattr(canvas, "_window", None)
     if window is None:
@@ -36,26 +37,26 @@ def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
     if mode == "maximized":
         try:
             glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
-        except Exception:
-            pass
+        except RECOVERABLE_RUNTIME_ERRORS:
+            log_recoverable(_LOG, "startup_window_mode_set_resizable_failed mode=maximized")
         try:
             glfw.maximize_window(window)
-        except Exception:
-            pass
+        except RECOVERABLE_RUNTIME_ERRORS:
+            log_recoverable(_LOG, "startup_window_mode_maximize_failed mode=maximized")
         return
 
     monitor = glfw.get_primary_monitor()
     if not monitor:
         try:
             glfw.maximize_window(window)
-        except Exception:
-            pass
+        except RECOVERABLE_RUNTIME_ERRORS:
+            log_recoverable(_LOG, "startup_window_mode_maximize_failed mode=no_monitor")
         return
     if mode == "fullscreen":
         try:
             glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
-        except Exception:
-            pass
+        except RECOVERABLE_RUNTIME_ERRORS:
+            log_recoverable(_LOG, "startup_window_mode_set_resizable_failed mode=fullscreen")
         video_mode = glfw.get_video_mode(monitor)
         if video_mode is not None:
             try:
@@ -69,30 +70,30 @@ def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
                     int(video_mode.refresh_rate),
                 )
                 return
-            except Exception:
-                pass
+            except RECOVERABLE_RUNTIME_ERRORS:
+                log_recoverable(_LOG, "startup_window_mode_set_monitor_failed mode=fullscreen")
         return
 
     if mode == "borderless":
         try:
             glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.FALSE)
-        except Exception:
-            pass
+        except RECOVERABLE_RUNTIME_ERRORS:
+            log_recoverable(_LOG, "startup_window_mode_set_resizable_failed mode=borderless")
         try:
             x, y, w, h = glfw.get_monitor_workarea(monitor)
             glfw.set_window_monitor(window, None, int(x), int(y), int(w), int(h), 0)
             return
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             try:
                 glfw.maximize_window(window)
-            except Exception:
-                pass
+            except RECOVERABLE_RUNTIME_ERRORS:
+                log_recoverable(_LOG, "startup_window_mode_maximize_failed mode=borderless_fallback")
         return
 
     try:
         glfw.set_window_attrib(window, glfw.RESIZABLE, glfw.TRUE)
-    except Exception:
-        pass
+    except RECOVERABLE_RUNTIME_ERRORS:
+        log_recoverable(_LOG, "startup_window_mode_set_resizable_failed mode=windowed")
 
 
 def run_backend_loop(rc_auto: Any) -> None:
@@ -146,7 +147,7 @@ class RenderCanvasWindow(WindowPort):
         if self._rc_auto is None:
             try:
                 import rendercanvas.auto as rc_auto
-            except Exception:
+            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                 rc_auto = None
             self._rc_auto = rc_auto
         self._bind_window_events()
@@ -345,7 +346,7 @@ class RenderCanvasWindow(WindowPort):
     def _try_add_event_handler(self, add_handler: Any, handler: Any, event_type: str) -> None:
         try:
             add_handler(handler, event_type)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             return
 
     def _on_any_event(self, event: object) -> None:
@@ -405,7 +406,7 @@ def create_rendercanvas_window(
         return RenderCanvasWindow(canvas=canvas)
     try:
         import rendercanvas.auto as rc_auto
-    except Exception as exc:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:
         raise RuntimeError(
             "Render canvas backend unavailable. Install a desktop backend such as glfw or pyside6."
         ) from exc
@@ -495,7 +496,7 @@ def _install_wgpu_physical_size_guard() -> None:
     """Clamp non-positive physical resize values to avoid backend resize crashes."""
     try:
         from wgpu import _classes as wgpu_classes
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         return
     target_cls = getattr(wgpu_classes, "GPUCanvasContext", None)
     if target_cls is None:
@@ -516,3 +517,4 @@ def _install_wgpu_physical_size_guard() -> None:
 
 
 _LOG = logging.getLogger("engine.window")
+

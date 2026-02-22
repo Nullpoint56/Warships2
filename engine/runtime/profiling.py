@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import cProfile
+import logging
 import os
 import pstats
 import tracemalloc
@@ -19,6 +20,7 @@ from engine.runtime.metrics import MetricsSnapshot
 _RSS_PROVIDER: str | None = None
 _RSS_PSUTIL_MOD: Any | None = None
 _RSS_RESOURCE_MOD: Any | None = None
+_LOG = logging.getLogger("engine.profiling")
 
 
 @dataclass(slots=True)
@@ -258,7 +260,8 @@ class FrameProfiler:
             }
         except OSError as exc:
             self._capture_error = f"oserror:{exc}"
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:  # pylint: disable=broad-exception-caught
+            _LOG.warning("profile_capture_finalize_failed", exc_info=True)
             self._capture_error = f"capture_failed:{exc}"
         self._capture_complete = True
         return self._capture_state_payload()
@@ -493,25 +496,28 @@ def _process_rss_mb() -> float | None:
 
             _RSS_PSUTIL_MOD = psutil
             _RSS_PROVIDER = "psutil"
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             _RSS_PSUTIL_MOD = None
+            _LOG.debug("profiling_rss_psutil_unavailable", exc_info=True)
             if os.name == "nt":
                 _RSS_PROVIDER = "win32"
             else:
                 try:
                     _RSS_RESOURCE_MOD = import_module("resource")
                     _RSS_PROVIDER = "resource"
-                except Exception:
+                except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
                     _RSS_RESOURCE_MOD = None
+                    _LOG.debug("profiling_rss_resource_unavailable", exc_info=True)
                     _RSS_PROVIDER = "none"
 
     if _RSS_PROVIDER == "psutil" and _RSS_PSUTIL_MOD is not None:
         try:
             process = _RSS_PSUTIL_MOD.Process(os.getpid())
             return float(process.memory_info().rss) / (1024.0 * 1024.0)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
             _RSS_PROVIDER = "win32" if os.name == "nt" else "none"
             _RSS_PSUTIL_MOD = None
+            _LOG.debug("profiling_rss_psutil_probe_failed", exc_info=True)
 
     if _RSS_PROVIDER == "win32":
         try:
@@ -562,7 +568,8 @@ def _process_rss_mb() -> float | None:
             if not ok:
                 return None
             return float(counters.WorkingSetSize) / (1024.0 * 1024.0)
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+            _LOG.debug("profiling_rss_win32_probe_failed", exc_info=True)
             return None
 
     if _RSS_PROVIDER == "resource" and _RSS_RESOURCE_MOD is not None:
@@ -581,7 +588,8 @@ def _process_rss_mb() -> float | None:
             if rss > 1024.0 * 1024.0 * 8:
                 return rss / (1024.0 * 1024.0)
             return rss / 1024.0
-        except Exception:
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+            _LOG.debug("profiling_rss_resource_probe_failed", exc_info=True)
             return None
 
     return None
@@ -594,7 +602,8 @@ def _float_or(value: object, default: float) -> float:
         return float(value)
     try:
         return float(str(value))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+        _LOG.debug("profiling_float_conversion_failed value=%r default=%s", value, default, exc_info=True)
         return float(default)
 
 
@@ -607,5 +616,7 @@ def _int_or(value: object, default: int) -> int:
         return int(value)
     try:
         return int(str(value))
-    except Exception:
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+        _LOG.debug("profiling_int_conversion_failed value=%r default=%s", value, default, exc_info=True)
         return int(default)
+

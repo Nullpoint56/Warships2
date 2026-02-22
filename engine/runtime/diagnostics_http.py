@@ -98,7 +98,7 @@ class DiagnosticsHttpServer:
         except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError, OSError):
             # Client dropped the socket while we were writing; this is expected under polling timeouts.
             return
-        except Exception as exc:  # pylint: disable=broad-exception-caught
+        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError) as exc:  # pylint: disable=broad-exception-caught
             _LOG.exception("diagnostics_http_request_failed path=%s", path)
             return self._write_json(handler, 500, {"error": str(exc)})
 
@@ -134,3 +134,4 @@ def _query_int(
     except ValueError:
         return int(default)
     return max(min_value, min(max_value, value))
+

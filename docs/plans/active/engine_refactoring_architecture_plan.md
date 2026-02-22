@@ -827,7 +827,7 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - `S1`: `completed`
 - `S2`: `completed`
 - `S3`: `completed`
-- `S4`: `not_started`
+- `S4`: `completed`
 - `S5`: `not_started`
 - `S6`: `not_started`
 - `S7`: `not_started`
@@ -837,9 +837,35 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - None
 
 3. Current focus
-- Prepare `S4` exception semantics and observability normalization.
+- Execute `S5` domain-neutralization and API/runtime duplication cleanup.
 
 4. Last completed step
+- `S4` strict re-evaluation corrective pass completed with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_205846_S4_reeval_fix/`
+- Corrective outcomes:
+- removed remaining silent typed-fallback handlers from targeted runtime/window paths (`rendercanvas_glfw.py`, `wgpu_renderer.py`) and replaced with explicit recoverable logging.
+- integrated shared exception helper usage (`RECOVERABLE_RUNTIME_ERRORS`, `log_recoverable`) in targeted runtime/window paths.
+- strict gates: pass (`S4RF_01`, `S4RF_02`, `S4RF_03`).
+- closure checklist C sanity gates: pass (`S4RF_04`, `S4RF_05`).
+- targeted scans:
+- no silent typed fallback handlers remain in flagged files (`S4RF_06`).
+- helper usage is present in runtime paths (`S4RF_07`).
+
+- `S4` completed (exception semantics and observability normalization) with closure artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_205424_S4_closure/`
+- Gate outcomes:
+- `S4C_01_ruff_broad_exceptions.txt`: pass
+- `S4C_02_semgrep_broad_exceptions.txt`: pass
+- `S4C_03_exception_observability.txt`: pass
+- Closure checklist C outcomes:
+- `S4C_04_mypy_strict.txt`: pass
+- `S4C_05_lint_imports.txt`: pass
+- Executable-step verification (checklist B):
+- exception helper module created: `engine/runtime/errors.py` (`S4C_08_runtime_errors_module_present.txt`)
+- silent broad exception patterns removed from focused runtime/window/rendering paths and replaced with typed fallback handling (`S4C_06_no_broad_exception_scan.txt`, `S4C_07_typed_fallback_scan.txt`)
+- `engine/runtime/profiling.py` provider/conversion fallback paths now use typed catches and explicit telemetry logging (`profiling_*` debug/warning logs)
+- `engine/rendering/wgpu_renderer.py` prewarm/fallback paths now use typed catches with explicit debug observability (`text_prewarm_*`, `startup_render_prewarm_failed`)
+
 - `S3.d` completed (final contract classification sweep) with artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_204659_S3d/`
 - Key outcomes:
