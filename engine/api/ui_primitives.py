@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from importlib import import_module
+from collections.abc import Sequence
+from typing import Any, Literal, TypeAlias, TypeVar, cast
 
-import engine.ui_runtime.geometry as _geo
-import engine.ui_runtime.grid_layout as _grid
-import engine.ui_runtime.interactions as _interactions
-import engine.ui_runtime.keymap as _keymap
-import engine.ui_runtime.list_viewport as _list_viewport
-import engine.ui_runtime.modal_runtime as _modal
-import engine.ui_runtime.prompt_runtime as _prompt
-import engine.ui_runtime.scroll as _scroll
+_geo = import_module("engine.ui_runtime.geometry")
+_grid = import_module("engine.ui_runtime.grid_layout")
+_interactions = import_module("engine.ui_runtime.interactions")
+_keymap = import_module("engine.ui_runtime.keymap")
+_list_viewport = import_module("engine.ui_runtime.list_viewport")
+_modal = import_module("engine.ui_runtime.modal_runtime")
+_prompt = import_module("engine.ui_runtime.prompt_runtime")
+_scroll = import_module("engine.ui_runtime.scroll")
 
 CellCoord = _geo.CellCoord
 Rect = _geo.Rect
@@ -22,9 +24,6 @@ can_scroll_with_wheel = _interactions.can_scroll_with_wheel
 resolve_pointer_button = _interactions.resolve_pointer_button
 route_non_modal_key_event = _interactions.route_non_modal_key_event
 map_key_name = _keymap.map_key_name
-can_scroll_list_down = _list_viewport.can_scroll_down
-clamp_scroll = _list_viewport.clamp_scroll
-visible_slice = _list_viewport.visible_slice
 ModalInputState = _modal.ModalInputState
 ModalKeyRoute = _modal.ModalKeyRoute
 ModalPointerRoute = _modal.ModalPointerRoute
@@ -43,6 +42,24 @@ ScrollOutcome = _scroll.ScrollOutcome
 apply_wheel_scroll = _scroll.apply_wheel_scroll
 
 type TextOverflowPolicy = Literal["clip", "ellipsis", "wrap-none"]
+RectLike: TypeAlias = Any
+_TItem = TypeVar("_TItem")
+
+
+def can_scroll_list_down(scroll: int, visible_count: int, total_count: int) -> bool:
+    fn = getattr(_list_viewport, "can_scroll_down")
+    return bool(fn(scroll, visible_count, total_count))
+
+
+def clamp_scroll(scroll: int, visible_count: int, total_count: int) -> int:
+    fn = getattr(_list_viewport, "clamp_scroll")
+    return int(fn(scroll, visible_count, total_count))
+
+
+def visible_slice(items: Sequence[_TItem], scroll: int, visible_count: int) -> list[_TItem]:
+    fn = getattr(_list_viewport, "visible_slice")
+    out = fn(items, scroll, visible_count)
+    return cast(list[_TItem], out)
 
 
 @dataclass(frozen=True, slots=True)
@@ -151,12 +168,12 @@ def fit_text_to_rect(
 
 
 def clamp_child_rect_to_parent(
-    child: Rect,
-    parent: Rect,
+    child: RectLike,
+    parent: RectLike,
     *,
     pad_x: float = 0.0,
     pad_y: float = 0.0,
-) -> Rect:
+) -> RectLike:
     """Clamp child rectangle to fit inside parent content box."""
     content_x = float(parent.x) + max(0.0, float(pad_x))
     content_y = float(parent.y) + max(0.0, float(pad_y))
@@ -168,20 +185,20 @@ def clamp_child_rect_to_parent(
     max_y = content_y + content_h - child_h
     child_x = min(max(float(child.x), content_x), max_x)
     child_y = min(max(float(child.y), content_y), max_y)
-    return Rect(child_x, child_y, child_w, child_h)
+    return cast(RectLike, Rect(child_x, child_y, child_w, child_h))
 
 
 def parent_rect_from_children(
-    children: tuple[Rect, ...] | list[Rect],
+    children: tuple[RectLike, ...] | list[RectLike],
     *,
     pad_x: float = 0.0,
     pad_y: float = 0.0,
     min_w: float = 0.0,
     min_h: float = 0.0,
-) -> Rect:
+) -> RectLike:
     """Compute parent bounds that fit all child rects plus optional padding."""
     if not children:
-        return Rect(0.0, 0.0, max(0.0, float(min_w)), max(0.0, float(min_h)))
+        return cast(RectLike, Rect(0.0, 0.0, max(0.0, float(min_w)), max(0.0, float(min_h))))
     left = min(float(child.x) for child in children)
     top = min(float(child.y) for child in children)
     right = max(float(child.x) + float(child.w) for child in children)
@@ -192,7 +209,7 @@ def parent_rect_from_children(
     y = top - py
     w = max(float(min_w), (right - left) + (2.0 * px))
     h = max(float(min_h), (bottom - top) + (2.0 * py))
-    return Rect(x, y, w, h)
+    return cast(RectLike, Rect(x, y, w, h))
 
 
 __all__ = [

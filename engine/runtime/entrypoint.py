@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from importlib import import_module
+
 from engine.api.composition import (
     AppAdapterFactory,
     ControllerPort,
@@ -15,7 +17,6 @@ from engine.api.composition import (
 from engine.api.game_module import GameModule
 from engine.api.render import RenderAPI
 from engine.api.ui_primitives import GridLayout
-from engine.runtime.bootstrap import run_hosted_runtime
 from engine.runtime.composition_container import RuntimeCompositionContainer
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.runtime.host import EngineHostConfig
@@ -68,6 +69,8 @@ def run(*, module: EngineModule) -> None:
             )
         )
 
+    bootstrap_mod = import_module("engine.runtime.bootstrap")
+    run_hosted_runtime = getattr(bootstrap_mod, "run_hosted_runtime")
     run_hosted_runtime(
         module_factory=_module_factory,
         host_config=host_config,

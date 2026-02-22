@@ -20,7 +20,7 @@ from engine.runtime.config import RuntimeConfig, get_runtime_config, initialize_
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.logging import EngineLoggingRuntime, setup_engine_logging
 from engine.runtime.window_frontend import create_window_frontend
-from engine.window import create_window_layer
+from engine.window.factory import create_window_layer
 
 
 def run_hosted_runtime(

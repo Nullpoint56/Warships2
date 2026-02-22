@@ -14,9 +14,6 @@ from engine.api.input_events import KeyEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.render_snapshot import (
-    IDENTITY_MAT4,
-    RenderCommand,
-    RenderDataValue,
     RenderPassSnapshot,
     RenderSnapshot,
 )
@@ -37,6 +34,15 @@ from engine.diagnostics.event import DiagnosticEvent
 from engine.runtime.config import RuntimeHostConfig, get_runtime_config
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
 from engine.runtime.diagnostics_http import DiagnosticsHttpServer
+from engine.runtime.host_input_diagnostics import emit_input_snapshot_diagnostics
+from engine.runtime.host_overlay_snapshot import build_overlay_snapshot
+from engine.runtime.host_utils import (
+    merge_render_snapshots,
+    profiling_snapshot_payload,
+    resolve_replay_seed,
+    resolve_runtime_name,
+    sanitize_render_snapshot,
+)
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
 from engine.runtime.profiling import FrameProfiler
 from engine.runtime.scheduler import Scheduler
@@ -71,7 +77,7 @@ class EngineHost(HostControl):
     ) -> None:
         self._module = module
         self._config = config or EngineHostConfig()
-        self._runtime_name = self._resolve_runtime_name(self._config.runtime_name)
+        self._runtime_name = resolve_runtime_name(self._config.runtime_name)
         self._frame_index = 0
         self._closed = False
         self._started = False
@@ -131,7 +137,7 @@ class EngineHost(HostControl):
         )
         self._replay_recorder = ReplayRecorder(
             enabled=diag_cfg.replay_capture,
-            seed=_resolve_replay_seed(host_runtime_config),
+            seed=resolve_replay_seed(host_runtime_config),
             build=self._runtime_metadata(self._runtime_name),
             hash_interval=diag_cfg.replay_hash_interval,
             hub=self._diagnostics_hub,
@@ -209,7 +215,7 @@ class EngineHost(HostControl):
             runtime_metadata=self._runtime_metadata(self._runtime_name),
             profiling_snapshot={
                 "frame_profile": self._frame_profiler.latest_payload or {},
-                "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
+                "spans": profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
             },
             replay_metadata={
                 "manifest": {
@@ -241,45 +247,12 @@ class EngineHost(HostControl):
         return bool(self._module.on_input_snapshot(module_snapshot)) or overlay_toggled
 
     def _emit_input_snapshot_diagnostics(self, snapshot: InputSnapshot) -> None:
-        self._diagnostics_hub.emit_fast(
-            category="input",
-            name="input.event_frequency",
-            tick=self._frame_index,
-            value={
-                "pointer_events": int(len(snapshot.pointer_events)),
-                "key_events": int(len(snapshot.key_events)),
-                "wheel_events": int(len(snapshot.wheel_events)),
-                "controllers": int(len(snapshot.controllers)),
-            },
+        self._connected_controller_ids = emit_input_snapshot_diagnostics(
+            diagnostics_hub=self._diagnostics_hub,
+            frame_index=self._frame_index,
+            snapshot=snapshot,
+            connected_controller_ids=self._connected_controller_ids,
         )
-        for name, value in snapshot.actions.values:
-            if name == "meta.mapping_conflicts" and float(value) > 0:
-                self._diagnostics_hub.emit_fast(
-                    category="input",
-                    name="input.mapping_conflict",
-                    tick=self._frame_index,
-                    value=float(value),
-                )
-        current_connected: set[str] = {
-            str(controller.device_id)
-            for controller in snapshot.controllers
-            if bool(getattr(controller, "connected", False))
-        }
-        for device_id in sorted(current_connected - self._connected_controller_ids):
-            self._diagnostics_hub.emit_fast(
-                category="input",
-                name="input.device_connected",
-                tick=self._frame_index,
-                value={"device_id": device_id},
-            )
-        for device_id in sorted(self._connected_controller_ids - current_connected):
-            self._diagnostics_hub.emit_fast(
-                category="input",
-                name="input.device_disconnected",
-                tick=self._frame_index,
-                value={"device_id": device_id},
-            )
-        self._connected_controller_ids = current_connected
 
     def _record_snapshot_action_stream(self, snapshot: InputSnapshot) -> None:
         for action in sorted(snapshot.actions.just_started):
@@ -368,7 +341,7 @@ class EngineHost(HostControl):
                     runtime_metadata=self._runtime_metadata(self._runtime_name),
                     profiling_snapshot={
                         "frame_profile": self._frame_profiler.latest_payload or {},
-                        "spans": _profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
+                        "spans": profiling_snapshot_payload(self._diagnostics_profiler.snapshot()),
                     },
                 )
                 if bundle_path is not None:
@@ -416,13 +389,13 @@ class EngineHost(HostControl):
                 and self._debug_overlay_visible
                 and self._render_api is not None
             ):
-                overlay_snapshot = _build_overlay_snapshot(
+                overlay_snapshot = build_overlay_snapshot(
                     frame_index=self._frame_index,
                     overlay=self._debug_overlay,
                     snapshot=self._metrics_collector.snapshot(),
                     ui_diagnostics=None,
                 )
-                module_render_snapshot = _merge_render_snapshots(module_render_snapshot, overlay_snapshot)
+                module_render_snapshot = merge_render_snapshots(module_render_snapshot, overlay_snapshot)
             if module_render_snapshot is not None:
                 sanitized_snapshot = self._sanitize_snapshot_cached(module_render_snapshot)
                 self._render_snapshot_exchange.publish(sanitized_snapshot)
@@ -502,7 +475,7 @@ class EngineHost(HostControl):
                 frame_index=int(snapshot.frame_index),
                 passes=self._last_sanitized_passes,
             )
-        sanitized = _sanitize_render_snapshot(snapshot)
+        sanitized = sanitize_render_snapshot(snapshot)
         self._last_snapshot_passes_identity = passes_identity
         self._last_sanitized_passes = sanitized.passes
         return sanitized
@@ -613,292 +586,6 @@ class EngineHost(HostControl):
             _LOG.warning("profiling_export_failed path=%s", out_path)
             return
         _LOG.info("profiling_export_written path=%s spans=%d", out_path, len(spans))
-
-    @staticmethod
-    def _resolve_runtime_name(value: str) -> str:
-        normalized = str(value).strip().lower()
-        return normalized or "game"
-
-
-class _OverlaySnapshotRecorder(RenderAPI):
-    """Capture debug overlay primitives into immutable render commands."""
-
-    def __init__(self, *, frame_index: int) -> None:
-        self._frame_index = int(frame_index)
-        self._commands: list[RenderCommand] = []
-
-    def begin_frame(self) -> None:
-        return
-
-    def end_frame(self) -> None:
-        return
-
-    def add_rect(
-        self,
-        key: str | None,
-        x: float,
-        y: float,
-        w: float,
-        h: float,
-        color: str,
-        z: float = 0.0,
-        static: bool = False,
-    ) -> None:
-        self._commands.append(
-            RenderCommand(
-                kind="rect",
-                layer=int(round(float(z) * 100.0)),
-                transform=IDENTITY_MAT4,
-                data=(
-                    ("key", key),
-                    ("x", float(x)),
-                    ("y", float(y)),
-                    ("w", float(w)),
-                    ("h", float(h)),
-                    ("color", str(color)),
-                    ("z", float(z)),
-                    ("static", bool(static)),
-                ),
-            )
-        )
-
-    def add_grid(
-        self,
-        key: str,
-        x: float,
-        y: float,
-        width: float,
-        height: float,
-        lines: int,
-        color: str,
-        z: float = 0.5,
-        static: bool = False,
-    ) -> None:
-        self._commands.append(
-            RenderCommand(
-                kind="grid",
-                layer=int(round(float(z) * 100.0)),
-                transform=IDENTITY_MAT4,
-                data=(
-                    ("key", str(key)),
-                    ("x", float(x)),
-                    ("y", float(y)),
-                    ("width", float(width)),
-                    ("height", float(height)),
-                    ("lines", int(lines)),
-                    ("color", str(color)),
-                    ("z", float(z)),
-                    ("static", bool(static)),
-                ),
-            )
-        )
-
-    def add_style_rect(
-        self,
-        *,
-        style_kind: str,
-        key: str,
-        x: float,
-        y: float,
-        w: float,
-        h: float,
-        color: str,
-        z: float = 0.0,
-        static: bool = False,
-        radius: float = 0.0,
-        thickness: float = 1.0,
-        color_secondary: str = "",
-        shadow_layers: float = 0.0,
-    ) -> None:
-        _ = (style_kind, radius, thickness, color_secondary, shadow_layers)
-        self.add_rect(key, x, y, w, h, color, z=z, static=static)
-
-    def add_text(
-        self,
-        key: str | None,
-        text: str,
-        x: float,
-        y: float,
-        font_size: float = 18.0,
-        color: str = "#ffffff",
-        anchor: str = "top-left",
-        z: float = 2.0,
-        static: bool = False,
-    ) -> None:
-        self._commands.append(
-            RenderCommand(
-                kind="text",
-                layer=int(round(float(z) * 100.0)),
-                transform=IDENTITY_MAT4,
-                data=(
-                    ("key", key),
-                    ("text", str(text)),
-                    ("x", float(x)),
-                    ("y", float(y)),
-                    ("font_size", float(font_size)),
-                    ("color", str(color)),
-                    ("anchor", str(anchor)),
-                    ("z", float(z)),
-                    ("static", bool(static)),
-                ),
-            )
-        )
-
-    def set_title(self, title: str) -> None:
-        self._commands.append(
-            RenderCommand(
-                kind="title",
-                layer=0,
-                transform=IDENTITY_MAT4,
-                data=(("title", str(title)),),
-            )
-        )
-
-    def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
-        self._commands.append(
-            RenderCommand(
-                kind="fill_window",
-                layer=int(round(float(z) * 100.0)),
-                transform=IDENTITY_MAT4,
-                data=(("key", str(key)), ("color", str(color)), ("z", float(z))),
-            )
-        )
-
-    def to_design_space(self, x: float, y: float) -> tuple[float, float]:
-        return (float(x), float(y))
-
-    def design_space_size(self) -> tuple[float, float]:
-        return (1200.0, 720.0)
-
-    def invalidate(self) -> None:
-        return
-
-    def run(self, draw_callback: Callable[[], None]) -> None:
-        _ = draw_callback
-        return
-
-    def close(self) -> None:
-        return
-
-    def render_snapshot(self, snapshot: RenderSnapshot) -> None:
-        _ = snapshot
-        return
-
-    def apply_window_resize(self, event: WindowResizeEvent) -> None:
-        _ = event
-        return
-
-    def snapshot(self) -> RenderSnapshot | None:
-        if not self._commands:
-            return None
-        commands = tuple(
-            sorted(
-                self._commands,
-                key=lambda command: (
-                    int(getattr(command, "layer", 0)),
-                    str(getattr(command, "kind", "")),
-                    str(getattr(command, "sort_key", "")),
-                ),
-            )
-        )
-        return RenderSnapshot(
-            frame_index=self._frame_index,
-            passes=(RenderPassSnapshot(name="debug_overlay", commands=commands),),
-        )
-
-
-def _build_overlay_snapshot(
-    *,
-    frame_index: int,
-    overlay: DebugOverlay,
-    snapshot: MetricsSnapshot,
-    ui_diagnostics: dict[str, int] | None,
-) -> RenderSnapshot | None:
-    recorder = _OverlaySnapshotRecorder(frame_index=frame_index)
-    overlay.draw(recorder, snapshot, ui_diagnostics=ui_diagnostics)
-    return recorder.snapshot()
-
-
-def _merge_render_snapshots(
-    left: RenderSnapshot | None, right: RenderSnapshot | None
-) -> RenderSnapshot | None:
-    if left is None:
-        return right
-    if right is None:
-        return left
-    return RenderSnapshot(
-        frame_index=left.frame_index,
-        passes=tuple(left.passes) + tuple(right.passes),
-    )
-
-
-def _sanitize_render_snapshot(snapshot: RenderSnapshot) -> RenderSnapshot:
-    passes = tuple(
-        RenderPassSnapshot(
-            name=str(render_pass.name),
-            commands=tuple(
-                RenderCommand(
-                    kind=str(command.kind),
-                    layer=int(command.layer),
-                    sort_key=str(command.sort_key),
-                    transform=command.transform,
-                    data=tuple((str(key), _freeze_render_value(value)) for key, value in command.data),
-                )
-                for command in render_pass.commands
-            ),
-        )
-        for render_pass in snapshot.passes
-    )
-    return RenderSnapshot(frame_index=int(snapshot.frame_index), passes=passes)
-
-
-def _freeze_render_value(value: object) -> RenderDataValue:
-    if value is None or isinstance(value, (bool, int, float, str)):
-        return value
-    if isinstance(value, tuple):
-        return tuple(_freeze_render_value(item) for item in value)
-    if isinstance(value, list):
-        return tuple(_freeze_render_value(item) for item in value)
-    if isinstance(value, dict):
-        return tuple(
-            sorted((str(key), _freeze_render_value(item)) for key, item in value.items())
-        )
-    if isinstance(value, (set, frozenset)):
-        return tuple(sorted((_freeze_render_value(item) for item in value), key=str))
-    return repr(value)
-
-
-def _profiling_snapshot_payload(snapshot: object) -> dict[str, object]:
-    spans_raw = getattr(snapshot, "spans", [])
-    spans: list[dict[str, object]] = []
-    for span in spans_raw:
-        spans.append(
-            {
-                "tick": int(getattr(span, "tick", 0)),
-                "category": str(getattr(span, "category", "")),
-                "name": str(getattr(span, "name", "")),
-                "duration_ms": float(getattr(span, "duration_ms", 0.0)),
-                "metadata": dict(getattr(span, "metadata", {}) or {}),
-            }
-        )
-    top = list(getattr(snapshot, "top_spans_ms", []))
-    return {
-        "mode": str(getattr(snapshot, "mode", "off")),
-        "span_count": int(getattr(snapshot, "span_count", len(spans))),
-        "top_spans_ms": top,
-        "spans": spans,
-    }
-
-
-def _resolve_replay_seed(config: RuntimeHostConfig) -> int | None:
-    raw = str(config.replay_seed or "").strip()
-    if not raw:
-        return None
-    try:
-        return int(raw)
-    except ValueError:
-        return None
-
 
 def _try_state_hash_provider(module: object) -> str | None:
     provider = getattr(module, "debug_state_hash", None)

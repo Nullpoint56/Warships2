@@ -1,5 +1,3 @@
-"""Engine rendering runtime modules."""
+"""Engine rendering package."""
 
-from engine.rendering.wgpu_renderer import WgpuRenderer
-
-__all__ = ["WgpuRenderer"]
+__all__: list[str] = []

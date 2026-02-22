@@ -275,6 +275,32 @@ S6.b closure execution addendum (run id: `2026-02-22_223500_S6b_closure`, raw ro
 - Completion discipline:
 - S6.b closure validated with second pass (`S6b_05`, `S6b_06`) before status update.
 
+S7 execution progress addendum (run id: `2026-02-22_233400_S7_progress`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_233400_S7_progress/`):
+- `S7P_01_import_cycles_strict.txt` -> Fail
+- `S7P_02_import_cycles_budget.txt` -> Pass
+- `S7P_03_xenon.txt` -> Fail
+- `S7P_04_file_limits.txt` -> Fail
+- `S7P_05_mypy_strict.txt` -> Pass
+- `S7P_06_lint_imports.txt` -> Pass
+- Implemented S7 decomposition/cycle cuts in this pass:
+- decoupled gameplay update loop from runtime timing by introducing `engine/gameplay/time.py` and migrating `RuntimeUpdateLoop` to use gameplay-local `FixedStepAccumulator`.
+- removed runtime package barrel re-export coupling (`engine/runtime/__init__.py` reduced to empty package surface).
+- removed rendering/window/gameplay package barrel re-export coupling (`engine/rendering/__init__.py`, `engine/window/__init__.py`, `engine/gameplay/__init__.py`).
+- migrated bootstrap import usage to direct module import path (`engine.window.factory`) and reduced static cycle edges.
+- extracted host helper responsibilities into dedicated modules:
+- `engine/runtime/host_utils.py`
+- `engine/runtime/host_overlay_snapshot.py`
+- `engine/runtime/host_input_diagnostics.py`
+- moved RSS probing into `engine/runtime/rss_probe.py` and reduced `engine/runtime/profiling.py` size.
+- current gate-state deltas after S7 progress:
+- import cycle SCC reduced from prior `70` to `55`; budget gate is now non-regressed.
+- `engine/runtime/host.py` reduced to `600 LOC` (soft threshold boundary met).
+- remaining hard file-limit blocker: `engine/rendering/wgpu_renderer.py` (`5235 LOC`, hard limit `900`).
+- carry-over:
+- strict import-cycle elimination still pending (large SCC remains).
+- xenon budget convergence still pending (primary hotspot: `engine/rendering/wgpu_renderer.py`).
+- renderer module decomposition (S7 mandatory item) still pending and is now the dominant remaining S7 workstream.
+
 ### Investigation
 Investigation scope: code-verified investigation for every failing signal from run `2026-02-22_175415_static_eval`.
 
@@ -907,16 +933,31 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - `S4`: `completed`
 - `S5`: `completed`
 - `S6`: `completed`
-- `S7`: `not_started`
+- `S7`: `in_progress`
 - `S8`: `not_started`
 
 2. Active sub-phases
-- None
+- `S7.a`: `in_progress` (cycle-edge reduction + host decomposition slices complete; renderer mega-decomposition pending)
 
 3. Current focus
-- Execute `S7` cycle graph reduction and decomposition completion.
+- Execute `S7.a` renderer decomposition (split `engine/rendering/wgpu_renderer.py` into dedicated modules) and strict cycle/xenon convergence.
 
 4. Last completed step
+- `S7.a` progress slice completed (partial; phase still in progress) with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_233400_S7_progress/`
+- Gate outcomes:
+- `S7P_01_import_cycles_strict.txt`: fail
+- `S7P_02_import_cycles_budget.txt`: pass
+- `S7P_03_xenon.txt`: fail
+- `S7P_04_file_limits.txt`: fail (`wgpu_renderer.py` hard limit remaining)
+- Closure checklist C sanity outcomes:
+- `S7P_05_mypy_strict.txt`: pass
+- `S7P_06_lint_imports.txt`: pass
+- Implemented scope in this slice:
+- import-cycle budget remediation and package barrel reductions.
+- host/profiling decomposition slices (`host_utils`, `host_overlay_snapshot`, `host_input_diagnostics`, `rss_probe`).
+- `engine/runtime/host.py` reduced to soft threshold boundary (`600 LOC`).
+
 - `S6.b` completed (strict composition-owned runtime state finalization) with closure artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_223500_S6b_closure/`
 - Gate outcomes:

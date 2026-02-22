@@ -7,7 +7,7 @@ from time import perf_counter
 
 from engine.api.context import RuntimeContext
 from engine.api.gameplay import SystemSpec, UpdateLoop
-from engine.runtime.time import FixedStepAccumulator
+from engine.gameplay.time import FixedStepAccumulator
 
 _LOG = logging.getLogger("engine.update")
 
