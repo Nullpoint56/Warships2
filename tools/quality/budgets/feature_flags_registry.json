@@ -23,6 +23,24 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_DIAGNOSTICS_BUFFER_CAP": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_CRASH_RECENT_EVENTS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_DEFAULT_SAMPLING_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_DIAGNOSTICS_HTTP_ENABLED": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -47,7 +65,37 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_PROFILING_SAMPLING_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_PROFILING_SPAN_CAP": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_DIAGNOSTICS_REPLAY_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_REPLAY_HASH_INTERVAL": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",
@@ -83,6 +131,48 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_PROFILING_CAPTURE_EXPORT_DIR": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_FRAMES": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_SORT": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_TIMELINE_MAX": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_TOP_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_TRACEMALLOC_DEPTH": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_WARMUP_FRAMES": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_PROFILING_ENABLED": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -107,6 +197,24 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_PROFILING_SAMPLING_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_SYSTEM_TOP_N": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_RENDER_FPS_CAP": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -119,6 +227,24 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_RENDER_INTERNAL_SCALE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_STATIC_BUNDLE_MIN_DRAWS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_STATIC_PASS_EXPAND_CACHE_MAX": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_RENDER_VSYNC": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -126,6 +252,12 @@
     "status": "active"
   },
   "ENGINE_RUNTIME_PROFILE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_REPLAY_SEED": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",
@@ -144,6 +276,18 @@
     "status": "active"
   },
   "ENGINE_UI_OVERLAY_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_DESIGN_HEIGHT": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_DESIGN_WIDTH": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",
@@ -179,6 +323,12 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -186,6 +336,18 @@
     "status": "active"
   },
   "ENGINE_WGPU_CFFI_PREWARM_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",
@@ -209,7 +371,31 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_WGPU_RECOVERY_COOLDOWN_MS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_RECOVERY_MAX_RETRY_LIMIT": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_WGPU_STARTUP_PREWARM_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_STARTUP_PREWARM_FRAMES": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",
@@ -233,6 +419,12 @@
     "remove_by": "2099-12-31",
     "status": "active"
   },
+  "ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
   "ENGINE_WGPU_TEXT_PREWARM_SIZES": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
@@ -246,6 +438,12 @@
     "status": "active"
   },
   "ENGINE_WINDOW_EVENTS_TRACE_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WINDOW_RESIZE_REDRAW_MIN_INTERVAL_MS": {
     "owner": "engine-team",
     "rationale": "Runtime/configuration toggle managed under engine policy.",
     "remove_by": "2099-12-31",

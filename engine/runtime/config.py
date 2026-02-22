@@ -92,6 +92,11 @@ class RuntimeRendererConfig:
     auto_static_min_stable_frames: int
     internal_scale: float
     cffi_miss_diagnostics_enabled: bool
+    cffi_fastpath_enabled: bool
+    cffi_fastpath_cache_max: int
+    cffi_prewarm_enabled: bool
+    cffi_prewarm_max_types: int
+    cffi_prewarm_max_literals: int
     recovery_failure_streak_threshold: int
     recovery_cooldown_ms: float
     recovery_max_retry_limit: int
@@ -394,6 +399,21 @@ def load_runtime_config(*, env: Mapping[str, str] | None = None) -> RuntimeConfi
             internal_scale=_float("ENGINE_RENDER_INTERNAL_SCALE", 1.0, minimum=0.1, env=scope_env),
             cffi_miss_diagnostics_enabled=_flag(
                 "ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED", False, env=scope_env
+            ),
+            cffi_fastpath_enabled=_flag(
+                "ENGINE_WGPU_CFFI_FASTPATH_ENABLED", True, env=scope_env
+            ),
+            cffi_fastpath_cache_max=_int(
+                "ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX", 512, minimum=64, env=scope_env
+            ),
+            cffi_prewarm_enabled=_flag(
+                "ENGINE_WGPU_CFFI_PREWARM_ENABLED", True, env=scope_env
+            ),
+            cffi_prewarm_max_types=_int(
+                "ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES", 256, minimum=32, env=scope_env
+            ),
+            cffi_prewarm_max_literals=_int(
+                "ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS", 2048, minimum=128, env=scope_env
             ),
             recovery_failure_streak_threshold=_int(
                 "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD", 3, minimum=1, env=scope_env

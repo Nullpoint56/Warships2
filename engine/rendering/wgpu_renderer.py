@@ -259,21 +259,11 @@ class WgpuRenderer:
         self._design_width = int(design_w)
         self._design_height = int(design_h)
         self._preserve_aspect = resolve_preserve_aspect(runtime_config)
-        self._diag_stage_events_enabled = _env_flag(
-            "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED", True
-        )
-        self._diag_stage_sampling_n = _env_int(
-            "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N",
-            runtime_config.profile.diagnostics_default_sampling_n,
-            minimum=1,
-        )
-        self._diag_profile_sampling_n = _env_int(
-            "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N",
-            runtime_config.profile.diagnostics_default_sampling_n,
-            minimum=1,
-        )
-        self._auto_static_min_stable_frames = _env_int(
-            "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES", 3, minimum=1
+        self._diag_stage_events_enabled = bool(runtime_config.renderer.diag_stage_events_enabled)
+        self._diag_stage_sampling_n = max(1, int(runtime_config.renderer.diag_stage_sampling_n))
+        self._diag_profile_sampling_n = max(1, int(runtime_config.renderer.diag_profile_sampling_n))
+        self._auto_static_min_stable_frames = max(
+            1, int(runtime_config.renderer.auto_static_min_stable_frames)
         )
         self._canvas = self.surface.provider if self.surface is not None else None
         if self._backend_factory is not None:
@@ -4758,51 +4748,6 @@ def _resolve_backend_priority() -> tuple[str, ...]:
     return values or ("vulkan", "metal", "dx12")
 
 
-def _env_flag(name: str, default: bool) -> bool:
-    runtime_config = get_runtime_config()
-    mapping: dict[str, bool] = {
-        "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED": runtime_config.renderer.diag_stage_events_enabled,
-        "ENGINE_WGPU_PRIME_NATIVE_PATHS": runtime_config.renderer.prime_native_paths,
-        "ENGINE_WGPU_TEXT_PREWARM_ENABLED": runtime_config.renderer.text_prewarm_enabled,
-        "ENGINE_WGPU_STARTUP_PREWARM_ENABLED": runtime_config.renderer.startup_prewarm_enabled,
-        "ENGINE_WGPU_CFFI_FASTPATH_ENABLED": True,
-        "ENGINE_WGPU_CFFI_PREWARM_ENABLED": True,
-    }
-    return bool(mapping.get(name, bool(default)))
-
-
-def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
-    runtime_config = get_runtime_config()
-    mapping: dict[str, int] = {
-        "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N": runtime_config.renderer.diag_stage_sampling_n,
-        "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N": runtime_config.renderer.diag_profile_sampling_n,
-        "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES": runtime_config.renderer.auto_static_min_stable_frames,
-        "ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS": runtime_config.renderer.text_prewarm_max_chars,
-        "ENGINE_WGPU_STARTUP_PREWARM_FRAMES": runtime_config.renderer.startup_prewarm_frames,
-        "ENGINE_UI_DESIGN_WIDTH": runtime_config.render.ui_design_width,
-        "ENGINE_UI_DESIGN_HEIGHT": runtime_config.render.ui_design_height,
-        "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD": runtime_config.renderer.recovery_failure_streak_threshold,
-        "ENGINE_WGPU_RECOVERY_MAX_RETRY_LIMIT": runtime_config.renderer.recovery_max_retry_limit,
-        "ENGINE_RENDER_STATIC_BUNDLE_MIN_DRAWS": runtime_config.renderer.static_bundle_min_draws,
-        "ENGINE_RENDER_STATIC_PASS_EXPAND_CACHE_MAX": runtime_config.renderer.static_pass_expand_cache_max,
-        "ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX": 512,
-        "ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES": 256,
-        "ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS": 2048,
-    }
-    value = int(mapping.get(name, int(default)))
-    return max(minimum, value)
-
-
-def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
-    runtime_config = get_runtime_config()
-    mapping: dict[str, float] = {
-        "ENGINE_RENDER_INTERNAL_SCALE": runtime_config.renderer.internal_scale,
-        "ENGINE_WGPU_RECOVERY_COOLDOWN_MS": runtime_config.renderer.recovery_cooldown_ms,
-    }
-    value = float(mapping.get(name, float(default)))
-    return max(float(minimum), float(value))
-
-
 def _as_int(value: object, default: int = 0) -> int:
     if isinstance(value, bool):
         return int(value)
@@ -4913,7 +4858,8 @@ def _platform_font_directories() -> tuple[str, ...]:
 
 
 def _patch_wgpu_native_struct_alloc_fastpath() -> None:
-    if not _env_flag("ENGINE_WGPU_CFFI_FASTPATH_ENABLED", True):
+    renderer_config = get_runtime_config().renderer
+    if not renderer_config.cffi_fastpath_enabled:
         return
     try:
         import wgpu.backends.wgpu_native._api as native_api
@@ -4928,7 +4874,7 @@ def _patch_wgpu_native_struct_alloc_fastpath() -> None:
         return
     ctype_cache: dict[str, object] = {}
     ctype_misses: dict[str, int] = {}
-    cache_max = max(64, _env_int("ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX", 512, minimum=64))
+    cache_max = max(64, int(renderer_config.cffi_fastpath_cache_max))
 
     def _new_struct_p_cached(ctype: str, **kwargs: object) -> object:
         ctype_obj = ctype_cache.get(ctype)
@@ -4993,7 +4939,8 @@ def _patch_wgpu_native_struct_alloc_fastpath() -> None:
 
 
 def _prewarm_wgpu_native_cffi_types() -> None:
-    if not _env_flag("ENGINE_WGPU_CFFI_PREWARM_ENABLED", True):
+    renderer_config = get_runtime_config().renderer
+    if not renderer_config.cffi_prewarm_enabled:
         return
     try:
         import wgpu.backends.wgpu_native._api as native_api
@@ -5003,7 +4950,7 @@ def _prewarm_wgpu_native_cffi_types() -> None:
     structs_mod = getattr(native_api, "structs", None)
     if ffi is None or structs_mod is None:
         return
-    max_types = max(32, _env_int("ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES", 256, minimum=32))
+    max_types = max(32, int(renderer_config.cffi_prewarm_max_types))
     names = sorted(
         name
         for name in dir(structs_mod)
@@ -5031,7 +4978,7 @@ def _prewarm_wgpu_native_cffi_types() -> None:
             ffi.typeof(ctype)
         except Exception:
             continue
-    literal_max = max(128, _env_int("ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS", 2048, minimum=128))
+    literal_max = max(128, int(renderer_config.cffi_prewarm_max_literals))
     for ctype in _discover_wgpu_native_ctype_literals(native_api)[:literal_max]:
         try:
             ffi.typeof(ctype)

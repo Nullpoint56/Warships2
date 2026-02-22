@@ -147,6 +147,35 @@ Executed checks and evaluation results:
 - duplication threshold
 - duplicate cluster gate
 
+S2 follow-up execution addendum (run id: `2026-02-22_194137_S2`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_194137_S2/`):
+- `S2_01_env_read_placement.txt` -> Pass
+- `S2_02_mypy_strict.txt` -> Pass
+- `S2_03_lint_imports.txt` -> Pass
+- `S2_04_feature_flag_registry.txt` -> Fail
+- New failure signal details:
+- `check_feature_flag_registry` was enhanced to detect centralized config helper calls (`_text/_int/_float/_csv/_raw`) and now reports missing registry metadata entries for actively used flags.
+- Root artifact with full list remains: `S2_04_feature_flag_registry.txt`.
+- Practical implication:
+- config-ownership migration is structurally complete, but governance metadata must be reconciled before policy convergence.
+
+S2.b execution addendum (run id: `2026-02-22_195124_S2b`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_195124_S2b/`):
+- `S2b_01_feature_flag_registry.txt` -> Pass
+- `S2b_02_policy_static_checks.txt` -> Fail (expected carry-over from later phases: cycles/complexity/LOC/state mutation/exception policy)
+- Resolution result:
+- feature flag registry reconciliation completed by adding missing metadata entries for all newly surfaced centralized-config flags in `tools/quality/budgets/feature_flags_registry.json`.
+- Practical implication:
+- S2 governance follow-up is closed; remaining policy failures are out-of-scope for S2 and remain tracked under S3+ phases.
+
+S2.c exhaustive closure verification addendum (run id: `2026-02-22_195809_S2c`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_195809_S2c/`):
+- `S2c_00_target_env_reads_scan.txt` -> Expected centralized env ownership only (`engine/runtime/config.py`)
+- `S2c_01_target_env_helpers_scan.txt` -> Pass (`_env_*` helper layer removed from S2 target modules)
+- `S2c_02_env_read_placement.txt` -> Pass
+- `S2c_03_mypy_strict.txt` -> Pass
+- `S2c_04_lint_imports.txt` -> Pass
+- `S2c_05_feature_flag_registry.txt` -> Pass
+- Resolution result:
+- S2 now satisfies both gate-level completion and literal execution-step completion (including removal of local `_env_*` helper layer from targeted modules).
+
 ### Investigation
 Investigation scope: code-verified investigation for every failing signal from run `2026-02-22_175415_static_eval`.
 
@@ -407,6 +436,27 @@ Depth discipline: rewrite depth is not a reason to defer work. If a phase is too
 - `S2_01_env_read_placement.txt`
 - `S2_02_mypy_strict.txt`
 
+- S2 follow-up sub-phase (`S2.b`): feature flag registry reconciliation after centralized config migration
+- Objective:
+- Fully align `tools/quality/budgets/feature_flags_registry.json` with all flags now surfaced by helper-aware registry scanning.
+- Targeted failing checks:
+- `S2_04_feature_flag_registry.txt`
+- Executable steps:
+- Parse current failing list from `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_194137_S2/S2_04_feature_flag_registry.txt`.
+- For each missing flag, add metadata entry in `tools/quality/budgets/feature_flags_registry.json`:
+- required fields: `owner`, `rationale`, `remove_by`, `status`.
+- ensure `remove_by` uses `YYYY-MM-DD` and is not in the past.
+- Keep names exactly as used in code (no alias entries).
+- Re-run and serialize:
+- `uv run python scripts/check_feature_flag_registry.py`
+- `uv run python scripts/policy_static_checks.py` (optional in this sub-phase; mandatory before S8 closure)
+- Completion gates:
+- `check_feature_flag_registry`: pass.
+- no newly introduced stale/unused entries in registry.
+- Artifacts:
+- `S2b_01_feature_flag_registry.txt`
+- `S2b_02_policy_static_checks.txt`
+
 3. Phase S3: Protocol boundary hardening and reflection removal
 - Objective:
 - Replace required-path reflection with explicit contracts to satisfy protocol boundary rules and reduce branching complexity.
@@ -628,12 +678,11 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - Prepare `S3` protocol boundary hardening and reflection-removal implementation.
 
 4. Last completed step
-- `S2` completed with artifacts under:
-- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_194137_S2/`
+- `S2.c` exhaustive closure verification completed with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_195809_S2c/`
 - Key outcomes:
-- centralized config subsystem added: `engine/runtime/config.py`; runtime/render/window env parsing removed from execution modules.
-- `check_env_read_placement`: pass (`S2_01_env_read_placement.txt`).
-- `lint-imports`: pass (`3 kept, 0 broken`).
-- `mypy --strict`: pass.
-- Additional follow-up signal (not an `S2` completion gate):
-- `check_feature_flag_registry`: fail after checker enhancement (`scripts/check_feature_flag_registry.py`) now detects `_text/_int/_float/_csv/_raw` helper usage and surfaced missing metadata entries in `tools/quality/budgets/feature_flags_registry.json` (`S2_04_feature_flag_registry.txt`).
+- verified literal S2 step completion: no local `_env_*` helper layer in S2 target modules (`S2c_01_target_env_helpers_scan.txt`).
+- `check_env_read_placement`: pass (`S2c_02_env_read_placement.txt`).
+- `mypy --strict`: pass (`S2c_03_mypy_strict.txt`).
+- `lint-imports`: pass (`S2c_04_lint_imports.txt`).
+- `check_feature_flag_registry`: pass (`S2c_05_feature_flag_registry.txt`).
