@@ -828,7 +828,7 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - `S2`: `completed`
 - `S3`: `completed`
 - `S4`: `completed`
-- `S5`: `not_started`
+- `S5`: `completed`
 - `S6`: `not_started`
 - `S7`: `not_started`
 - `S8`: `not_started`
@@ -837,9 +837,25 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - None
 
 3. Current focus
-- Execute `S5` domain-neutralization and API/runtime duplication cleanup.
+- Execute `S6` mutable state ownership remediation.
 
 4. Last completed step
+- `S5` completed (domain-neutralization and API/runtime duplication cleanup) with closure artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_210549_S5_closure/`
+- Gate outcomes:
+- `S5C_01_semgrep_domain_leakage.txt`: pass
+- `S5C_02_domain_semantic_hardening.txt`: pass
+- `S5C_03_jscpd_threshold.txt`: pass (`3.64%`, below `5%`)
+- `S5C_04_duplicate_cluster.txt`: pass (0 cluster duplicates)
+- Closure checklist C outcomes:
+- `S5C_05_mypy_strict.txt`: pass
+- `S5C_06_lint_imports.txt`: pass
+- Executable-step verification:
+- renderer title literal neutralized in prewarm payload (`engine/rendering/wgpu_renderer.py`) and verified by scan (`S5C_07_renderer_domain_literal_scan.txt`).
+- `engine/api/ui_primitives.py` de-domainized and converted into a thin API facade over `engine/ui_runtime/*`; domain-semantic pattern scan is clean (`S5C_08_api_ui_primitives_domain_scan.txt`).
+- duplicate UI runtime logic ownership consolidated to `engine/ui_runtime/*`; API layer retains contracts/minimal helpers only.
+- duplicated observability ownership collapsed by delegating `engine/runtime/observability.py` to canonical diagnostics implementation.
+
 - `S4` strict re-evaluation corrective pass completed with artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_205846_S4_reeval_fix/`
 - Corrective outcomes:

@@ -61,17 +61,7 @@ class DebugOverlay:
                 "3) -",
             ]
             if ui_diagnostics is not None:
-                lines.append(
-                    "UI rev={revision} resize={resize_seq} anomalies={anomaly_count}".format(
-                        revision=int(ui_diagnostics.get("revision", 0)),
-                        resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
-                        anomaly_count=int(
-                            ui_diagnostics.get(
-                                "anomaly_count", ui_diagnostics.get("jitter_count", 0)
-                            )
-                        ),
-                    )
-                )
+                lines.append(self._format_ui_diagnostics(ui_diagnostics))
             return lines
         lines = [
             f"Frame {last.frame_index}",
@@ -88,13 +78,13 @@ class DebugOverlay:
             else:
                 lines.append(f"{idx + 1}) -")
         if ui_diagnostics is not None:
-            lines.append(
-                "UI rev={revision} resize={resize_seq} anomalies={anomaly_count}".format(
-                    revision=int(ui_diagnostics.get("revision", 0)),
-                    resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
-                    anomaly_count=int(
-                        ui_diagnostics.get("anomaly_count", ui_diagnostics.get("jitter_count", 0))
-                    ),
-                )
-            )
+            lines.append(self._format_ui_diagnostics(ui_diagnostics))
         return lines
+
+    @staticmethod
+    def _format_ui_diagnostics(ui_diagnostics: dict[str, int]) -> str:
+        return "UI rev={revision} resize={resize_seq} anomalies={anomaly_count}".format(
+            revision=int(ui_diagnostics.get("revision", 0)),
+            resize_seq=int(ui_diagnostics.get("resize_seq", 0)),
+            anomaly_count=int(ui_diagnostics.get("anomaly_count", ui_diagnostics.get("jitter_count", 0))),
+        )
