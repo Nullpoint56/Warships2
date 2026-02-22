@@ -259,7 +259,21 @@ S6 strict re-evaluation addendum (run id: `2026-02-22_222600_S6_strict_reeval`, 
 - `engine/runtime/profiling.py` (`_PROCESS_RSS_PROBE`)
 - Decision:
 - Open `S6.b` for strict state-ownership completion.
-- `S6.b` is documented only in this update and is not executed yet.
+- Initial status at decision time: `S6.b` documented and pending execution (later executed; see S6.b closure addendum below).
+
+S6.b closure execution addendum (run id: `2026-02-22_223500_S6b_closure`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_223500_S6b_closure/`):
+- `S6b_01_state_mutation_ownership.txt` -> Pass
+- `S6b_02_mypy_strict.txt` -> Pass
+- `S6b_03_lint_imports.txt` -> Pass
+- `S6b_04_singleton_scan.txt` -> Pass
+- `S6b_05_state_mutation_ownership_second_pass.txt` -> Pass
+- `S6b_06_lint_imports_second_pass.txt` -> Pass
+- Resolution result:
+- `engine/runtime/logging.py` no longer uses module-level mutable singleton state; runtime logging lifecycle is owned by `EngineLoggingRuntime` instances injected through composition path (`entrypoint -> bootstrap`).
+- `engine/runtime/profiling.py` no longer uses module-level RSS probe singleton; `FrameProfiler` owns probe lifecycle via instance field (`_rss_probe`).
+- `scripts/check_state_mutation_ownership.py` hardened to detect module-level singleton object constructor assignments and allowlisted immutable/safe constructor patterns (including `ContextVar`).
+- Completion discipline:
+- S6.b closure validated with second pass (`S6b_05`, `S6b_06`) before status update.
 
 ### Investigation
 Investigation scope: code-verified investigation for every failing signal from run `2026-02-22_175415_static_eval`.
@@ -754,7 +768,7 @@ Depth discipline: rewrite depth is not a reason to defer work. If a phase is too
 6.b Phase S6.b: Strict composition-owned runtime state finalization
 - Objective:
 - Eliminate remaining mutable module-level singleton ownership in runtime paths by moving state to composition-owned service instances.
-- This sub-phase is opened from S6 strict re-evaluation carry-over and is not executed yet.
+- This sub-phase was opened from S6 strict re-evaluation carry-over and is now completed (see S6.b closure addendum).
 - Targeted signals:
 - S6 strict re-evaluation carry-over in:
 - `engine/runtime/logging.py`
@@ -892,21 +906,33 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - `S3`: `completed`
 - `S4`: `completed`
 - `S5`: `completed`
-- `S6`: `in_progress`
+- `S6`: `completed`
 - `S7`: `not_started`
 - `S8`: `not_started`
 
 2. Active sub-phases
-- `S6.b`: `not_started` (opened from strict re-evaluation carry-over; not executed yet)
+- None
 
 3. Current focus
-- Execute `S6.b` strict composition-owned runtime state finalization.
+- Execute `S7` cycle graph reduction and decomposition completion.
 
 4. Last completed step
+- `S6.b` completed (strict composition-owned runtime state finalization) with closure artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_223500_S6b_closure/`
+- Gate outcomes:
+- `S6b_01_state_mutation_ownership.txt`: pass
+- `S6b_02_mypy_strict.txt`: pass
+- `S6b_03_lint_imports.txt`: pass
+- Second-pass outcomes:
+- `S6b_05_state_mutation_ownership_second_pass.txt`: pass
+- `S6b_06_lint_imports_second_pass.txt`: pass
+- Executable-step verification:
+- singleton/state scan confirms S6.b targets (`S6b_04_singleton_scan.txt`).
+- S6 parent phase closure:
+- `S6` is now complete (S6 + S6.b satisfied).
+
 - `S5` completed (domain-neutralization and API/runtime duplication cleanup) with closure artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_210549_S5_closure/`
-- Note:
-- `S6` closure artifacts exist under `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_221900_S6_closure/`, but phase status was reopened to `in_progress` after strict re-evaluation due to carry-over resolved via newly opened `S6.b` (not yet executed).
 - Gate outcomes:
 - `S5C_01_semgrep_domain_leakage.txt`: pass
 - `S5C_02_domain_semantic_hardening.txt`: pass

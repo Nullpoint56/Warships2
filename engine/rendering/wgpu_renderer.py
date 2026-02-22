@@ -5011,6 +5011,8 @@ def _prewarm_wgpu_native_cffi_types() -> None:
     structs_mod = getattr(native_api, "structs", None)
     if ffi is None or structs_mod is None:
         return
+    prewarm_errors = _resolve_cffi_prewarm_errors()
+    allowed_literal_bases = _resolve_wgpu_native_allowed_cffi_bases(structs_mod)
     max_types = max(32, int(renderer_config.cffi_prewarm_max_types))
     names = sorted(
         name
@@ -5022,7 +5024,7 @@ def _prewarm_wgpu_native_cffi_types() -> None:
         for ctype in (f"{base} *", f"{base}[]"):
             try:
                 ffi.typeof(ctype)
-            except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+            except prewarm_errors:
                 continue
     for ctype in (
         "WGPUChainedStruct *",
@@ -5037,14 +5039,69 @@ def _prewarm_wgpu_native_cffi_types() -> None:
     ):
         try:
             ffi.typeof(ctype)
-        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+        except prewarm_errors:
             continue
     literal_max = max(128, int(renderer_config.cffi_prewarm_max_literals))
     for ctype in _discover_wgpu_native_ctype_literals(native_api)[:literal_max]:
+        base = _ctype_base_name(ctype)
+        if base not in allowed_literal_bases:
+            continue
         try:
             ffi.typeof(ctype)
-        except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+        except prewarm_errors:
             continue
+
+
+def _resolve_cffi_prewarm_errors() -> tuple[type[BaseException], ...]:
+    base_errors: tuple[type[BaseException], ...] = (
+        RuntimeError,
+        OSError,
+        ValueError,
+        TypeError,
+        AttributeError,
+        ImportError,
+    )
+    try:
+        cffi_mod = import_module("cffi")
+        cdef_error = getattr(cffi_mod, "CDefError", None)
+    except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
+        return base_errors
+    if isinstance(cdef_error, type) and issubclass(cdef_error, BaseException):
+        return base_errors + (cdef_error,)
+    return base_errors
+
+
+def _resolve_wgpu_native_allowed_cffi_bases(structs_mod: object) -> set[str]:
+    allowed: set[str] = {
+        "char",
+        "intptr_t",
+        "uint32_t",
+        "uint8_t",
+        "void",
+    }
+    for name in dir(structs_mod):
+        if not name.endswith("Struct") or len(name) <= len("Struct") or not name[0].isupper():
+            continue
+        allowed.add(f"WGPU{name[:-6]}")
+    return allowed
+
+
+_CTYPE_ARRAY_SUFFIX_RE = re.compile(r"\s*\[[^\]]*\]\s*$")
+
+
+def _ctype_base_name(raw_ctype: str) -> str:
+    ctype = str(raw_ctype).strip()
+    while True:
+        next_ctype = _CTYPE_ARRAY_SUFFIX_RE.sub("", ctype).strip()
+        if next_ctype == ctype:
+            break
+        ctype = next_ctype
+    while ctype.endswith("*"):
+        ctype = ctype[:-1].strip()
+    for prefix in ("const ", "volatile ", "struct "):
+        if ctype.startswith(prefix):
+            ctype = ctype[len(prefix) :].strip()
+    return ctype
 
 
 def _discover_wgpu_native_ctype_literals(native_api: object) -> tuple[str, ...]:

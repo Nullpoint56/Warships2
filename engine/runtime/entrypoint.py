@@ -19,7 +19,7 @@ from engine.runtime.bootstrap import run_hosted_runtime
 from engine.runtime.composition_container import RuntimeCompositionContainer
 from engine.runtime.framework_engine import EngineUIFramework
 from engine.runtime.host import EngineHostConfig
-from engine.runtime.logging import configure_engine_logging
+from engine.runtime.logging import EngineLoggingRuntime, configure_engine_logging
 from engine.runtime.ui_space import create_app_render_api
 from engine.sdk.catalog import bind_sdk_defaults
 
@@ -29,9 +29,10 @@ def run(*, module: EngineModule) -> None:
     container = RuntimeCompositionContainer()
     bind_sdk_defaults(container)
     module.configure(container)
+    logging_runtime = EngineLoggingRuntime()
 
     config = module.runtime_config()
-    configure_engine_logging(module.logging_config())
+    configure_engine_logging(module.logging_config(), runtime=logging_runtime)
     host_config = EngineHostConfig(
         window_mode=str(config.window_mode),
         width=int(config.width),
@@ -70,4 +71,5 @@ def run(*, module: EngineModule) -> None:
     run_hosted_runtime(
         module_factory=_module_factory,
         host_config=host_config,
+        logging_runtime=logging_runtime,
     )

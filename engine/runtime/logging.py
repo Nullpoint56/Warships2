@@ -13,19 +13,19 @@ from engine.runtime.debug_config import resolve_log_level_name
 
 
 @dataclass(slots=True)
-class _LoggingRuntimeState:
+class EngineLoggingRuntime:
+    """Runtime-owned logging lifecycle state."""
+
     queue_listener: QueueListener | None = None
 
-
-_LOGGING_RUNTIME = _LoggingRuntimeState()
 RESERVED_LOGGER_NAMES: tuple[str, ...] = ("engine.network", "engine.audio")
 
 
-def configure_engine_logging(config: EngineLoggingConfig) -> None:
+def configure_engine_logging(config: EngineLoggingConfig, *, runtime: EngineLoggingRuntime) -> None:
     """Configure root logging with optional async file streaming."""
-    if _LOGGING_RUNTIME.queue_listener is not None:
-        _LOGGING_RUNTIME.queue_listener.stop()
-        _LOGGING_RUNTIME.queue_listener = None
+    if runtime.queue_listener is not None:
+        runtime.queue_listener.stop()
+        runtime.queue_listener = None
 
     level = getattr(logging, config.level_name.upper(), logging.INFO)
     console_handler = logging.StreamHandler()
@@ -49,23 +49,26 @@ def configure_engine_logging(config: EngineLoggingConfig) -> None:
 
     log_queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
     root.addHandler(QueueHandler(log_queue))
-    _LOGGING_RUNTIME.queue_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
-    _LOGGING_RUNTIME.queue_listener.start()
+    runtime.queue_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
+    runtime.queue_listener.start()
 
 
-def setup_engine_logging() -> None:
+def setup_engine_logging(*, runtime: EngineLoggingRuntime | None = None) -> EngineLoggingRuntime:
     """Configure minimal engine logging if no handlers are present."""
+    resolved_runtime = runtime or EngineLoggingRuntime()
     root = logging.getLogger()
     if root.handlers:
-        return
+        return resolved_runtime
     configure_engine_logging(
         EngineLoggingConfig(
             level_name=resolve_log_level_name(default="INFO"),
             console_format="text",
             file_path=None,
             file_format="json",
-        )
+        ),
+        runtime=resolved_runtime,
     )
+    return resolved_runtime
 
 
 def get_engine_logger(name: str) -> logging.Logger:

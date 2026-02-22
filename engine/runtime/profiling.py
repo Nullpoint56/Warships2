@@ -131,10 +131,6 @@ class _ProcessRssProbe:
 
         return None
 
-
-_PROCESS_RSS_PROBE = _ProcessRssProbe()
-
-
 @dataclass(slots=True)
 class FrameProfiler:
     """Collect lightweight profiling payloads at a fixed sampling rate."""
@@ -168,6 +164,7 @@ class FrameProfiler:
     _capture_frame_samples: list[dict[str, Any]] = field(default_factory=list)
     _capture_timeline_max: int = 0
     _capture_warmup_frames: int = 0
+    _rss_probe: _ProcessRssProbe = field(default_factory=_ProcessRssProbe)
 
     def __post_init__(self) -> None:
         profiling_config = get_runtime_config().profiling
@@ -320,14 +317,13 @@ class FrameProfiler:
         self._capture_report_ready = None
         return ready
 
-    @staticmethod
-    def _collect_memory() -> dict[str, float]:
+    def _collect_memory(self) -> dict[str, float]:
         current_bytes, peak_bytes = tracemalloc.get_traced_memory()
         out: dict[str, float] = {
             "python_current_mb": current_bytes / (1024.0 * 1024.0),
             "python_peak_mb": peak_bytes / (1024.0 * 1024.0),
         }
-        rss_mb = _process_rss_mb()
+        rss_mb = self._rss_probe.read_mb()
         if rss_mb is not None:
             out["process_rss_mb"] = rss_mb
         return out
@@ -597,11 +593,6 @@ class FrameProfiler:
             "last_static_key_build_ms": float(last_static_key_build),
             "static_key_build_delta_ms": float(first_static_key_build - last_static_key_build),
         }
-
-
-def _process_rss_mb() -> float | None:
-    return _PROCESS_RSS_PROBE.read_mb()
-
 
 def _float_or(value: object, default: float) -> float:
     if isinstance(value, bool):

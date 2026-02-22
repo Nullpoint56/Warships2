@@ -18,7 +18,7 @@ from engine.rendering.scene_runtime import resolve_render_loop_config, resolve_r
 from engine.rendering.wgpu_renderer import WgpuInitError, WgpuRenderer
 from engine.runtime.config import RuntimeConfig, get_runtime_config, initialize_runtime_config
 from engine.runtime.host import EngineHost, EngineHostConfig
-from engine.runtime.logging import setup_engine_logging
+from engine.runtime.logging import EngineLoggingRuntime, setup_engine_logging
 from engine.runtime.window_frontend import create_window_frontend
 from engine.window import create_window_layer
 
@@ -27,9 +27,10 @@ def run_hosted_runtime(
     *,
     module_factory: Callable[[RenderAPI, GridLayout], GameModule],
     host_config: EngineHostConfig | None = None,
+    logging_runtime: EngineLoggingRuntime | None = None,
 ) -> None:
     """Run engine-hosted runtime using window layer + wgpu renderer composition."""
-    setup_engine_logging()
+    setup_engine_logging(runtime=logging_runtime)
     runtime_config = initialize_runtime_config()
     configure_style_effects(enabled=runtime_config.style.effects_enabled)
     layout = GridLayout()

@@ -37,14 +37,12 @@ from engine.ui_runtime.prompt_runtime import (
     handle_key as handle_prompt_key,
 )
 from engine.ui_runtime.scroll import ScrollOutcome, apply_wheel_scroll
-from engine.ui_runtime.widgets import Button
 
 __all__ = [
     "ModalInputState",
     "ModalKeyRoute",
     "ModalPointerRoute",
     "NonModalKeyRoute",
-    "Button",
     "CellCoord",
     "DebugOverlay",
     "GridLayout",

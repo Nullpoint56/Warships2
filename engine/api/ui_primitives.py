@@ -5,14 +5,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from engine.ui_runtime import geometry as _geo
-from engine.ui_runtime import grid_layout as _grid
-from engine.ui_runtime import interactions as _interactions
-from engine.ui_runtime import keymap as _keymap
-from engine.ui_runtime import list_viewport as _list_viewport
-from engine.ui_runtime import modal_runtime as _modal
-from engine.ui_runtime import prompt_runtime as _prompt
-from engine.ui_runtime import scroll as _scroll
+import engine.ui_runtime.geometry as _geo
+import engine.ui_runtime.grid_layout as _grid
+import engine.ui_runtime.interactions as _interactions
+import engine.ui_runtime.keymap as _keymap
+import engine.ui_runtime.list_viewport as _list_viewport
+import engine.ui_runtime.modal_runtime as _modal
+import engine.ui_runtime.prompt_runtime as _prompt
+import engine.ui_runtime.scroll as _scroll
 
 CellCoord = _geo.CellCoord
 Rect = _geo.Rect
