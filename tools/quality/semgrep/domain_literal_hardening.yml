@@ -1,0 +1,19 @@
+rules:
+  - id: engine-grid-target-semantic-leakage
+    languages: [python]
+    severity: ERROR
+    message: "Domain-leaning grid target semantics in engine core must move to app/preset layer."
+    paths:
+      include:
+        - /engine/api/ui_primitives.py
+        - /engine/**/*.py
+      exclude:
+        - /engine/ui_runtime/**/*.py
+    pattern-either:
+      - pattern: |
+          if $X == "primary":
+            ...
+      - pattern: |
+          if $X == "secondary":
+            ...
+      - pattern-regex: "grid_size\\s*:\\s*int\\s*=\\s*10"

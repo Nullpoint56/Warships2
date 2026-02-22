@@ -42,8 +42,34 @@ def main() -> int:
             ["uv", "run", "python", "scripts/check_bootstrap_wiring_ownership.py"],
         ),
         (
+            "API factory runtime-import gate (no create_/run_ runtime imports in engine.api)",
+            ["uv", "run", "python", "scripts/check_api_runtime_factories.py"],
+        ),
+        (
+            "Boundary DTO purity gate (no object/Any/runtime annotations in engine.api public contracts)",
+            ["uv", "run", "python", "scripts/check_boundary_dto_purity.py"],
+        ),
+        (
+            "Public API surface drift gate (baseline diff)",
+            ["uv", "run", "python", "scripts/check_public_api_surface.py"],
+        ),
+        (
             "Import cycle gate (SCC size must be 1)",
             ["uv", "run", "python", "scripts/check_import_cycles.py"],
+        ),
+        (
+            "Import cycle budget gate (no regression in SCC size/count)",
+            [
+                "uv",
+                "run",
+                "python",
+                "scripts/check_import_cycles.py",
+                "--allow-cycles",
+                "--baseline",
+                "tools/quality/budgets/import_cycles_baseline.json",
+                "--json-output",
+                "docs/architecture/audits/static_checks/latest/import_cycles_metrics.json",
+            ],
         ),
         (
             "Strict type contracts (mypy --strict)",
@@ -56,6 +82,22 @@ def main() -> int:
         (
             "File LOC limits (soft 600 / hard 900)",
             ["uv", "run", "python", "scripts/check_engine_file_limits.py", "--soft", "600", "--hard", "900"],
+        ),
+        (
+            "Barrel export budget gate",
+            ["uv", "run", "python", "scripts/check_barrel_exports.py"],
+        ),
+        (
+            "Env read placement gate (env access only in allowed config/bootstrap modules)",
+            ["uv", "run", "python", "scripts/check_env_read_placement.py"],
+        ),
+        (
+            "Feature/env flag registry gate (owner/rationale/remove_by/status + expiry)",
+            ["uv", "run", "python", "scripts/check_feature_flag_registry.py"],
+        ),
+        (
+            "State mutation ownership gate (no mutable module globals or global writes)",
+            ["uv", "run", "python", "scripts/check_state_mutation_ownership.py"],
         ),
         (
             "Broad exception policy (ruff)",
@@ -74,6 +116,10 @@ def main() -> int:
             ],
         ),
         (
+            "Exception observability semantics gate",
+            ["uv", "run", "python", "scripts/check_exception_observability.py"],
+        ),
+        (
             "Domain literal leakage (semgrep)",
             [
                 "uv",
@@ -86,8 +132,28 @@ def main() -> int:
             ],
         ),
         (
+            "Required protocol capability and opaque provider rules (semgrep)",
+            [
+                "uv",
+                "run",
+                "semgrep",
+                "--error",
+                "--config",
+                "tools/quality/semgrep/protocol_boundary_rules.yml",
+                "engine",
+            ],
+        ),
+        (
+            "Domain semantic hardening gate",
+            ["uv", "run", "python", "scripts/check_domain_semantic_leakage.py"],
+        ),
+        (
             "Duplication threshold (jscpd <= 5%)",
             ["npx", "--yes", "jscpd", "--threshold", "5", "engine"],
+        ),
+        (
+            "Duplicate cluster gate (api/ui_primitives vs ui_runtime)",
+            ["uv", "run", "python", "scripts/check_duplicate_cluster.py"],
         ),
     ]
 

@@ -1,0 +1,33 @@
+rules:
+  - id: engine-required-capability-reflection-window-frontend
+    languages: [python]
+    severity: ERROR
+    message: "Required boundary capabilities must not use reflection in runtime frontends."
+    paths:
+      include:
+        - /engine/runtime/window_frontend.py
+    pattern-either:
+      - pattern: getattr($OBJ, "canvas", ...)
+      - pattern: getattr($OBJ, "consume_resize_telemetry", ...)
+      - pattern: getattr($OBJ, "apply_window_resize", ...)
+      - pattern: hasattr($OBJ, "emit_fast")
+
+  - id: engine-required-capability-reflection-ui-space
+    languages: [python]
+    severity: ERROR
+    message: "Required boundary capabilities must be protocol-typed, not reflected."
+    paths:
+      include:
+        - /engine/runtime/ui_space.py
+    pattern-either:
+      - pattern: getattr($OBJ, "add_style_rect", ...)
+      - pattern: getattr($OBJ, "design_space_size", ...)
+
+  - id: engine-opaque-provider-forbidden
+    languages: [python]
+    severity: ERROR
+    message: "Opaque provider type is forbidden for boundary handles; use a Protocol."
+    paths:
+      include:
+        - /engine/api/**/*.py
+    pattern-regex: "provider\\s*:\\s*object\\s*\\|\\s*None"

@@ -1,0 +1,272 @@
+{
+  "ENGINE_DIAGNOSTICS_CRASH_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_HTTP_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_HTTP_HOST": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_HTTP_PORT": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_DIAGNOSTICS_REPLAY_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_HEADLESS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_INPUT_TRACE_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_LOG_LEVEL": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_METRICS_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_CAPTURE_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_INCLUDE_EVENT_TOPICS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_INCLUDE_SYSTEM_TIMINGS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_PROFILING_LOG_PAYLOAD_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_FPS_CAP": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_LOOP_MODE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RENDER_VSYNC": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RUNTIME_PROFILE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_RUNTIME_RENDER_SNAPSHOT_SANITIZE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_ASPECT_MODE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_OVERLAY_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_PANEL_RESOLUTION": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_RESOLUTION": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_UI_STYLE_EFFECTS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_BACKENDS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_CFFI_FASTPATH_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_CFFI_PREWARM_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_FONT_PATHS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_PRESENT_MODES": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_PRIME_NATIVE_PATHS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_STARTUP_PREWARM_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_TEXT_PREWARM_CHARS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_TEXT_PREWARM_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_TEXT_PREWARM_LABELS": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WGPU_TEXT_PREWARM_SIZES": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WINDOW_BACKEND": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WINDOW_EVENTS_TRACE_ENABLED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "ENGINE_WINDOW_MODE": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "LOG_LEVEL": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  },
+  "WARSHIPS_RNG_SEED": {
+    "owner": "engine-team",
+    "rationale": "Runtime/configuration toggle managed under engine policy.",
+    "remove_by": "2099-12-31",
+    "status": "active"
+  }
+}

@@ -5,7 +5,7 @@ rules:
     message: "Bare except is forbidden by policy."
     paths:
       include:
-        - engine/**/*.py
+        - /engine/**/*.py
     pattern: |
       try:
         ...
@@ -18,7 +18,7 @@ rules:
     message: "Silent except Exception fallback is forbidden by policy."
     paths:
       include:
-        - engine/**/*.py
+        - /engine/**/*.py
     pattern-either:
       - pattern: |
           try:

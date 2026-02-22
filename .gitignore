@@ -221,3 +221,7 @@ data
 uv.lock
 warships/appdata
 tmp_appdata
+
+# Static check raw audit outputs (generated)
+docs/architecture/audits/static_checks/**
+!docs/architecture/audits/static_checks/.gitkeep

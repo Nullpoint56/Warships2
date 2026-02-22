@@ -16,3 +16,10 @@ repos:
         language: system
         pass_filenames: false
         files: ^(docs/|.*\.md$)
+      - id: policy-static-gates
+        name: quality check (policy static gates)
+        entry: uv run python scripts/policy_static_checks.py
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

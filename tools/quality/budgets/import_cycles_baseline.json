@@ -1,0 +1,7 @@
+{
+  "cycle_component_count": 2,
+  "max_scc_size": 63,
+  "module_count": 96,
+  "root": "engine",
+  "self_cycle_count": 11
+}

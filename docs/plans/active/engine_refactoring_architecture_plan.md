@@ -180,6 +180,133 @@ All full command outputs are stored in:
    - remove silent/broad exception fallbacks where policy disallows them.
    - reduce duplication below `5%`.
 
+### Expanded Static Pass (v2, Full Gate Set)
+
+Date: 2026-02-22
+
+#### Scope
+
+Executed full policy gate set, including newly introduced static checks:
+
+1. `uv run python scripts/policy_static_checks.py`
+2. `uv run lint-imports`
+3. `uv run python scripts/check_bootstrap_wiring_ownership.py`
+4. `uv run python scripts/check_api_runtime_factories.py`
+5. `uv run python scripts/check_boundary_dto_purity.py`
+6. `uv run python scripts/check_public_api_surface.py`
+7. `uv run python scripts/check_import_cycles.py`
+8. `uv run python scripts/check_import_cycles.py --allow-cycles --baseline tools/quality/budgets/import_cycles_baseline.json --json-output docs/architecture/audits/static_checks/latest/import_cycles_metrics.json`
+9. `uv run mypy --strict`
+10. `uv run xenon --max-absolute B --max-modules A --max-average A engine`
+11. `uv run python scripts/check_engine_file_limits.py --soft 600 --hard 900`
+12. `uv run python scripts/check_barrel_exports.py`
+13. `uv run python scripts/check_env_read_placement.py`
+14. `uv run python scripts/check_feature_flag_registry.py`
+15. `uv run python scripts/check_state_mutation_ownership.py`
+16. `uv run ruff check engine --select E722,BLE001`
+17. `uv run semgrep --error --config tools/quality/semgrep/broad_exception_policy.yml engine`
+18. `uv run python scripts/check_exception_observability.py`
+19. `uv run semgrep --error --config tools/quality/semgrep/domain_literal_leakage.yml engine`
+20. `uv run semgrep --error --config tools/quality/semgrep/protocol_boundary_rules.yml engine`
+21. `uv run python scripts/check_domain_semantic_leakage.py`
+22. `npx --yes jscpd --threshold 5 engine`
+23. `uv run python scripts/check_duplicate_cluster.py`
+
+#### Raw Outputs
+
+All raw outputs were serialized under:
+
+`docs/architecture/audits/static_checks/2026-02-22/`
+
+1. `00_policy_static_checks_full_run_v2.txt`
+2. `01_lint-imports_v2.txt`
+3. `02_bootstrap_wiring_ownership_v2.txt`
+4. `03_api_runtime_factories_v2.txt`
+5. `04_boundary_dto_purity_v2.txt`
+6. `05_public_api_surface_v2.txt`
+7. `06_import_cycles_strict_v2.txt`
+8. `07_import_cycles_budget_v2.txt`
+9. `08_mypy_strict_v2.txt`
+10. `09_xenon_v2.txt`
+11. `10_file_limits_v2.txt`
+12. `11_barrel_exports_v2.txt`
+13. `12_env_read_placement_v2.txt`
+14. `13_feature_flag_registry_v2.txt`
+15. `14_state_mutation_ownership_v2.txt`
+16. `15_ruff_broad_exceptions_v2.txt`
+17. `16_semgrep_broad_exceptions_v2.txt`
+18. `17_exception_observability_v2.txt`
+19. `18_semgrep_domain_leakage_v2.txt`
+20. `19_semgrep_protocol_boundary_v2.txt`
+21. `20_domain_semantic_hardening_v2.txt`
+22. `21_jscpd_threshold_v2.txt`
+23. `22_duplicate_cluster_v2.txt`
+
+#### Evaluations
+
+1. Consolidated run (`00_policy_static_checks_full_run_v2.txt`)
+   - Passes: public API surface drift gate, import cycle budget gate, `mypy --strict`, feature/env flag registry gate.
+   - Fails: import-linter, bootstrap ownership, API runtime factory gate, boundary DTO purity, strict import cycles, xenon, LOC limits, barrel budget, env read placement, state ownership, ruff broad exceptions, semgrep broad exceptions, exception observability, domain literal leakage, protocol boundary rules, domain semantic hardening, jscpd global threshold, duplicate cluster gate.
+2. API runtime factory gate (`03_api_runtime_factories_v2.txt`)
+   - 13 violations where `create_*` / `run_*` in `engine.api` import `engine.runtime.*`.
+   - Core offenders: `engine/api/hosted_runtime.py`, `engine/api/ui_framework.py`, `engine/api/flow.py`.
+3. Boundary DTO purity gate (`04_boundary_dto_purity_v2.txt`)
+   - Fails on public API contracts still typed as `object`/`Any`.
+   - Highest concentration: `engine/api/debug.py` and `engine/api/logging.py`.
+4. Public API surface drift (`05_public_api_surface_v2.txt`)
+   - Pass (no drift from `tools/quality/budgets/engine_api_surface_baseline.txt`).
+5. Import cycle budget gate (`07_import_cycles_budget_v2.txt`)
+   - Pass (no regression versus baseline), while large SCCs still exist (`63`, `9`).
+6. Barrel export budget (`11_barrel_exports_v2.txt`)
+   - `engine/api/__init__.py` exports `144` > budget `120`.
+   - `engine/runtime/__init__.py` exports `31` > budget `30`.
+   - Mixed-layer imports present in `engine/runtime/__init__.py` (`engine.api.*` + `engine.runtime.*`).
+7. Env read placement (`12_env_read_placement_v2.txt`)
+   - Widespread env access outside approved config/bootstrap modules.
+   - Largest concentration remains in `engine/rendering/wgpu_renderer.py` and `engine/runtime/host.py`.
+8. Feature/env flag registry (`13_feature_flag_registry_v2.txt`)
+   - Pass (all discovered env/feature keys mapped in `tools/quality/budgets/feature_flags_registry.json` with required metadata).
+9. State mutation ownership (`14_state_mutation_ownership_v2.txt`)
+   - 11 violations after noise filtering (`__all__` ignored).
+   - Concrete mutable-global/global-write hotspots:
+     - cache globals in `engine/rendering/wgpu_renderer.py`
+     - `global` writes in `engine/runtime/logging.py` and `engine/runtime/profiling.py`
+     - cache globals in `engine/runtime/ui_space.py`
+     - preset global in `engine/runtime_profile.py`
+10. Exception observability semantics (`17_exception_observability_v2.txt`)
+   - Broad exception handlers without required observability across diagnostics/gameplay/runtime/window.
+   - Dominant concentration in `engine/rendering/wgpu_renderer.py`.
+11. Protocol boundary semgrep (`19_semgrep_protocol_boundary_v2.txt`)
+   - 11 blocking findings.
+   - Opaque provider typing still present (`engine/api/window.py: provider: object | None`).
+   - Reflection-based required capability checks persist in `engine/runtime/ui_space.py` and `engine/runtime/window_frontend.py`.
+12. Domain semantic hardening (`20_domain_semantic_hardening_v2.txt`)
+   - 3 explicit semantic leaks in `engine/api/ui_primitives.py`:
+     - `primary`/`secondary` branch literals
+     - `grid_size: int = 10`
+13. jscpd global threshold (`21_jscpd_threshold_v2.txt`)
+   - Fails at `5.01%` duplicated lines (`526`) vs threshold `5%`, with `29` clone groups.
+14. jscpd duplicate cluster (`22_duplicate_cluster_v2.txt`)
+   - Fails at `28.07%` duplication in targeted cluster (`engine/api/ui_primitives.py` vs `engine/ui_runtime/**`).
+
+#### Phase-Plan Extensions from v2
+
+1. Phase 2 (API boundary hardening)
+   - eliminate API runtime factory imports (`03_api_runtime_factories_v2.txt`).
+   - replace `object`/`Any` public boundary typing with explicit protocols/DTO types (`04_boundary_dto_purity_v2.txt`).
+   - retain API surface baseline process for intentional contract changes (`05_public_api_surface_v2.txt`).
+2. Phase 3 (Configuration ownership)
+   - migrate env reads from runtime/rendering/window modules into approved config/bootstrap pathways (`12_env_read_placement_v2.txt`).
+   - keep feature flag registry metadata authoritative and current as flags evolve (`13_feature_flag_registry_v2.txt`).
+3. Phase 4 (State/exception semantics)
+   - replace mutable module caches/global writes with owned services or scoped caches (`14_state_mutation_ownership_v2.txt`).
+   - enforce logged/structured broad-exception handling where broad catches remain unavoidable (`17_exception_observability_v2.txt`).
+4. Phase 5 (Boundary protocol correctness)
+   - remove opaque provider handles and reflection-based required capability dispatch in runtime frontends (`19_semgrep_protocol_boundary_v2.txt`).
+5. Phase 6 (Domain neutrality and duplication burn-down)
+   - remove domain semantic defaults from engine APIs (`20_domain_semantic_hardening_v2.txt`).
+   - reduce duplication under global threshold and collapse `ui_primitives`/`ui_runtime` clone cluster (`21_jscpd_threshold_v2.txt`, `22_duplicate_cluster_v2.txt`).
+
 ## LLM Findings
 
 Date: 2026-02-22  

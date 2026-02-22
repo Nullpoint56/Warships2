@@ -5,5 +5,5 @@ rules:
     message: "Title-specific terminology is forbidden in engine.* by policy."
     paths:
       include:
-        - engine/**/*.py
+        - /engine/**/*.py
     pattern-regex: "(?i)\\bwarships\\b"
