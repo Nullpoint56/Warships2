@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from engine.api.app_port import EngineAppPort, UIDesignResolutionProvider
 from engine.api.render import RenderAPI
 from engine.api.render_snapshot import (
     RenderCommand,
@@ -12,6 +13,7 @@ from engine.api.render_snapshot import (
     RenderPassSnapshot,
     RenderSnapshot,
 )
+from engine.api.window import WindowResizeEvent
 from engine.runtime.config import get_runtime_config
 
 _SCALE_CACHE_MAX = 20_000
@@ -57,10 +59,14 @@ class UISpaceTransform:
         return (float(x) * self.scale_x, float(y) * self.scale_y)
 
 
-def resolve_ui_space_transform(*, app: object, renderer: RenderAPI) -> UISpaceTransform:
+def resolve_ui_space_transform(
+    *,
+    design_resolution_provider: UIDesignResolutionProvider | None,
+    renderer: RenderAPI,
+) -> UISpaceTransform:
     """Resolve app<->engine UI transform using app authored resolution when provided."""
     engine_w, engine_h = _resolve_engine_design_resolution(renderer)
-    app_design = _resolve_app_design_resolution(app)
+    app_design = _resolve_app_design_resolution(design_resolution_provider)
     if app_design is None:
         return UISpaceTransform(
             engine_width=engine_w,
@@ -77,20 +83,22 @@ def resolve_ui_space_transform(*, app: object, renderer: RenderAPI) -> UISpaceTr
     )
 
 
-def create_app_render_api(*, app: object, renderer: RenderAPI) -> RenderAPI:
+def create_app_render_api(*, app: EngineAppPort, renderer: RenderAPI) -> RenderAPI:
     """Return app-facing renderer that scales authored coordinates into engine design-space."""
-    transform = resolve_ui_space_transform(app=app, renderer=renderer)
+    provider = app if isinstance(app, UIDesignResolutionProvider) else None
+    transform = resolve_ui_space_transform(design_resolution_provider=provider, renderer=renderer)
     if transform.is_identity:
         return renderer
     return _ScaledRenderAPI(inner=renderer, transform=transform)
 
 
-def _resolve_app_design_resolution(app: object) -> tuple[float, float] | None:
-    provider = getattr(app, "ui_design_resolution", None)
-    if not callable(provider):
+def _resolve_app_design_resolution(
+    provider: UIDesignResolutionProvider | None,
+) -> tuple[float, float] | None:
+    if provider is None:
         return None
     try:
-        raw = provider()
+        raw = provider.ui_design_resolution()
     except Exception:
         return None
     if not isinstance(raw, tuple) or len(raw) != 2:
@@ -106,21 +114,19 @@ def _resolve_app_design_resolution(app: object) -> tuple[float, float] | None:
 
 
 def _resolve_engine_design_resolution(renderer: RenderAPI) -> tuple[float, float]:
-    provider = getattr(renderer, "design_space_size", None)
-    if callable(provider):
+    try:
+        raw = renderer.design_space_size()
+    except Exception:
+        raw = None
+    if isinstance(raw, tuple) and len(raw) == 2:
         try:
-            raw = provider()
-        except Exception:
-            raw = None
-        if isinstance(raw, tuple) and len(raw) == 2:
-            try:
-                width = float(raw[0])
-                height = float(raw[1])
-            except (TypeError, ValueError):
-                width = 0.0
-                height = 0.0
-            if width > 0.0 and height > 0.0:
-                return (width, height)
+            width = float(raw[0])
+            height = float(raw[1])
+        except (TypeError, ValueError):
+            width = 0.0
+            height = 0.0
+        if width > 0.0 and height > 0.0:
+            return (width, height)
     return _resolve_design_resolution_from_config()
 
 
@@ -188,12 +194,8 @@ class _ScaledRenderAPI:
         color_secondary: str = "",
         shadow_layers: float = 0.0,
     ) -> None:
-        add_style_rect = getattr(self._inner, "add_style_rect", None)
-        if not callable(add_style_rect):
-            self.add_rect(key, x, y, w, h, color, z=z, static=static)
-            return
         ex, ey = self._transform.app_to_engine(x, y)
-        add_style_rect(
+        self._inner.add_style_rect(
             style_kind=str(style_kind),
             key=str(key),
             x=ex,
@@ -283,6 +285,9 @@ class _ScaledRenderAPI:
 
     def design_space_size(self) -> tuple[float, float]:
         return (self._transform.app_width, self._transform.app_height)
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        self._inner.apply_window_resize(event)
 
 
 def _scale_render_snapshot(snapshot: RenderSnapshot, transform: UISpaceTransform) -> RenderSnapshot:

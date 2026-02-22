@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 
 
+@runtime_checkable
 class SurfaceProvider(Protocol):
     """Opaque backend-owned surface provider contract."""
 
@@ -56,6 +58,7 @@ class WindowCloseEvent:
 WindowEvent = WindowResizeEvent | WindowFocusEvent | WindowMinimizeEvent | WindowCloseEvent
 
 
+@runtime_checkable
 class WindowPort(Protocol):
     """Engine-facing window/event-loop ownership contract."""
 
@@ -67,6 +70,12 @@ class WindowPort(Protocol):
 
     def poll_input_events(self) -> tuple[PointerEvent | KeyEvent | WheelEvent, ...]:
         """Poll and return normalized raw input events for input subsystem ingestion."""
+
+    def set_draw_handler(self, draw_callback: Callable[[], None]) -> None:
+        """Install backend draw callback when the backend supports callback-driven rendering."""
+
+    def request_draw(self) -> None:
+        """Request one redraw from backend/window."""
 
     def set_title(self, title: str) -> None:
         """Set OS window title."""
@@ -85,6 +94,9 @@ class WindowPort(Protocol):
 
     def stop_loop(self) -> None:
         """Stop the OS/backend event loop when supported."""
+
+    def consume_resize_telemetry(self) -> dict[str, int]:
+        """Consume and reset resize telemetry counters for diagnostics emission."""
 
     def close(self) -> None:
         """Close window and release backend resources."""

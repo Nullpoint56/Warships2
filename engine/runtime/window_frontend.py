@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from engine.api.debug import DiagnosticsEventEmitter
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
 from engine.api.window import (
@@ -44,11 +45,8 @@ class HostedWindowFrontend:
 
     def run(self) -> None:
         self._renderer.run(self._draw_frame)
-        canvas = getattr(self._window, "canvas", None)
-        request_draw = getattr(canvas, "request_draw", None)
-        if callable(request_draw):
-            request_draw(self._draw_frame)
-            request_draw()
+        self._window.set_draw_handler(self._draw_frame)
+        self._window.request_draw()
         self._window.run_loop()
 
     def _draw_frame(self) -> None:
@@ -64,63 +62,52 @@ class HostedWindowFrontend:
         events = self._window.poll_events()
         if not events:
             return
-        hub = getattr(self._host, "diagnostics_hub", None)
+        hub: DiagnosticsEventEmitter = self._host.diagnostics_hub
         tick = int(self._host.current_frame_index())
         resize_events_seen = 0
         for event in events:
             if isinstance(event, WindowResizeEvent):
                 resize_events_seen += 1
-                apply_window_resize = getattr(self._renderer, "apply_window_resize", None)
-                if callable(apply_window_resize):
-                    apply_window_resize(event)
-                if hub is not None and hasattr(hub, "emit_fast"):
-                    hub.emit_fast(
-                        category="window",
-                        name="window.resize",
-                        tick=tick,
-                        value={
-                            "logical_width": float(event.logical_width),
-                            "logical_height": float(event.logical_height),
-                            "physical_width": int(event.physical_width),
-                            "physical_height": int(event.physical_height),
-                            "dpi_scale": float(event.dpi_scale),
-                        },
-                    )
+                self._renderer.apply_window_resize(event)
+                hub.emit_fast(
+                    category="window",
+                    name="window.resize",
+                    tick=tick,
+                    value={
+                        "logical_width": float(event.logical_width),
+                        "logical_height": float(event.logical_height),
+                        "physical_width": int(event.physical_width),
+                        "physical_height": int(event.physical_height),
+                        "dpi_scale": float(event.dpi_scale),
+                    },
+                )
                 continue
             if isinstance(event, WindowFocusEvent):
-                if hub is not None and hasattr(hub, "emit_fast"):
-                    hub.emit_fast(
-                        category="window",
-                        name="window.focus",
-                        tick=tick,
-                        value={"focused": bool(event.focused)},
-                    )
+                hub.emit_fast(
+                    category="window",
+                    name="window.focus",
+                    tick=tick,
+                    value={"focused": bool(event.focused)},
+                )
                 continue
             if isinstance(event, WindowMinimizeEvent):
-                if hub is not None and hasattr(hub, "emit_fast"):
-                    hub.emit_fast(
-                        category="window",
-                        name="window.minimize",
-                        tick=tick,
-                        value={"minimized": bool(event.minimized)},
-                    )
+                hub.emit_fast(
+                    category="window",
+                    name="window.minimize",
+                    tick=tick,
+                    value={"minimized": bool(event.minimized)},
+                )
                 continue
             if isinstance(event, WindowCloseEvent):
-                if hub is not None and hasattr(hub, "emit_fast"):
-                    hub.emit_fast(
-                        category="window",
-                        name="window.close_requested",
-                        tick=tick,
-                        value={"requested": bool(event.requested)},
-                    )
+                hub.emit_fast(
+                    category="window",
+                    name="window.close_requested",
+                    tick=tick,
+                    value={"requested": bool(event.requested)},
+                )
                 self._host.close()
-        if resize_events_seen > 0 and hub is not None and hasattr(hub, "emit_fast"):
-            consume_resize_telemetry = getattr(self._window, "consume_resize_telemetry", None)
-            resize_telemetry = (
-                consume_resize_telemetry() if callable(consume_resize_telemetry) else {}
-            )
-            if not isinstance(resize_telemetry, dict):
-                resize_telemetry = {}
+        if resize_events_seen > 0:
+            resize_telemetry = self._window.consume_resize_telemetry()
             hub.emit_fast(
                 category="window",
                 name="window.resize_burst",

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 DirectActionHandler = Callable[[], bool]
 PrefixedActionHandler = Callable[[str], bool]
 
 
+@runtime_checkable
 class ActionDispatcher(Protocol):
     """Resolve and dispatch action IDs."""
 

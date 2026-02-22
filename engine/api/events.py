@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Protocol, runtime_checkable, TypeVar
 
 TEvent = TypeVar("TEvent")
 
@@ -16,6 +16,7 @@ class Subscription:
     id: int
 
 
+@runtime_checkable
 class EventBus(Protocol):
     """Public in-process pub/sub contract."""
 

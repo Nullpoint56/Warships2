@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Protocol, runtime_checkable, TypeVar
 
 TAsset = TypeVar("TAsset")
 
@@ -25,6 +25,7 @@ class AssetHandle[TAsset]:
     asset_id: str
 
 
+@runtime_checkable
 class AssetRegistry(Protocol):
     """Public registry contract for loading and retaining assets."""
 

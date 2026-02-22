@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, runtime_checkable
 
 LayerKind = Literal["root", "overlay"]
 
@@ -21,6 +21,7 @@ class ScreenLayer:
     data: ScreenData | None = None
 
 
+@runtime_checkable
 class ScreenStack(Protocol):
     """Public screen stack contract."""
 

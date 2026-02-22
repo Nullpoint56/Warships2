@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, TypeVar
+from typing import Protocol, runtime_checkable, TypeVar
 
 from engine.api.context import RuntimeContext
 
 TState = TypeVar("TState")
 
 
+@runtime_checkable
 class GameplaySystem(Protocol):
     """Standard gameplay system lifecycle contract."""
 
@@ -63,6 +64,7 @@ class StateStore(Protocol[TState]):
         """Return current revision number."""
 
 
+@runtime_checkable
 class UpdateLoop(Protocol):
     """Ordered gameplay update-loop contract."""
 

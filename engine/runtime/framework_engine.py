@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from engine.api.app_port import EngineAppPort, InteractionPlanView
+from engine.api.app_port import EngineAppPort, InteractionPlanView, UIDesignResolutionProvider
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
@@ -30,8 +30,9 @@ class EngineUIFramework:
         self._app = app
         self._renderer = renderer
         self._layout = layout
+        design_resolution_provider = app if isinstance(app, UIDesignResolutionProvider) else None
         self._ui_transform: UISpaceTransform = resolve_ui_space_transform(
-            app=app,
+            design_resolution_provider=design_resolution_provider,
             renderer=renderer,
         )
         self._modal_state = ModalInputState()

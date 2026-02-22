@@ -20,6 +20,8 @@ from engine.api.render_snapshot import (
     RenderPassSnapshot,
     RenderSnapshot,
 )
+from engine.api.window import WindowResizeEvent
+from engine.api.app_port import UIDesignResolutionProvider
 from engine.diagnostics import (
     CrashBundleWriter,
     DiagnosticHub,
@@ -145,8 +147,11 @@ class EngineHost(HostControl):
         self._last_scaled_passes: tuple[RenderPassSnapshot, ...] | None = None
         self._module_ui_transform: UISpaceTransform | None = None
         if self._render_api is not None:
+            design_resolution_provider = (
+                self._module if isinstance(self._module, UIDesignResolutionProvider) else None
+            )
             self._module_ui_transform = resolve_ui_space_transform(
-                app=self._module,
+                design_resolution_provider=design_resolution_provider,
                 renderer=self._render_api,
             )
         self._diagnostics_http: DiagnosticsHttpServer | None = None
@@ -688,6 +693,26 @@ class _OverlaySnapshotRecorder:
             )
         )
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+        shadow_layers: float = 0.0,
+    ) -> None:
+        _ = (style_kind, radius, thickness, color_secondary, shadow_layers)
+        self.add_rect(key, x, y, w, h, color, z=z, static=static)
+
     def add_text(
         self,
         key: str | None,
@@ -742,6 +767,9 @@ class _OverlaySnapshotRecorder:
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (float(x), float(y))
 
+    def design_space_size(self) -> tuple[float, float]:
+        return (1200.0, 720.0)
+
     def invalidate(self) -> None:
         return
 
@@ -754,6 +782,10 @@ class _OverlaySnapshotRecorder:
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         _ = snapshot
+        return
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        _ = event
         return
 
     def snapshot(self) -> RenderSnapshot | None:

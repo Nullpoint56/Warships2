@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,6 +16,7 @@ class InteractionMode:
     allow_wheel: bool = True
 
 
+@runtime_checkable
 class InteractionModeMachine(Protocol):
     """Public interaction mode machine contract."""
 

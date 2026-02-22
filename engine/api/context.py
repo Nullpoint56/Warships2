@@ -2,27 +2,32 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.api.render import RenderAPI
 
 
+@runtime_checkable
 class LayoutPort(Protocol):
     """Opaque layout boundary contract."""
 
 
+@runtime_checkable
 class InputControllerPort(Protocol):
     """Opaque input-controller boundary contract."""
 
 
+@runtime_checkable
 class FrameClockPort(Protocol):
     """Opaque frame-clock boundary contract."""
 
 
+@runtime_checkable
 class SchedulerPort(Protocol):
     """Opaque scheduler boundary contract."""
 
 
+@runtime_checkable
 class RuntimeContext(Protocol):
     """Shared runtime context passed across engine modules."""
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render_snapshot import RenderSnapshot
@@ -19,6 +19,7 @@ class HostFrameContext:
     elapsed_seconds: float
 
 
+@runtime_checkable
 class HostControl(Protocol):
     """Host control surface exposed to game modules."""
 
@@ -35,6 +36,7 @@ class HostControl(Protocol):
         """Cancel a previously scheduled task."""
 
 
+@runtime_checkable
 class GameModule(Protocol):
     """Engine-facing game module lifecycle and event hooks."""
 

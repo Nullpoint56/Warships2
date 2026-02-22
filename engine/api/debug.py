@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from engine.diagnostics import (
     DIAG_METRICS_SCHEMA_VERSION,
@@ -101,20 +101,39 @@ class SummaryView(Protocol):
     """Opaque summary payload contract for debug session reports."""
 
 
+@runtime_checkable
 class HostLike(Protocol):
     """Opaque host boundary contract for diagnostics projections."""
 
 
+@runtime_checkable
 class ReplayApplyCommand(Protocol):
     """Replay command application callback contract."""
 
     def __call__(self, command: dict[str, object]) -> None: ...
 
 
+@runtime_checkable
 class ReplayStep(Protocol):
     """Replay simulation step callback contract."""
 
     def __call__(self, delta_seconds: float) -> None: ...
+
+
+@runtime_checkable
+class DiagnosticsEventEmitter(Protocol):
+    """Minimal diagnostics event emission capability contract."""
+
+    def emit_fast(
+        self,
+        *,
+        category: str,
+        name: str,
+        tick: int,
+        level: str = "info",
+        value: float | int | str | bool | dict[str, Any] | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None: ...
 
 
 def discover_debug_sessions(log_dir: Path, *, recursive: bool = False) -> list[DebugSessionBundle]:

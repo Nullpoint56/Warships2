@@ -15,6 +15,7 @@ from engine.api.render_snapshot import (
     mat4_translation,
 )
 from engine.api.render import RenderAPI as Render2D
+from engine.api.window import WindowResizeEvent
 from engine.api.ui_primitives import Button, GridLayout, fit_text_to_rect
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
@@ -541,6 +542,9 @@ class _SnapshotRecorder:
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (x, y)
 
+    def design_space_size(self) -> tuple[float, float]:
+        return (1200.0, 720.0)
+
     def invalidate(self) -> None:
         return
 
@@ -553,6 +557,10 @@ class _SnapshotRecorder:
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         _ = snapshot
+        return
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        _ = event
         return
 
     def finish(self, *, frame_index: int) -> RenderSnapshot:

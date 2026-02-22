@@ -12,10 +12,11 @@ from engine.api.render import RenderAPI
 from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_style import configure_style_effects
 from engine.api.ui_primitives import GridLayout
+from engine.api.window import WindowResizeEvent
 from engine.input.input_controller import InputController
 from engine.rendering.scene_runtime import resolve_render_loop_config, resolve_render_vsync
 from engine.rendering.wgpu_renderer import WgpuInitError, WgpuRenderer
-from engine.runtime.config import RuntimeConfig, initialize_runtime_config
+from engine.runtime.config import RuntimeConfig, get_runtime_config, initialize_runtime_config
 from engine.runtime.host import EngineHost, EngineHostConfig
 from engine.runtime.logging import setup_engine_logging
 from engine.runtime.window_frontend import create_window_frontend
@@ -218,6 +219,16 @@ class _HeadlessRenderer(RenderAPI):
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         return (float(x), float(y))
 
+    def design_space_size(self) -> tuple[float, float]:
+        runtime_config = get_runtime_config()
+        resolution = runtime_config.render.ui_resolution
+        if resolution is not None:
+            return (float(resolution[0]), float(resolution[1]))
+        return (
+            float(runtime_config.render.ui_design_width),
+            float(runtime_config.render.ui_design_height),
+        )
+
     def invalidate(self) -> None:
         return
 
@@ -230,6 +241,10 @@ class _HeadlessRenderer(RenderAPI):
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         _ = snapshot
+        return
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        _ = event
         return
 
 

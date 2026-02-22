@@ -31,3 +31,12 @@ rules:
       include:
         - /engine/api/**/*.py
     pattern-regex: "provider\\s*:\\s*object\\s*\\|\\s*None"
+
+  - id: engine-runtime-checkable-not-for-data-shapes
+    languages: [python]
+    severity: ERROR
+    message: "@runtime_checkable is reserved for runtime boundaries, not DTO/value/payload shape protocols."
+    paths:
+      include:
+        - /engine/api/**/*.py
+    pattern-regex: "@runtime_checkable\\s*\\n\\s*class\\s+\\w*(Value|View|Payload|Data)\\s*\\(Protocol\\)\\s*:"

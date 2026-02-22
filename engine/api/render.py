@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.api.render_snapshot import RenderSnapshot
+from engine.api.window import WindowResizeEvent
 
 
+@runtime_checkable
 class RenderAPI(Protocol):
     """Rendering capabilities exposed by the engine to higher layers."""
 
@@ -44,6 +46,25 @@ class RenderAPI(Protocol):
     ) -> None:
         """Draw or update a grid primitive."""
 
+    def add_style_rect(
+        self,
+        *,
+        style_kind: str,
+        key: str,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        color: str,
+        z: float = 0.0,
+        static: bool = False,
+        radius: float = 0.0,
+        thickness: float = 1.0,
+        color_secondary: str = "",
+        shadow_layers: float = 0.0,
+    ) -> None:
+        """Draw style-capable rect primitive when supported by renderer backend."""
+
     def add_text(
         self,
         key: str | None,
@@ -67,6 +88,9 @@ class RenderAPI(Protocol):
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         """Map pointer coordinates into design-space coordinates."""
 
+    def design_space_size(self) -> tuple[float, float]:
+        """Return active design-space dimensions used for rendering."""
+
     def invalidate(self) -> None:
         """Schedule one redraw."""
 
@@ -78,3 +102,6 @@ class RenderAPI(Protocol):
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         """Render immutable snapshot payload."""
+
+    def apply_window_resize(self, event: WindowResizeEvent) -> None:
+        """Apply normalized window resize event into renderer state."""

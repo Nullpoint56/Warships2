@@ -166,6 +166,18 @@ class RenderCanvasWindow(WindowPort):
         self._input_events.clear()
         return drained
 
+    def set_draw_handler(self, draw_callback: Any) -> None:
+        request_draw = getattr(self.canvas, "request_draw", None)
+        if not callable(request_draw):
+            return
+        try:
+            request_draw(draw_callback)
+        except TypeError:
+            return
+
+    def request_draw(self) -> None:
+        self._request_redraw()
+
     def set_title(self, title: str) -> None:
         setter = getattr(self.canvas, "set_title", None)
         if callable(setter):

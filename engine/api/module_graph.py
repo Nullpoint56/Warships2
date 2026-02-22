@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.api.context import RuntimeContext
 
 
+@runtime_checkable
 class RuntimeModule(Protocol):
     """Lifecycle hooks for engine runtime modules."""
 
@@ -30,6 +31,7 @@ class ModuleNode:
     depends_on: tuple[str, ...] = ()
 
 
+@runtime_checkable
 class ModuleGraph(Protocol):
     """Ordered lifecycle executor for runtime modules."""
 

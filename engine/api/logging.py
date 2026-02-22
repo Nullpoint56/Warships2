@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from engine.diagnostics.json_codec import dumps_text
 
@@ -20,6 +20,7 @@ class EngineLoggingConfig:
     file_format: str = "json"  # text|json
 
 
+@runtime_checkable
 class LoggerPort(Protocol):
     """Minimal logger surface for app/engine callers."""
 

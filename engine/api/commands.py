@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +13,7 @@ class Command:
     name: str
 
 
+@runtime_checkable
 class CommandMap(Protocol):
     """Public input-to-command mapping contract."""
 

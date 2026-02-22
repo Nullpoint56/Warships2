@@ -176,6 +176,61 @@ S2.c exhaustive closure verification addendum (run id: `2026-02-22_195809_S2c`, 
 - Resolution result:
 - S2 now satisfies both gate-level completion and literal execution-step completion (including removal of local `_env_*` helper layer from targeted modules).
 
+S3 execution addendum (run id: `2026-02-22_200456_S3`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_200456_S3/`):
+- `S3_01_semgrep_protocol_boundary.txt` -> Pass (`0 findings`; semgrep output confirms no blocking hits)
+- `S3_02_mypy_strict.txt` -> Pass
+- `S3_03_lint_imports.txt` -> Pass
+- `S3_04_window_frontend_reflection_scan.txt` -> Pass
+- `S3_05_ui_space_reflection_scan.txt` -> Pass
+- `S3_06_contract_surface_scan.txt` -> Pass (contract surfaces present in API modules)
+- Resolution result:
+- required-path reflection removed from `engine/runtime/window_frontend.py` and `engine/runtime/ui_space.py`.
+- required capabilities promoted to explicit contracts in `engine/api/render.py`, `engine/api/window.py`, and `engine/api/debug.py`.
+- runtime/frontend code now calls protocol-declared capabilities directly instead of reflected `getattr/hasattr` paths.
+
+S3 closure verification (mandatory two-pass validation):
+- Pass 1 run id: `2026-02-22_201300_S3_pass1`
+- Artifacts:
+- `S3P1_01_semgrep_protocol_boundary.txt`
+- `S3P1_02_mypy_strict.txt`
+- `S3P1_03_lint_imports.txt`
+- `S3P1_04_reflection_scan_runtime_paths.txt`
+- Result: all pass
+- Pass 2 run id: `2026-02-22_201620_S3_pass2`
+- Artifacts:
+- `S3P2_01_semgrep_protocol_boundary.txt`
+- `S3P2_02_mypy_strict.txt`
+- `S3P2_03_lint_imports.txt`
+- `S3P2_04_reflection_scan_runtime_paths.txt`
+- `S3P2_05_contract_surface_scan.txt`
+- Result: all pass
+- Literal step closure note:
+- optional app design-resolution capability is now handled via explicit optional protocol wrapper (`engine.api.app_port.UIDesignResolutionProvider`) in `engine/runtime/ui_space.py`, replacing ad-hoc reflection for this capability path.
+
+S3 architecture correction addendum (runtime-checkable boundary policy + type-boundary correction):
+- Concern addressed:
+- removed object-widening workaround in `engine/runtime/ui_space.py`; no public S3 boundary function is typed as `object` for capability resolution.
+- protocol-boundary solution now uses explicit optional protocol wrapper (`UIDesignResolutionProvider`) and typed provider flow.
+- API contract strictness upgrade:
+- `@runtime_checkable` is now restricted to runtime boundary protocols (service/subsystem interfaces, provider boundaries, adapter replacement points, plugin-style extension points).
+- DTO/value/payload/data-shape protocols are explicitly not `@runtime_checkable`.
+- Verification pass 1 run id: `2026-02-22_202030_S3_pass1b`
+- Artifacts:
+- `S3P1B_01_semgrep_protocol_boundary.txt`
+- `S3P1B_02_mypy_strict.txt`
+- `S3P1B_03_lint_imports.txt`
+- `S3P1B_04_reflection_scan_runtime_paths.txt`
+- `S3P1B_05_runtime_checkable_scan.txt`
+- Result: all pass
+- Verification pass 2 run id: `2026-02-22_202215_S3_pass2b`
+- Artifacts:
+- `S3P2B_01_semgrep_protocol_boundary.txt`
+- `S3P2B_02_mypy_strict.txt`
+- `S3P2B_03_lint_imports.txt`
+- `S3P2B_04_reflection_scan_runtime_paths.txt`
+- `S3P2B_05_runtime_checkable_scan.txt`
+- Result: all pass
+
 ### Investigation
 Investigation scope: code-verified investigation for every failing signal from run `2026-02-22_175415_static_eval`.
 
@@ -646,6 +701,30 @@ Depth discipline: rewrite depth is not a reason to defer work. If a phase is too
 - Do not bypass checks by baseline edits unless change is intentional and approved by policy intent.
 - If a phase expands beyond practical single-slice size, create numbered sub-phases inside the same phase (`Sx.a`, `Sx.b`, ...) and keep executing until all phase gates pass.
 
+10. Phase closure checklist (mandatory before marking any phase `completed`)
+- Completion status discipline:
+- A phase must remain `in_progress` until every checklist item below is satisfied and documented.
+- Checklist A: required gates
+- Re-run every gate listed under that phase's "Completion gates".
+- Serialize raw outputs under the phase run directory.
+- Record pass/fail per gate in this document.
+- Checklist B: literal executable-step completion
+- Verify each bullet under that phase's "Executable steps" was implemented (not inferred from gate pass).
+- For code migration/refactor steps, run targeted code scans (for example symbol/callsite scans) and save outputs.
+- Record explicit "implemented/not implemented" status for each executable step in this document.
+- Checklist C: architecture/boundary sanity
+- Re-run `lint-imports` and `mypy --strict` for every phase closure (even when not listed as primary gate) unless explicitly waived.
+- If waived, document rationale and owner approval inline.
+- Checklist D: closure artifacts
+- Produce a dedicated closure artifact bundle (for example `Sx_closure_*` or `Sx.c_*`) containing:
+- gate outputs,
+- targeted verification scans,
+- final phase summary.
+- Reference the closure artifact paths in `## Global Refactor status` -> `Last completed step`.
+- Checklist E: carry-over discipline
+- Any unresolved signal automatically creates/updates a follow-up sub-phase (`Sx.b`, `Sx.c`, ...).
+- Parent phase cannot be marked `completed` until follow-up sub-phases are completed or explicitly re-scoped with documented approval.
+
 
 ## LLM Check Findings
 
@@ -664,7 +743,7 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 1. Static track
 - `S1`: `completed`
 - `S2`: `completed`
-- `S3`: `not_started`
+- `S3`: `completed`
 - `S4`: `not_started`
 - `S5`: `not_started`
 - `S6`: `not_started`
@@ -675,14 +754,18 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - None
 
 3. Current focus
-- Prepare `S3` protocol boundary hardening and reflection-removal implementation.
+- Prepare `S4` exception semantics and observability normalization.
 
 4. Last completed step
-- `S2.c` exhaustive closure verification completed with artifacts under:
-- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_195809_S2c/`
+- `S3` completed after two-pass closure verification with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_200456_S3/`
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_201300_S3_pass1/`
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_201620_S3_pass2/`
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_202030_S3_pass1b/`
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_202215_S3_pass2b/`
 - Key outcomes:
-- verified literal S2 step completion: no local `_env_*` helper layer in S2 target modules (`S2c_01_target_env_helpers_scan.txt`).
-- `check_env_read_placement`: pass (`S2c_02_env_read_placement.txt`).
-- `mypy --strict`: pass (`S2c_03_mypy_strict.txt`).
-- `lint-imports`: pass (`S2c_04_lint_imports.txt`).
-- `check_feature_flag_registry`: pass (`S2c_05_feature_flag_registry.txt`).
+- protocol-boundary semgrep: pass in both verification passes (`S3P1_01`, `S3P2_01`).
+- `mypy --strict`: pass in both verification passes (`S3P1_02`, `S3P2_02`).
+- `lint-imports`: pass in both verification passes (`S3P1_03`, `S3P2_03`).
+- reflection-removal scans and contract-surface scans: pass (`S3P1_04`, `S3P2_04`, `S3P2_05`).
+- runtime-checkable policy is enforced at boundary level (not all protocols): boundary protocols remain `@runtime_checkable`, DTO/value/payload/data-shape protocols are excluded.

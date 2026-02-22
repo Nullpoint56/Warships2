@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
+@runtime_checkable
 class Blackboard(Protocol):
     """Shared AI context storage contract."""
 
@@ -43,6 +44,7 @@ class DecisionContext:
     observations: dict[str, BlackboardValue]
 
 
+@runtime_checkable
 class Agent(Protocol):
     """AI agent contract."""
 

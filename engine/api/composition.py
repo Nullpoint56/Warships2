@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 from collections.abc import Callable
 
 from engine.api.action_dispatch import ActionDispatcher, DirectActionHandler, PrefixedActionHandler
@@ -22,6 +22,7 @@ from engine.api.screens import ScreenStack
 from engine.api.ui_primitives import GridLayout
 
 
+@runtime_checkable
 class EngineModule(Protocol):
     """Game-provided composition declaration consumed by engine runtime."""
 
@@ -35,6 +36,7 @@ class EngineModule(Protocol):
         """Register game bindings/overrides into composition binder."""
 
 
+@runtime_checkable
 class ServiceResolver(Protocol):
     """Runtime composition resolver contract."""
 
@@ -56,14 +58,17 @@ class ServiceBinder(ServiceResolver, Protocol):
         """Bind concrete singleton instance."""
 
 
+@runtime_checkable
 class ControllerPort(Protocol):
     """Opaque controller boundary contract."""
 
 
+@runtime_checkable
 class FrameworkPort(Protocol):
     """Opaque framework boundary contract."""
 
 
+@runtime_checkable
 class ViewPort(Protocol):
     """Opaque view boundary contract."""
 
@@ -72,24 +77,28 @@ class BindingValue(Protocol):
     """Opaque DI binding value contract."""
 
 
+@runtime_checkable
 class ControllerFactory(Protocol):
     """Construct game controller root from resolver."""
 
     def __call__(self, resolver: ServiceResolver) -> ControllerPort: ...
 
 
+@runtime_checkable
 class StartupOverrideHook(Protocol):
     """Apply startup overrides to an already-built controller."""
 
     def __call__(self, controller: ControllerPort) -> None: ...
 
 
+@runtime_checkable
 class AppAdapterFactory(Protocol):
     """Create app adapter consumed by runtime framework."""
 
     def __call__(self, controller: ControllerPort) -> EngineAppPort: ...
 
 
+@runtime_checkable
 class ViewFactory(Protocol):
     """Create game view bound to app render adapter."""
 
@@ -107,12 +116,14 @@ class GameModuleBuildRequest:
     resolver: ServiceResolver
 
 
+@runtime_checkable
 class GameModuleFactory(Protocol):
     """Construct concrete game module for hosted runtime."""
 
     def __call__(self, request: GameModuleBuildRequest) -> GameModule: ...
 
 
+@runtime_checkable
 class ActionDispatcherFactory(Protocol):
     """Factory contract for action dispatcher instances."""
 
@@ -123,6 +134,7 @@ class ActionDispatcherFactory(Protocol):
     ) -> ActionDispatcher: ...
 
 
+@runtime_checkable
 class FlowProgramFactory(Protocol):
     """Factory contract for typed flow program instances."""
 

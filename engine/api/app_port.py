@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 
 class RectView(Protocol):
@@ -43,6 +43,7 @@ class ModalWidgetView(Protocol):
     overlay_rect: RectView
 
 
+@runtime_checkable
 class EngineAppPort(Protocol):
     """Contract the engine runtime uses to talk to app-specific logic."""
 
@@ -82,3 +83,11 @@ class EngineAppPort(Protocol):
 
 class UIStateView(Protocol):
     """Opaque app UI-state view contract."""
+
+
+@runtime_checkable
+class UIDesignResolutionProvider(Protocol):
+    """Optional app capability: authored UI design resolution provider."""
+
+    def ui_design_resolution(self) -> tuple[float, float]:
+        """Return authored UI design resolution as width/height."""
