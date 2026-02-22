@@ -57,6 +57,7 @@ class WarshipsModule(EngineModule):
         return HostedRuntimeConfig(
             window_mode=os.getenv("ENGINE_WINDOW_MODE", "windowed"),
             runtime_name=runtime_name,
+            debug_ui=(os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"),
         )
 
     def logging_config(self) -> EngineLoggingConfig:
@@ -71,7 +72,7 @@ class WarshipsModule(EngineModule):
         configured_presets = os.getenv("WARSHIPS_PRESETS_DIR", "").strip()
         preset_root = Path(configured_presets) if configured_presets else resolve_presets_dir()
         preset_service = PresetService(PresetRepository(preset_root))
-        debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
+        debug_ui = bool(self.runtime_config().debug_ui)
         screen_stack: ScreenStack = resolver.resolve(ScreenStack)
         interaction_modes: InteractionModeMachine = resolver.resolve(InteractionModeMachine)
         dispatcher_factory: ActionDispatcherFactory = resolver.resolve(ActionDispatcherFactory)

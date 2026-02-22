@@ -13,3 +13,4 @@ class HostedRuntimeConfig:
     width: int = 1280
     height: int = 800
     runtime_name: str = "game"
+    debug_ui: bool = False

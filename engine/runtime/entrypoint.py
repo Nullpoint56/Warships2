@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-
 from engine.api.composition import (
     AppAdapterFactory,
     ControllerPort,
@@ -40,7 +38,7 @@ def run(*, module: EngineModule) -> None:
         height=int(config.height),
         runtime_name=str(config.runtime_name),
     )
-    debug_ui = os.getenv("WARSHIPS_DEBUG_UI", "0") == "1"
+    debug_ui = bool(config.debug_ui)
     controller_factory: ControllerFactory = container.resolve(ControllerFactory)
     app_adapter_factory: AppAdapterFactory = container.resolve(AppAdapterFactory)
     view_factory: ViewFactory = container.resolve(ViewFactory)
