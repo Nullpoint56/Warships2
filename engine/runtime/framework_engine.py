@@ -6,7 +6,6 @@ import logging
 import os
 
 from engine.api.app_port import EngineAppPort, InteractionPlanView
-from engine.api.commands import create_command_map
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
@@ -20,6 +19,7 @@ from engine.api.ui_primitives import (
     route_modal_pointer_event,
     route_non_modal_key_event,
 )
+from engine.runtime.commands import RuntimeCommandMap
 from engine.runtime.ui_space import UISpaceTransform, resolve_ui_space_transform
 
 
@@ -186,7 +186,7 @@ class EngineUIFramework:
         key: str,
         interactions: InteractionPlanView,
     ) -> str | None:
-        commands = create_command_map()
+        commands = RuntimeCommandMap()
         for shortcut_key, button_id in interactions.shortcut_buttons.items():
             commands.bind_key_down(shortcut_key, f"button:{button_id}")
         resolved = commands.resolve_key_event("key_down", key)

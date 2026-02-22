@@ -20,8 +20,10 @@ Rules:
 
 * `engine.api` cannot import `engine.runtime` or `engine.platform`
 * `engine.domain` cannot import `engine.api`
-* Only `engine.bootstrap` may wire concrete implementations
-* No cross-layer shortcut imports
+* `engine.sdk` cannot import `engine.runtime` or `engine.platform`
+* Runtime-owned composition is allowed to depend on `engine.sdk` and `engine.api`
+* No cross-layer shortcut imports under layered order:
+  `engine.bootstrap -> engine.runtime -> engine.sdk -> engine.api -> engine.domain -> engine.platform`
 
 CI Command:
 

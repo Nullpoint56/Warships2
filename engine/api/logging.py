@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, cast
+from typing import Protocol
 
 from engine.diagnostics.json_codec import dumps_text
 
@@ -23,15 +23,19 @@ class EngineLoggingConfig:
 class LoggerPort(Protocol):
     """Minimal logger surface for app/engine callers."""
 
-    def debug(self, message: object, *args: object, **kwargs: object) -> None: ...
+    def debug(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
-    def info(self, message: object, *args: object, **kwargs: object) -> None: ...
+    def info(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
-    def warning(self, message: object, *args: object, **kwargs: object) -> None: ...
+    def warning(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
-    def error(self, message: object, *args: object, **kwargs: object) -> None: ...
+    def error(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
-    def exception(self, message: object, *args: object, **kwargs: object) -> None: ...
+    def exception(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
+
+
+class LogValue(Protocol):
+    """Opaque logging argument boundary contract."""
 
 
 class JsonFormatter(logging.Formatter):
@@ -73,17 +77,3 @@ class JsonFormatter(logging.Formatter):
         if record.exc_info:
             payload["exc_info"] = self.formatException(record.exc_info)
         return dumps_text(payload, compact=False)
-
-
-def configure_logging(config: EngineLoggingConfig) -> None:
-    """Configure engine logging pipeline from config."""
-    from engine.runtime.logging import configure_engine_logging
-
-    configure_engine_logging(config)
-
-
-def get_logger(name: str) -> LoggerPort:
-    """Return namespaced logger from engine logging backend."""
-    from engine.runtime.logging import get_engine_logger
-
-    return cast(LoggerPort, get_engine_logger(name))

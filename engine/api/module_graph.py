@@ -47,10 +47,3 @@ class ModuleGraph(Protocol):
 
     def execution_order(self) -> tuple[str, ...]:
         """Return current dependency order."""
-
-
-def create_module_graph() -> ModuleGraph:
-    """Create default module-graph implementation."""
-    from engine.runtime.module_graph import RuntimeModuleGraph
-
-    return RuntimeModuleGraph()

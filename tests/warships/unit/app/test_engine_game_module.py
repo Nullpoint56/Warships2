@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from engine.api.game_module import HostFrameContext
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render_snapshot import RenderSnapshot
+from engine.sdk.defaults import SdkEventBus, SdkModuleGraph, SdkRuntimeContext, SdkUpdateLoop
 from warships.game.app.engine_game_module import WarshipsGameModule
 
 
@@ -73,7 +74,14 @@ class _Host:
 
 def test_game_module_forwards_input_events() -> None:
     module = WarshipsGameModule(
-        controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False
+        controller=_Controller(),
+        framework=_Framework(),
+        view=_View(),
+        debug_ui=False,
+        event_bus=SdkEventBus(),
+        runtime_context=SdkRuntimeContext(),
+        update_loop=SdkUpdateLoop(),
+        module_graph=SdkModuleGraph(),
     )
     assert module.on_input_snapshot(InputSnapshot(frame_index=0))
 
@@ -83,7 +91,14 @@ def test_game_module_frame_and_close_lifecycle() -> None:
     view = _View()
     host = _Host()
     module = WarshipsGameModule(
-        controller=_Controller(is_closing=True), framework=framework, view=view, debug_ui=False
+        controller=_Controller(is_closing=True),
+        framework=framework,
+        view=view,
+        debug_ui=False,
+        event_bus=SdkEventBus(),
+        runtime_context=SdkRuntimeContext(),
+        update_loop=SdkUpdateLoop(),
+        module_graph=SdkModuleGraph(),
     )
     module.on_start(host)
     module.simulate(HostFrameContext(frame_index=0, delta_seconds=0.0, elapsed_seconds=0.0))

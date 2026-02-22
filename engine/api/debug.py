@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Protocol
 
 from engine.diagnostics import (
     DIAG_METRICS_SCHEMA_VERSION,
@@ -28,15 +28,15 @@ class DebugSessionBundle:
 @dataclass(frozen=True)
 class DebugLoadedSession:
     bundle: DebugSessionBundle
-    run_records: list[dict[str, Any]]
-    ui_frames: list[dict[str, Any]]
-    summary: Any
+    run_records: list[dict[str, object]]
+    ui_frames: list[dict[str, object]]
+    summary: "SummaryView"
 
 
 @dataclass(frozen=True)
 class DiagnosticsSnapshot:
     schema_version: str
-    events: list[dict[str, Any]]
+    events: list[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -65,7 +65,7 @@ class DiagnosticsProfilingView:
     mode: str
     span_count: int
     top_spans_ms: list[tuple[str, float]]
-    spans: list[dict[str, Any]]
+    spans: list[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -73,7 +73,7 @@ class DiagnosticsReplayManifestView:
     schema_version: str
     replay_version: int
     seed: int | None
-    build: dict[str, Any]
+    build: dict[str, object]
     command_count: int
     first_tick: int
     last_tick: int
@@ -82,9 +82,9 @@ class DiagnosticsReplayManifestView:
 @dataclass(frozen=True)
 class DiagnosticsReplaySnapshotView:
     schema_version: str
-    manifest: dict[str, Any]
-    commands: list[dict[str, Any]]
-    state_hashes: list[dict[str, Any]]
+    manifest: dict[str, object]
+    commands: list[dict[str, object]]
+    state_hashes: list[dict[str, object]]
 
 
 @dataclass(frozen=True)
@@ -94,12 +94,33 @@ class ReplayValidationView:
     total_ticks: int
     commands_applied: int
     checkpoint_count: int
-    mismatches: list[dict[str, Any]]
+    mismatches: list[dict[str, object]]
+
+
+class SummaryView(Protocol):
+    """Opaque summary payload contract for debug session reports."""
+
+
+class HostLike(Protocol):
+    """Opaque host boundary contract for diagnostics projections."""
+
+
+class ReplayApplyCommand(Protocol):
+    """Replay command application callback contract."""
+
+    def __call__(self, command: dict[str, object]) -> None: ...
+
+
+class ReplayStep(Protocol):
+    """Replay simulation step callback contract."""
+
+    def __call__(self, delta_seconds: float) -> None: ...
 
 
 def discover_debug_sessions(log_dir: Path, *, recursive: bool = False) -> list[DebugSessionBundle]:
-    runtime = _runtime_observability()
-    bundles = runtime.discover_session_bundles(log_dir, recursive=recursive)
+    from engine.diagnostics import observability
+
+    bundles = observability.discover_session_bundles(log_dir, recursive=recursive)
     return [
         DebugSessionBundle(
             run_log=b.run_log,
@@ -112,14 +133,15 @@ def discover_debug_sessions(log_dir: Path, *, recursive: bool = False) -> list[D
 
 
 def load_debug_session(bundle: DebugSessionBundle) -> DebugLoadedSession:
-    runtime = _runtime_observability()
-    runtime_bundle = runtime.SessionBundle(
+    from engine.diagnostics import observability
+
+    runtime_bundle = observability.SessionBundle(
         run_log=bundle.run_log,
         ui_log=bundle.ui_log,
         run_stamp=bundle.run_stamp,
         ui_stamp=bundle.ui_stamp,
     )
-    loaded = runtime.load_session(runtime_bundle)
+    loaded = observability.load_session(runtime_bundle)
     return DebugLoadedSession(
         bundle=DebugSessionBundle(
             run_log=loaded.bundle.run_log,
@@ -134,7 +156,7 @@ def load_debug_session(bundle: DebugSessionBundle) -> DebugLoadedSession:
 
 
 def get_diagnostics_snapshot(
-    host: Any,
+    host: HostLike,
     *,
     limit: int | None = None,
     category: str | None = None,
@@ -160,7 +182,7 @@ def get_diagnostics_snapshot(
     return DiagnosticsSnapshot(schema_version=DIAG_SNAPSHOT_SCHEMA_VERSION, events=events)
 
 
-def get_metrics_snapshot(host: Any) -> DiagnosticsMetricsView:
+def get_metrics_snapshot(host: HostLike) -> DiagnosticsMetricsView:
     """Return aggregated diagnostics metrics from a host-like object."""
     snapshot = getattr(host, "diagnostics_metrics_snapshot", None)
     if snapshot is None:
@@ -206,7 +228,7 @@ def get_metrics_snapshot(host: Any) -> DiagnosticsMetricsView:
     )
 
 
-def get_profiling_snapshot(host: Any, *, limit: int = 300) -> DiagnosticsProfilingView:
+def get_profiling_snapshot(host: HostLike, *, limit: int = 300) -> DiagnosticsProfilingView:
     """Return profiling spans and top offenders from a host-like object."""
     get_snapshot = getattr(host, "diagnostics_profiling_snapshot", None)
     if get_snapshot is None:
@@ -248,7 +270,7 @@ def get_profiling_snapshot(host: Any, *, limit: int = 300) -> DiagnosticsProfili
     )
 
 
-def export_profiling_snapshot(host: Any, *, path: str) -> str | None:
+def export_profiling_snapshot(host: HostLike, *, path: str) -> str | None:
     """Export profiling snapshot to JSON path via host diagnostics profiler."""
     exporter = getattr(host, "export_diagnostics_profiling", None)
     if not callable(exporter):
@@ -256,7 +278,7 @@ def export_profiling_snapshot(host: Any, *, path: str) -> str | None:
     return str(exporter(path=path))
 
 
-def export_crash_bundle(host: Any, *, path: str) -> str | None:
+def export_crash_bundle(host: HostLike, *, path: str) -> str | None:
     """Export a crash-style diagnostics bundle at the requested path."""
     exporter = getattr(host, "export_diagnostics_crash_bundle", None)
     if not callable(exporter):
@@ -264,7 +286,7 @@ def export_crash_bundle(host: Any, *, path: str) -> str | None:
     return str(exporter(path=path))
 
 
-def get_replay_manifest(host: Any) -> DiagnosticsReplayManifestView:
+def get_replay_manifest(host: HostLike) -> DiagnosticsReplayManifestView:
     """Return replay manifest from host recorder when available."""
     manifest = getattr(host, "diagnostics_replay_manifest", None)
     if manifest is None:
@@ -290,7 +312,7 @@ def get_replay_manifest(host: Any) -> DiagnosticsReplayManifestView:
     )
 
 
-def export_replay_session(host: Any, *, path: str) -> str | None:
+def export_replay_session(host: HostLike, *, path: str) -> str | None:
     """Export replay capture session via host recorder."""
     exporter = getattr(host, "export_diagnostics_replay", None)
     if not callable(exporter):
@@ -298,7 +320,7 @@ def export_replay_session(host: Any, *, path: str) -> str | None:
     return str(exporter(path=path))
 
 
-def get_replay_snapshot(host: Any, *, limit: int = 5_000) -> DiagnosticsReplaySnapshotView:
+def get_replay_snapshot(host: HostLike, *, limit: int = 5_000) -> DiagnosticsReplaySnapshotView:
     """Return captured replay session payload from host recorder."""
     snapshot = getattr(host, "diagnostics_replay_snapshot", None)
     if snapshot is None:
@@ -323,11 +345,11 @@ def get_replay_snapshot(host: Any, *, limit: int = 5_000) -> DiagnosticsReplaySn
 
 
 def validate_replay_snapshot(
-    replay_snapshot: dict[str, Any],
+    replay_snapshot: dict[str, object],
     *,
     fixed_step_seconds: float,
-    apply_command: Any,
-    step: Any,
+    apply_command: ReplayApplyCommand,
+    step: ReplayStep,
 ) -> ReplayValidationView:
     """Validate replay snapshot determinism with provided simulation callbacks."""
     from engine.diagnostics import FixedStepReplayRunner
@@ -349,9 +371,3 @@ def validate_replay_snapshot(
             for mismatch in result.mismatches
         ],
     )
-
-
-def _runtime_observability() -> Any:
-    from engine.runtime import observability
-
-    return observability

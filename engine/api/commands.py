@@ -30,10 +30,3 @@ class CommandMap(Protocol):
 
     def resolve_pointer_event(self, event_type: str, button: int) -> Command | None:
         """Resolve pointer event to command."""
-
-
-def create_command_map() -> CommandMap:
-    """Create default command-map implementation."""
-    from engine.runtime.commands import RuntimeCommandMap
-
-    return RuntimeCommandMap()

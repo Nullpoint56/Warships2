@@ -8,22 +8,26 @@ from typing import Literal, Protocol
 LayerKind = Literal["root", "overlay"]
 
 
+class ScreenData(Protocol):
+    """Opaque screen payload boundary contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class ScreenLayer:
     """Public screen layer shape."""
 
     screen_id: str
     kind: LayerKind
-    data: object | None = None
+    data: ScreenData | None = None
 
 
 class ScreenStack(Protocol):
     """Public screen stack contract."""
 
-    def set_root(self, screen_id: str, *, data: object | None = None) -> ScreenLayer:
+    def set_root(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Replace root and clear overlays."""
 
-    def push_overlay(self, screen_id: str, *, data: object | None = None) -> ScreenLayer:
+    def push_overlay(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Push one overlay."""
 
     def pop_overlay(self) -> ScreenLayer | None:
@@ -40,10 +44,3 @@ class ScreenStack(Protocol):
 
     def layers(self) -> tuple[ScreenLayer, ...]:
         """Return root-first snapshot."""
-
-
-def create_screen_stack() -> ScreenStack:
-    """Create default engine screen-stack implementation."""
-    from engine.runtime.screen_stack import RuntimeScreenStack
-
-    return RuntimeScreenStack()

@@ -54,10 +54,11 @@ def test_warships_game_imports_engine_only_via_api() -> None:
     for path in _iter_python_files(REPO_ROOT / "warships" / "game"):
         for target in _collect_import_targets(path, top_level_only=False):
             if target == "engine" or target.startswith("engine."):
-                if not target.startswith("engine.api"):
+                if not (target.startswith("engine.api") or target.startswith("engine.sdk")):
                     violations.append(f"{path.relative_to(REPO_ROOT)} -> {target}")
-    assert not violations, "Warships game must import engine only via engine.api:\n" + "\n".join(
-        violations
+    assert not violations, (
+        "Warships game must import engine only via engine.api or engine.sdk:\n"
+        + "\n".join(violations)
     )
 
 

@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from engine.api.context import create_runtime_context
-from engine.api.gameplay import SystemSpec, create_update_loop
+from engine.api.gameplay import SystemSpec
+from engine.gameplay.update_loop import RuntimeUpdateLoop
+from engine.runtime.context import RuntimeContextImpl
 
 
 class _MetricsCollector:
@@ -37,9 +38,9 @@ class _FailingSystem(_System):
 
 def test_update_loop_metrics_capture_per_system_timing() -> None:
     metrics = _MetricsCollector()
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
     context.provide("metrics_collector", metrics)
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("a", _System(), order=0))
     loop.add_system(SystemSpec("b", _System(), order=1))
     loop.start(context)
@@ -54,9 +55,9 @@ def test_update_loop_metrics_capture_per_system_timing() -> None:
 
 def test_update_loop_metrics_records_exception_count_on_failure() -> None:
     metrics = _MetricsCollector()
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
     context.provide("metrics_collector", metrics)
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("ok", _System(), order=0))
     loop.add_system(SystemSpec("fail", _FailingSystem(), order=1))
     loop.start(context)

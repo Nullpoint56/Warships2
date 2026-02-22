@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from engine.api.gameplay import create_state_store
+from engine.gameplay.state_store import RuntimeStateStore
 
 
 def test_state_store_snapshot_and_revision() -> None:
-    store = create_state_store({"hp": 10})
+    store = RuntimeStateStore({"hp": 10})
     initial = store.snapshot()
     assert initial.revision == 0
     assert initial.value == {"hp": 10}
@@ -16,7 +16,7 @@ def test_state_store_snapshot_and_revision() -> None:
 
 
 def test_state_store_update_mutator() -> None:
-    store = create_state_store({"hp": 5})
+    store = RuntimeStateStore({"hp": 5})
 
     next_snapshot = store.update(lambda state: {"hp": state["hp"] - 1})
 
@@ -25,7 +25,7 @@ def test_state_store_update_mutator() -> None:
 
 
 def test_state_store_get_returns_copy() -> None:
-    store = create_state_store({"items": [1, 2]})
+    store = RuntimeStateStore({"items": [1, 2]})
     current = store.get()
     current["items"].append(3)
 
@@ -33,7 +33,7 @@ def test_state_store_get_returns_copy() -> None:
 
 
 def test_state_store_peek_returns_reference() -> None:
-    store = create_state_store({"items": [1, 2]})
+    store = RuntimeStateStore({"items": [1, 2]})
     current = store.peek()
     current["items"].append(3)
     assert store.peek() == {"items": [1, 2, 3]}

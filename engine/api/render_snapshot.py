@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
+
+
+type RenderScalar = None | bool | int | float | str | bytes
+type RenderDataValue = RenderScalar | tuple["RenderDataValue", ...] | Mapping[str, "RenderDataValue"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,7 +60,7 @@ class RenderCommand:
     layer: int = 0
     sort_key: str = ""
     transform: Mat4 = IDENTITY_MAT4
-    data: tuple[tuple[str, object], ...] = ()
+    data: tuple[tuple[str, RenderDataValue], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

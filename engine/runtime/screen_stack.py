@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from engine.api.screens import ScreenLayer
+from engine.api.screens import ScreenData, ScreenLayer
 
 
 class RuntimeScreenStack:
@@ -12,14 +12,14 @@ class RuntimeScreenStack:
         self._root: ScreenLayer | None = None
         self._overlays: list[ScreenLayer] = []
 
-    def set_root(self, screen_id: str, *, data: object | None = None) -> ScreenLayer:
+    def set_root(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Replace root screen and clear overlays."""
         layer = ScreenLayer(screen_id=screen_id, kind="root", data=data)
         self._root = layer
         self._overlays.clear()
         return layer
 
-    def push_overlay(self, screen_id: str, *, data: object | None = None) -> ScreenLayer:
+    def push_overlay(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Push an overlay layer above root."""
         if self._root is None:
             raise RuntimeError("cannot push overlay without root screen")

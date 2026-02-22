@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from engine.api.context import create_runtime_context
-from engine.api.gameplay import SystemSpec, create_update_loop
+from engine.api.gameplay import SystemSpec
+from engine.gameplay.update_loop import RuntimeUpdateLoop
+from engine.runtime.context import RuntimeContextImpl
 
 
 class _System:
@@ -44,10 +45,10 @@ class _FailingSystem(_System):
 
 def test_update_loop_runs_ordered_start_update_shutdown() -> None:
     events: list[str] = []
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("b", _System("b", events), order=10))
     loop.add_system(SystemSpec("a", _System("a", events), order=0))
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
 
     loop.start(context)
     ticks = loop.step(context, 0.16)
@@ -66,9 +67,9 @@ def test_update_loop_runs_ordered_start_update_shutdown() -> None:
 
 def test_update_loop_fixed_step_accumulates_ticks() -> None:
     events: list[str] = []
-    loop = create_update_loop(fixed_step_seconds=0.1)
+    loop = RuntimeUpdateLoop(fixed_step_seconds=0.1)
     loop.add_system(SystemSpec("a", _System("a", events)))
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
     loop.start(context)
 
     ticks = loop.step(context, 0.25)
@@ -82,25 +83,25 @@ def test_update_loop_fixed_step_accumulates_ticks() -> None:
 
 
 def test_update_loop_validates_inputs_and_duplicates() -> None:
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("a", _System("a", [])))
     with pytest.raises(ValueError):
         loop.add_system(SystemSpec("a", _System("a2", [])))
     with pytest.raises(ValueError):
         loop.add_system(SystemSpec(" ", _System("x", [])))
     with pytest.raises(ValueError):
-        loop.step(create_runtime_context(), -0.1)
+        loop.step(RuntimeContextImpl(), -0.1)
     with pytest.raises(ValueError):
-        create_update_loop(fixed_step_seconds=0.0)
+        RuntimeUpdateLoop(fixed_step_seconds=0.0)
 
 
 def test_update_loop_records_system_timings_when_metrics_collector_exists() -> None:
     events: list[str] = []
     metrics = _MetricsCollector()
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("a", _System("a", events), order=0))
     loop.add_system(SystemSpec("b", _System("b", events), order=1))
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
     context.provide("metrics_collector", metrics)
     loop.start(context)
 
@@ -115,10 +116,10 @@ def test_update_loop_records_system_timings_when_metrics_collector_exists() -> N
 def test_update_loop_records_partial_timing_and_exception_count_then_reraises() -> None:
     events: list[str] = []
     metrics = _MetricsCollector()
-    loop = create_update_loop()
+    loop = RuntimeUpdateLoop()
     loop.add_system(SystemSpec("a", _System("a", events), order=0))
     loop.add_system(SystemSpec("b", _FailingSystem("b", events), order=1))
-    context = create_runtime_context()
+    context = RuntimeContextImpl()
     context.provide("metrics_collector", metrics)
     loop.start(context)
 

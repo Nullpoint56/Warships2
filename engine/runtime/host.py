@@ -14,7 +14,13 @@ from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.input_events import KeyEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
-from engine.api.render_snapshot import IDENTITY_MAT4, RenderCommand, RenderPassSnapshot, RenderSnapshot
+from engine.api.render_snapshot import (
+    IDENTITY_MAT4,
+    RenderCommand,
+    RenderDataValue,
+    RenderPassSnapshot,
+    RenderSnapshot,
+)
 from engine.diagnostics import (
     CrashBundleWriter,
     DiagnosticHub,
@@ -823,7 +829,7 @@ def _sanitize_render_snapshot(snapshot: RenderSnapshot) -> RenderSnapshot:
     return RenderSnapshot(frame_index=int(snapshot.frame_index), passes=passes)
 
 
-def _freeze_render_value(value: object) -> object:
+def _freeze_render_value(value: object) -> RenderDataValue:
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, tuple):

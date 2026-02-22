@@ -10,23 +10,27 @@ from typing import Protocol
 class Blackboard(Protocol):
     """Shared AI context storage contract."""
 
-    def set(self, key: str, value: object) -> None:
+    def set(self, key: str, value: "BlackboardValue") -> None:
         """Set a value for key."""
 
-    def get(self, key: str) -> object | None:
+    def get(self, key: str) -> "BlackboardValue | None":
         """Get value for key if present."""
 
-    def require(self, key: str) -> object:
+    def require(self, key: str) -> "BlackboardValue":
         """Get required value or raise KeyError."""
 
     def has(self, key: str) -> bool:
         """Return whether key exists."""
 
-    def remove(self, key: str) -> object | None:
+    def remove(self, key: str) -> "BlackboardValue | None":
         """Remove key and return previous value if present."""
 
-    def snapshot(self) -> dict[str, object]:
+    def snapshot(self) -> dict[str, "BlackboardValue"]:
         """Return a copy of current blackboard values."""
+
+
+class BlackboardValue(Protocol):
+    """Opaque AI blackboard value contract."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,7 +40,7 @@ class DecisionContext:
     now_seconds: float
     delta_seconds: float
     blackboard: Blackboard
-    observations: dict[str, object]
+    observations: dict[str, BlackboardValue]
 
 
 class Agent(Protocol):

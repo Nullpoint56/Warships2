@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from engine.input.input_controller import PointerEvent, WheelEvent
 from engine.runtime.framework_engine import EngineUIFramework
+from engine.sdk.defaults import SdkActionDispatcher, SdkFlowProgram, SdkInteractionModeMachine, SdkScreenStack
 from engine.ui_runtime.grid_layout import GridLayout
 from warships.game.app.engine_adapter import WarshipsAppAdapter
 from warships.game.app.events import ButtonPressed
+from warships.game.app.services.session_flow import default_session_transitions
 from warships.game.presets.repository import PresetRepository
 from warships.game.presets.service import PresetService
 
@@ -20,7 +22,19 @@ def test_framework_click_through_adapter_moves_to_new_game(tmp_path) -> None:
 
     from warships.game.app.controller import GameController
 
-    controller = GameController(PresetService(PresetRepository(tmp_path)), random.Random(1))
+    dispatcher_factory = lambda direct, prefixed: SdkActionDispatcher(
+        direct_handlers=direct,
+        prefixed_handlers=prefixed,
+    )
+    session_flow_program = SdkFlowProgram(default_session_transitions())
+    controller = GameController(
+        PresetService(PresetRepository(tmp_path)),
+        random.Random(1),
+        screen_stack=SdkScreenStack(),
+        interaction_modes=SdkInteractionModeMachine(),
+        action_dispatcher_factory=dispatcher_factory,
+        session_flow_program=session_flow_program,
+    )
     adapter = WarshipsAppAdapter(controller)
     framework = EngineUIFramework(app=adapter, renderer=_Renderer(), layout=GridLayout())
 
@@ -42,7 +56,19 @@ def test_framework_wheel_routing_through_adapter(tmp_path, valid_fleet) -> None:
     service = PresetService(PresetRepository(tmp_path))
     for idx in range(10):
         service.save_preset(f"p{idx}", valid_fleet)
-    controller = GameController(service, random.Random(2))
+    dispatcher_factory = lambda direct, prefixed: SdkActionDispatcher(
+        direct_handlers=direct,
+        prefixed_handlers=prefixed,
+    )
+    session_flow_program = SdkFlowProgram(default_session_transitions())
+    controller = GameController(
+        service,
+        random.Random(2),
+        screen_stack=SdkScreenStack(),
+        interaction_modes=SdkInteractionModeMachine(),
+        action_dispatcher_factory=dispatcher_factory,
+        session_flow_program=session_flow_program,
+    )
     controller.handle_button(ButtonPressed("manage_presets"))
     adapter = WarshipsAppAdapter(controller)
     framework = EngineUIFramework(app=adapter, renderer=_Renderer(), layout=GridLayout())

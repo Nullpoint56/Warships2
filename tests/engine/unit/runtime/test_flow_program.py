@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from engine.api.flow import FlowTransition, create_flow_program
+from engine.api.flow import FlowTransition
+from engine.runtime.flow import RuntimeFlowProgram
 
 
 def test_flow_program_resolves_matching_transition() -> None:
-    program = create_flow_program(
+    program = RuntimeFlowProgram(
         (
             FlowTransition(trigger="go", source="A", target="B"),
             FlowTransition(trigger="go", source="B", target="C"),

@@ -29,12 +29,9 @@ class EventBus(Protocol):
     def unsubscribe(self, subscription: Subscription) -> None:
         """Unsubscribe token."""
 
-    def publish(self, event: object) -> int:
+    def publish(self, event: "EventPayload") -> int:
         """Publish event and return invocation count."""
 
 
-def create_event_bus() -> EventBus:
-    """Create default engine event bus implementation."""
-    from engine.runtime.events import RuntimeEventBus
-
-    return RuntimeEventBus()
+class EventPayload(Protocol):
+    """Opaque event payload boundary contract."""

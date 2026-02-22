@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from engine.api.screens import ScreenStack, create_screen_stack
+from engine.api.screens import ScreenStack
 from warships.game.ai.strategy import AIStrategy
 from warships.game.app.ports.runtime_primitives import Button, PromptState
 from warships.game.app.state_machine import AppState
@@ -17,8 +17,8 @@ from warships.game.core.rules import GameSession
 class ControllerState:
     """Aggregates all mutable state owned by GameController."""
 
+    screen_stack: ScreenStack
     app_state: AppState = AppState.MAIN_MENU
-    screen_stack: ScreenStack = field(default_factory=create_screen_stack)
     status: str = "Choose New Game, Manage Presets, or Quit."
     is_closing: bool = False
     session: GameSession | None = None

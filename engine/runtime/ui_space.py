@@ -7,7 +7,12 @@ from dataclasses import dataclass
 from typing import Any
 
 from engine.api.render import RenderAPI
-from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
+from engine.api.render_snapshot import (
+    RenderCommand,
+    RenderDataValue,
+    RenderPassSnapshot,
+    RenderSnapshot,
+)
 
 _SCALE_CACHE_MAX = 20_000
 _SCALED_COMMAND_CACHE: dict[
@@ -316,7 +321,7 @@ def _scale_render_command(command: RenderCommand, transform: UISpaceTransform) -
     sx = float(transform.scale_x)
     sy = float(transform.scale_y)
     font_scale = float(transform.font_scale)
-    scaled_data: list[tuple[str, object]] = []
+    scaled_data: list[tuple[str, RenderDataValue]] = []
     for key, value in command.data:
         name = str(key)
         if isinstance(value, (int, float)):

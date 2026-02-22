@@ -7,26 +7,25 @@ import os
 from datetime import UTC, datetime
 from pathlib import Path
 
-from engine.api.logging import EngineLoggingConfig, JsonFormatter, configure_logging
+from engine.api.logging import EngineLoggingConfig, JsonFormatter
 from warships.game.infra.app_data import resolve_logs_dir
 
-__all__ = ["JsonFormatter", "setup_logging"]
+__all__ = ["JsonFormatter", "build_logging_config"]
 
 
-def setup_logging() -> None:
-    """Configure application logging via engine logging API."""
+def build_logging_config() -> EngineLoggingConfig:
+    """Build application logging configuration."""
     level_name = os.getenv("WARSHIPS_LOG_LEVEL", os.getenv("LOG_LEVEL", "INFO")).upper()
     console_format = os.getenv("LOG_FORMAT", "json").lower()
     file_path = _resolve_run_log_file_path()
-    configure_logging(
-        EngineLoggingConfig(
-            level_name=level_name,
-            console_format=console_format,
-            file_path=file_path,
-            file_format="json",
-        )
+    config = EngineLoggingConfig(
+        level_name=level_name,
+        console_format=console_format,
+        file_path=file_path,
+        file_format="json",
     )
     logging.getLogger(__name__).info("logging_file=%s", file_path)
+    return config
 
 
 def _resolve_run_log_file_path() -> str:

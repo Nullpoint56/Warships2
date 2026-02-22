@@ -7,8 +7,14 @@ from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 TAsset = TypeVar("TAsset")
-AssetLoader = Callable[[str], object]
-AssetUnloader = Callable[[object], None]
+
+
+class AssetValue(Protocol):
+    """Opaque asset payload boundary contract."""
+
+
+AssetLoader = Callable[[str], AssetValue]
+AssetUnloader = Callable[[AssetValue], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,13 +37,13 @@ class AssetRegistry(Protocol):
     ) -> None:
         """Register loader for one asset kind."""
 
-    def load(self, kind: str, asset_id: str) -> AssetHandle[object]:
+    def load(self, kind: str, asset_id: str) -> AssetHandle[AssetValue]:
         """Load or acquire asset handle."""
 
     def get(self, handle: AssetHandle[TAsset]) -> TAsset:
         """Resolve handle to loaded value."""
 
-    def release(self, handle: AssetHandle[object]) -> None:
+    def release(self, handle: AssetHandle[AssetValue]) -> None:
         """Release one handle reference."""
 
     def clear(self) -> None:

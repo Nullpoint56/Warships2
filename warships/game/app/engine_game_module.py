@@ -6,17 +6,16 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import cast
 
-from engine.api.context import RuntimeContext, create_runtime_context
-from engine.api.events import Subscription, create_event_bus
+from engine.api.context import RuntimeContext
+from engine.api.events import EventBus, Subscription
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.gameplay import (
     GameplaySystem,
     SystemSpec,
     UpdateLoop,
-    create_update_loop,
 )
 from engine.api.input_snapshot import InputSnapshot
-from engine.api.module_graph import ModuleNode, RuntimeModule, create_module_graph
+from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule
 from engine.api.render_snapshot import RenderSnapshot
 from engine.api.ui_framework import UIFramework
 from warships.game.app.controller import GameController
@@ -107,16 +106,21 @@ class WarshipsGameModule(GameModule):
         framework: UIFramework,
         view: GameView,
         debug_ui: bool,
+        *,
+        event_bus: EventBus,
+        runtime_context: RuntimeContext,
+        update_loop: UpdateLoop,
+        module_graph: ModuleGraph,
     ) -> None:
         self._controller = controller
         self._framework = framework
         self._view = view
         self._debug_ui = debug_ui
         self._host: HostControl | None = None
-        self._events = create_event_bus()
+        self._events = event_bus
         self._close_subscription: Subscription | None = None
         self._close_task_id: int | None = None
-        self._context = create_runtime_context()
+        self._context = runtime_context
         self._context.provide("engine_game_module", self)
         self._context.provide("controller", controller)
         self._context.provide("framework", framework)
@@ -125,13 +129,13 @@ class WarshipsGameModule(GameModule):
         self._context.provide("request_close", self._schedule_close_request)
         self._frame_debug_labels: list[str] = []
         self._frame_ui_state: object | None = None
-        self._update_loop = create_update_loop()
+        self._update_loop = update_loop
         self._update_loop.add_system(SystemSpec("framework_sync", _FrameworkSyncSystem(), order=0))
         self._update_loop.add_system(SystemSpec("view_projection", _ViewProjectionSystem(), order=10))
         self._update_loop.add_system(
             SystemSpec("close_lifecycle", _CloseLifecycleSystem(), order=20)
         )
-        self._graph = create_module_graph()
+        self._graph = module_graph
         self._graph.add_node(ModuleNode("gameplay_loop", _GameplayLoopModule(self._update_loop)))
         self._last_debug_ui: bool = bool(debug_ui)
         self._cached_render_snapshot: RenderSnapshot | None = None

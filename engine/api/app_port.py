@@ -46,7 +46,7 @@ class ModalWidgetView(Protocol):
 class EngineAppPort(Protocol):
     """Contract the engine runtime uses to talk to app-specific logic."""
 
-    def ui_state(self) -> object:
+    def ui_state(self) -> "UIStateView":
         """Return current app UI snapshot."""
 
     def modal_widget(self) -> ModalWidgetView | None:
@@ -78,3 +78,7 @@ class EngineAppPort(Protocol):
 
     def on_wheel(self, x: float, y: float, dy: float) -> bool:
         """Handle wheel input."""
+
+
+class UIStateView(Protocol):
+    """Opaque app UI-state view contract."""

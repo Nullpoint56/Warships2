@@ -37,10 +37,3 @@ class InteractionModeMachine(Protocol):
 
     def allows_wheel(self) -> bool:
         """Return whether wheel input is allowed."""
-
-
-def create_interaction_mode_machine() -> InteractionModeMachine:
-    """Create default engine interaction-mode implementation."""
-    from engine.runtime.interaction_modes import RuntimeInteractionModeMachine
-
-    return RuntimeInteractionModeMachine()

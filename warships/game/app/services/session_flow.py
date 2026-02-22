@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from engine.api.flow import FlowTransition, create_flow_program
+from engine.api.flow import FlowProgram, FlowTransition
 from warships.game.app.state_machine import AppState
 
 
@@ -26,60 +26,34 @@ class AppTransition:
 class SessionFlowService:
     """Pure transition helpers for app-level screen/session navigation."""
 
-    _PROGRAM = create_flow_program(
-        (
-            FlowTransition(
-                trigger="to_manage_presets",
-                source=None,
-                target=AppState.PRESET_MANAGE,
-            ),
-            FlowTransition(
-                trigger="to_new_game_setup",
-                source=None,
-                target=AppState.NEW_GAME_SETUP,
-            ),
-            FlowTransition(
-                trigger="to_create_preset",
-                source=None,
-                target=AppState.PLACEMENT_EDIT,
-            ),
-            FlowTransition(
-                trigger="to_main_menu",
-                source=None,
-                target=AppState.MAIN_MENU,
-            ),
-            FlowTransition(
-                trigger="to_back_to_presets",
-                source=None,
-                target=AppState.PRESET_MANAGE,
-            ),
-        )
-    )
+    @staticmethod
+    def to_manage_presets(program: FlowProgram[AppState], current_state: AppState) -> AppTransition | None:
+        return SessionFlowService.resolve(program, current_state, "to_manage_presets")
 
     @staticmethod
-    def to_manage_presets(current_state: AppState) -> AppTransition | None:
-        return SessionFlowService.resolve(current_state, "to_manage_presets")
+    def to_new_game_setup(program: FlowProgram[AppState], current_state: AppState) -> AppTransition | None:
+        return SessionFlowService.resolve(program, current_state, "to_new_game_setup")
 
     @staticmethod
-    def to_new_game_setup(current_state: AppState) -> AppTransition | None:
-        return SessionFlowService.resolve(current_state, "to_new_game_setup")
+    def to_create_preset(program: FlowProgram[AppState], current_state: AppState) -> AppTransition | None:
+        return SessionFlowService.resolve(program, current_state, "to_create_preset")
 
     @staticmethod
-    def to_create_preset(current_state: AppState) -> AppTransition | None:
-        return SessionFlowService.resolve(current_state, "to_create_preset")
+    def to_main_menu(program: FlowProgram[AppState], current_state: AppState) -> AppTransition | None:
+        return SessionFlowService.resolve(program, current_state, "to_main_menu")
 
     @staticmethod
-    def to_main_menu(current_state: AppState) -> AppTransition | None:
-        return SessionFlowService.resolve(current_state, "to_main_menu")
+    def to_back_to_presets(
+        program: FlowProgram[AppState], current_state: AppState
+    ) -> AppTransition | None:
+        return SessionFlowService.resolve(program, current_state, "to_back_to_presets")
 
     @staticmethod
-    def to_back_to_presets(current_state: AppState) -> AppTransition | None:
-        return SessionFlowService.resolve(current_state, "to_back_to_presets")
-
-    @staticmethod
-    def resolve(current_state: AppState, trigger: str) -> AppTransition | None:
+    def resolve(
+        program: FlowProgram[AppState], current_state: AppState, trigger: str
+    ) -> AppTransition | None:
         """Resolve navigation trigger using reusable engine flow program."""
-        next_state = SessionFlowService._PROGRAM.resolve(current_state, trigger)
+        next_state = program.resolve(current_state, trigger)
         if next_state is None:
             return None
         if trigger == "to_manage_presets" and next_state is AppState.PRESET_MANAGE:
@@ -114,3 +88,33 @@ class SessionFlowService:
                 refresh_preset_rows=True,
             )
         return None
+
+
+def default_session_transitions() -> tuple[FlowTransition[AppState], ...]:
+    return (
+        FlowTransition(
+            trigger="to_manage_presets",
+            source=None,
+            target=AppState.PRESET_MANAGE,
+        ),
+        FlowTransition(
+            trigger="to_new_game_setup",
+            source=None,
+            target=AppState.NEW_GAME_SETUP,
+        ),
+        FlowTransition(
+            trigger="to_create_preset",
+            source=None,
+            target=AppState.PLACEMENT_EDIT,
+        ),
+        FlowTransition(
+            trigger="to_main_menu",
+            source=None,
+            target=AppState.MAIN_MENU,
+        ),
+        FlowTransition(
+            trigger="to_back_to_presets",
+            source=None,
+            target=AppState.PRESET_MANAGE,
+        ),
+    )

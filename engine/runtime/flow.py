@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from engine.api.flow import FlowContext, FlowTransition
+from engine.api.flow import FlowContext, FlowPayload, FlowTransition
 
 
 class RuntimeFlowMachine[TState]:
@@ -20,7 +20,7 @@ class RuntimeFlowMachine[TState]:
         """Register one transition."""
         self._transitions.append(transition)
 
-    def trigger(self, event: str, *, payload: object | None = None) -> bool:
+    def trigger(self, event: str, *, payload: FlowPayload | None = None) -> bool:
         """Execute first matching transition. Returns whether state changed."""
         source_state = self._state
         for transition in self._transitions:
@@ -55,7 +55,7 @@ class RuntimeFlowProgram[TState]:
         self._transitions = transitions
 
     def resolve(
-        self, current_state: TState, trigger: str, *, payload: object | None = None
+        self, current_state: TState, trigger: str, *, payload: FlowPayload | None = None
     ) -> TState | None:
         for transition in self._transitions:
             if transition.trigger != trigger:

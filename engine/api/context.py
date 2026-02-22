@@ -7,41 +7,41 @@ from typing import Protocol
 from engine.api.render import RenderAPI
 
 
+class LayoutPort(Protocol):
+    """Opaque layout boundary contract."""
+
+
+class InputControllerPort(Protocol):
+    """Opaque input-controller boundary contract."""
+
+
+class FrameClockPort(Protocol):
+    """Opaque frame-clock boundary contract."""
+
+
+class SchedulerPort(Protocol):
+    """Opaque scheduler boundary contract."""
+
+
 class RuntimeContext(Protocol):
     """Shared runtime context passed across engine modules."""
 
     render_api: RenderAPI | None
-    layout: object | None
-    input_controller: object | None
-    frame_clock: object | None
-    scheduler: object | None
-    services: dict[str, object]
+    layout: LayoutPort | None
+    input_controller: InputControllerPort | None
+    frame_clock: FrameClockPort | None
+    scheduler: SchedulerPort | None
+    services: dict[str, "ServiceLike"]
 
-    def provide(self, name: str, service: object) -> None:
+    def provide(self, name: str, service: "ServiceLike") -> None:
         """Register a named service."""
 
-    def get(self, name: str) -> object | None:
+    def get(self, name: str) -> "ServiceLike | None":
         """Return a named service if present."""
 
-    def require(self, name: str) -> object:
+    def require(self, name: str) -> "ServiceLike":
         """Return named service or raise KeyError."""
 
 
-def create_runtime_context(
-    *,
-    render_api: RenderAPI | None = None,
-    layout: object | None = None,
-    input_controller: object | None = None,
-    frame_clock: object | None = None,
-    scheduler: object | None = None,
-) -> RuntimeContext:
-    """Create default runtime-context implementation."""
-    from engine.runtime.context import RuntimeContextImpl
-
-    return RuntimeContextImpl(
-        render_api=render_api,
-        layout=layout,
-        input_controller=input_controller,
-        frame_clock=frame_clock,
-        scheduler=scheduler,
-    )
+class ServiceLike(Protocol):
+    """Opaque service contract for runtime context boundaries."""

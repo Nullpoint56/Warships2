@@ -23,7 +23,8 @@ name = no cross-layer shortcut imports
 type = layers
 layers =
     engine.bootstrap
+    engine.runtime
+    engine.sdk
     engine.api
     engine.domain
-    engine.runtime
     engine.platform

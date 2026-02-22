@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from engine.api.game_module import HostFrameContext
 from engine.api.input_snapshot import InputSnapshot
+from engine.sdk.defaults import SdkEventBus, SdkModuleGraph, SdkRuntimeContext, SdkUpdateLoop
 from warships.game.app.engine_game_module import WarshipsGameModule
 
 
@@ -63,7 +64,14 @@ class _Host:
 
 def test_engine_module_smoke_lifecycle() -> None:
     module = WarshipsGameModule(
-        controller=_Controller(), framework=_Framework(), view=_View(), debug_ui=False
+        controller=_Controller(),
+        framework=_Framework(),
+        view=_View(),
+        debug_ui=False,
+        event_bus=SdkEventBus(),
+        runtime_context=SdkRuntimeContext(),
+        update_loop=SdkUpdateLoop(),
+        module_graph=SdkModuleGraph(),
     )
     host = _Host()
     module.on_start(host)

@@ -4,7 +4,6 @@ from engine.api.action_dispatch import (
     ActionDispatcher,
     DirectActionHandler,
     PrefixedActionHandler,
-    create_action_dispatcher,
 )
 from engine.api.ai import (
     Agent,
@@ -18,8 +17,9 @@ from engine.api.ai import (
 )
 from engine.api.app_port import EngineAppPort
 from engine.api.assets import AssetHandle, AssetRegistry, create_asset_registry
-from engine.api.commands import Command, CommandMap, create_command_map
-from engine.api.context import RuntimeContext, create_runtime_context
+from engine.api.commands import Command, CommandMap
+from engine.api.composition import EngineModule
+from engine.api.context import RuntimeContext
 from engine.api.debug import (
     DebugLoadedSession,
     DebugSessionBundle,
@@ -36,14 +36,12 @@ from engine.api.debug import (
     validate_replay_snapshot,
 )
 from engine.api.dialogs import DialogOpenSpec, open_dialog, resolve_confirm_button_id
-from engine.api.events import EventBus, Subscription, create_event_bus
+from engine.api.events import EventBus, Subscription
 from engine.api.flow import (
     FlowContext,
     FlowMachine,
     FlowProgram,
     FlowTransition,
-    create_flow_machine,
-    create_flow_program,
 )
 from engine.api.game_module import GameModule, HostControl, HostFrameContext
 from engine.api.gameplay import (
@@ -52,10 +50,8 @@ from engine.api.gameplay import (
     StateStore,
     SystemSpec,
     UpdateLoop,
-    create_state_store,
-    create_update_loop,
 )
-from engine.api.hosted_runtime import HostedRuntimeConfig, run_hosted_runtime
+from engine.api.hosted_runtime import HostedRuntimeConfig
 from engine.api.input_snapshot import (
     ActionSnapshot,
     ControllerSnapshot,
@@ -68,10 +64,9 @@ from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.interaction_modes import (
     InteractionMode,
     InteractionModeMachine,
-    create_interaction_mode_machine,
 )
-from engine.api.logging import EngineLoggingConfig, LoggerPort, configure_logging, get_logger
-from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule, create_module_graph
+from engine.api.logging import EngineLoggingConfig, LoggerPort
+from engine.api.module_graph import ModuleGraph, ModuleNode, RuntimeModule
 from engine.api.render import RenderAPI
 from engine.api.render_snapshot import (
     IDENTITY_MAT4,
@@ -82,8 +77,8 @@ from engine.api.render_snapshot import (
     Vec3,
     create_render_snapshot,
 )
-from engine.api.screens import ScreenLayer, ScreenStack, create_screen_stack
-from engine.api.ui_framework import UIFramework, create_app_render_api, create_ui_framework
+from engine.api.screens import ScreenLayer, ScreenStack
+from engine.api.ui_framework import UIFramework
 from engine.api.ui_style import (
     DEFAULT_UI_STYLE_TOKENS,
     UIStyleTokens,
@@ -148,6 +143,7 @@ __all__ = [
     "Blackboard",
     "Command",
     "CommandMap",
+    "EngineModule",
     "DecisionContext",
     "DebugLoadedSession",
     "DebugSessionBundle",
@@ -218,21 +214,11 @@ __all__ = [
     "UpdateLoop",
     "best_action",
     "combine_weighted_scores",
-    "create_action_dispatcher",
     "create_asset_registry",
     "create_blackboard",
-    "create_command_map",
-    "create_event_bus",
     "create_functional_agent",
-    "create_flow_machine",
-    "create_flow_program",
     "create_empty_input_snapshot",
-    "create_interaction_mode_machine",
     "create_render_snapshot",
-    "configure_logging",
-    "get_logger",
-    "create_ui_framework",
-    "create_app_render_api",
     "UIStyleTokens",
     "DEFAULT_UI_STYLE_TOKENS",
     "draw_rounded_rect",
@@ -251,12 +237,6 @@ __all__ = [
     "load_debug_session",
     "normalize_scores",
     "validate_replay_snapshot",
-    "run_hosted_runtime",
-    "create_module_graph",
-    "create_runtime_context",
-    "create_screen_stack",
-    "create_state_store",
-    "create_update_loop",
     "PrefixedActionHandler",
     "open_dialog",
     "project_buttons",

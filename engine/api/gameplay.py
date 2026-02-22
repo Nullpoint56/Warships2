@@ -77,17 +77,3 @@ class UpdateLoop(Protocol):
 
     def shutdown(self, context: RuntimeContext) -> None:
         """Shutdown started systems in reverse order."""
-
-
-def create_state_store[TState](initial_state: TState) -> StateStore[TState]:
-    """Create default state-store implementation."""
-    from engine.gameplay.state_store import RuntimeStateStore
-
-    return RuntimeStateStore(initial_state)
-
-
-def create_update_loop(*, fixed_step_seconds: float | None = None) -> UpdateLoop:
-    """Create default gameplay update-loop implementation."""
-    from engine.gameplay.update_loop import RuntimeUpdateLoop
-
-    return RuntimeUpdateLoop(fixed_step_seconds=fixed_step_seconds)

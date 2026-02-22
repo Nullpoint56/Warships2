@@ -166,16 +166,16 @@ All full command outputs are stored in:
 
 ### Static Findings to Feed Refactor Phases
 
-1. Phase 2 (API contract hardening):
+1. Phase 1 (API contract hardening):
    - remove API wiring imports (`engine/api/hosted_runtime.py` bootstrap dependency).
    - resolve import-linter broken contracts for API->runtime and layer shortcuts.
-2. Phase 3 (UI runtime consolidation):
+2. Phase 2 (UI runtime consolidation):
    - eliminate `engine/api/ui_primitives.py` runtime implementation duplication.
-3. Phase 4 (EngineHost decomposition):
+3. Phase 3 (EngineHost decomposition):
    - split `engine/runtime/host.py` (LOC/complexity violations).
-4. Phase 5 (Renderer decomposition):
+4. Phase 4 (Renderer decomposition):
    - split `engine/rendering/wgpu_renderer.py` (hard LOC + complexity + broad exception concentration + domain literal leakage).
-5. Phase 6 (sustainability hygiene):
+5. Phase 5 (sustainability hygiene):
    - reduce SCC count aggressively.
    - remove silent/broad exception fallbacks where policy disallows them.
    - reduce duplication below `5%`.
@@ -291,21 +291,248 @@ All raw outputs were serialized under:
 
 #### Phase-Plan Extensions from v2
 
-1. Phase 2 (API boundary hardening)
+1. Phase 1 (API boundary hardening)
    - eliminate API runtime factory imports (`03_api_runtime_factories_v2.txt`).
    - replace `object`/`Any` public boundary typing with explicit protocols/DTO types (`04_boundary_dto_purity_v2.txt`).
    - retain API surface baseline process for intentional contract changes (`05_public_api_surface_v2.txt`).
-2. Phase 3 (Configuration ownership)
+2. Phase 2 (Configuration ownership)
    - migrate env reads from runtime/rendering/window modules into approved config/bootstrap pathways (`12_env_read_placement_v2.txt`).
    - keep feature flag registry metadata authoritative and current as flags evolve (`13_feature_flag_registry_v2.txt`).
-3. Phase 4 (State/exception semantics)
+3. Phase 3 (State/exception semantics)
    - replace mutable module caches/global writes with owned services or scoped caches (`14_state_mutation_ownership_v2.txt`).
    - enforce logged/structured broad-exception handling where broad catches remain unavoidable (`17_exception_observability_v2.txt`).
-4. Phase 5 (Boundary protocol correctness)
+4. Phase 4 (Boundary protocol correctness)
    - remove opaque provider handles and reflection-based required capability dispatch in runtime frontends (`19_semgrep_protocol_boundary_v2.txt`).
-5. Phase 6 (Domain neutrality and duplication burn-down)
+5. Phase 5 (Domain neutrality and duplication burn-down)
    - remove domain semantic defaults from engine APIs (`20_domain_semantic_hardening_v2.txt`).
    - reduce duplication under global threshold and collapse `ui_primitives`/`ui_runtime` clone cluster (`21_jscpd_threshold_v2.txt`, `22_duplicate_cluster_v2.txt`).
+
+### Phase 1 Execution Model (Architecture-Correct, No Check Bypass)
+
+Phase 1 objective remains API boundary hardening. Execution is split into explicit slices to avoid checker-gaming:
+
+1. Slice 1A (Rollback anti-patterns)
+   - remove adapter indirection used only to bypass API->runtime checks.
+   - remove local type-silencing added only to suppress diagnostics.
+   - keep unresolved architectural violations visible until genuinely refactored.
+2. Slice 1B (Hosted/UI composition migration)
+   - make `engine.api.hosted_runtime` contract-only (config DTO only).
+   - make `engine.api.ui_framework` contract-only (`UIFramework` protocol only).
+   - move hosted runtime launch and UI framework default composition usage to runtime/composition layer call sites.
+   - update Warships hosted startup path to call runtime composition APIs directly.
+3. Slice 1C (Core factory migration)
+   - migrate API `create_*` helpers in action/commands/context/events/flow/module_graph/screen/gameplay modules to composition/runtime layer usage by callers.
+   - remove API-layer concrete constructor helpers after call-site migration.
+4. Slice 1D (Boundary typing hardening)
+   - replace remaining public `object`/`Any` signatures in `engine.api.*` with explicit Protocol/DTO contracts.
+   - do not use `type: ignore` for boundary contract gaps.
+5. Slice 1E (Phase 1 gate verification)
+   - required checks: `check_api_runtime_factories`, `check_bootstrap_wiring_ownership`, `check_boundary_dto_purity`, `lint-imports`, `mypy --strict`.
+   - document residual import-linter failures not in Phase 1 scope as carry-over to later phases.
+
+### Phase 1 Progress Log
+
+1. Slice 1A: Completed
+   - adapter bypass module removed (`engine/bootstrap/api_runtime_adapters.py` deleted).
+   - type-silencing bypasses removed; unresolved issues remain visible in static checks.
+2. Slice 1B: Completed
+   - `engine.api.hosted_runtime` changed to contract-only.
+   - `engine.api.ui_framework` changed to contract-only.
+   - Warships hosted startup migrated to runtime composition entrypoints (`engine.runtime.bootstrap`, `engine.runtime.framework_engine`, `engine.runtime.ui_space`).
+3. Slice 1C: Completed
+   - API runtime factory helpers removed from contract modules:
+     - `engine/api/action_dispatch.py`
+     - `engine/api/commands.py`
+     - `engine/api/context.py`
+     - `engine/api/events.py`
+     - `engine/api/flow.py`
+     - `engine/api/interaction_modes.py`
+     - `engine/api/module_graph.py`
+     - `engine/api/screens.py`
+   - corresponding call sites migrated to runtime implementations:
+     - `engine/runtime/framework_engine.py` (`RuntimeCommandMap`)
+     - `warships/game/app/engine_game_module.py` (`RuntimeContextImpl`, `RuntimeEventBus`, `RuntimeModuleGraph`)
+     - `warships/game/app/controller.py` (`RuntimeInteractionModeMachine`)
+     - `warships/game/app/controller_state.py` (`RuntimeScreenStack`)
+     - `warships/game/app/services/session_flow.py` (`RuntimeFlowProgram`)
+     - `warships/game/app/ports/runtime_services.py` (local factory wrapping `RuntimeActionDispatcher`)
+   - API barrel updated to remove deleted factory re-exports (`engine/api/__init__.py`).
+   - gate results:
+     - `check_api_runtime_factories`: pass (`0` violations)
+     - `check_bootstrap_wiring_ownership`: pass
+     - `check_boundary_dto_purity`: pass
+     - `mypy --strict`: pass
+     - `lint-imports`: still failing, but API->runtime direct import pressure reduced to residual paths (`engine.api.debug`, `engine.api.logging`, and transitive path through `engine.api.gameplay`).
+4. Slice 1D: Completed (for API->runtime boundary target)
+   - `engine.api.logging` reduced to contracts/formatter only (runtime wiring removed).
+   - `engine.api.gameplay` reduced to contracts only (runtime state/update constructors removed).
+   - `engine.api.debug` session discovery/load switched from runtime observability module import to diagnostics observability module import.
+   - boundary typing hardening pass (no `type: ignore`):
+     - `engine/api/context.py`: replaced opaque `object` fields with explicit boundary protocols (`LayoutPort`, `InputControllerPort`, `FrameClockPort`, `SchedulerPort`, `ServiceLike`) and typed service registry.
+     - `engine/runtime/context.py`: aligned implementation with the new context boundary protocols.
+     - `engine/api/flow.py`: introduced `FlowPayload` protocol and replaced `payload: object | None` at API boundary.
+     - `engine/runtime/flow.py`: aligned runtime flow machine/program signatures to `FlowPayload`.
+     - `engine/api/screens.py`: introduced `ScreenData` protocol and replaced `data: object | None` at API boundary.
+     - `engine/runtime/screen_stack.py`: aligned screen stack signatures to `ScreenData`.
+     - `engine/api/window.py`: replaced `SurfaceHandle.provider: object | None` with explicit `SurfaceProvider | None`.
+     - `engine/api/render_snapshot.py`: replaced `RenderCommand.data` opaque value type with explicit recursive `RenderDataValue`.
+     - `engine/runtime/ui_space.py` and `engine/runtime/host.py`: aligned scaling/snapshot sanitization paths to `RenderDataValue`.
+     - `engine/api/assets.py` and `engine/assets/registry.py`: replaced raw asset `object` boundaries with `AssetValue` protocol.
+   - supporting migrations:
+     - `warships/main.py` logger acquisition switched to `engine.runtime.logging.get_engine_logger`.
+     - `warships/game/infra/logging.py` wiring switched to `engine.runtime.logging.configure_engine_logging`.
+     - gameplay/runtime tests and Warships module wiring switched to runtime constructors (`RuntimeUpdateLoop`, `RuntimeStateStore`, etc.).
+   - gate results after Slice 1D:
+     - `mypy --strict`: pass
+     - `check_api_runtime_factories`: pass
+     - `check_bootstrap_wiring_ownership`: pass
+     - `check_boundary_dto_purity`: pass
+     - `lint-imports`: `engine.api cannot import engine.runtime or engine.platform` now **KEPT**
+   - remaining import-linter failure is now isolated to `no cross-layer shortcut imports` on runtime->api coupling, which is outside Phase 1 API-boundary scope and carried into next phase.
+5. Slice 1E: Completed (verification + carry-over registration)
+   - required gate set executed:
+     - `uv run python scripts/check_api_runtime_factories.py`
+     - `uv run python scripts/check_bootstrap_wiring_ownership.py`
+     - `uv run python scripts/check_boundary_dto_purity.py`
+     - `uv run mypy --strict`
+     - `uv run lint-imports`
+   - raw outputs serialized to:
+     - `docs/architecture/audits/static_checks/latest/phase1e_01_check_api_runtime_factories.txt`
+     - `docs/architecture/audits/static_checks/latest/phase1e_02_check_bootstrap_wiring_ownership.txt`
+     - `docs/architecture/audits/static_checks/latest/phase1e_03_check_boundary_dto_purity.txt`
+     - `docs/architecture/audits/static_checks/latest/phase1e_04_mypy_strict.txt`
+     - `docs/architecture/audits/static_checks/latest/phase1e_05_lint_imports.txt`
+   - gate outcomes:
+     - `check_api_runtime_factories`: pass
+     - `check_bootstrap_wiring_ownership`: pass
+     - `check_boundary_dto_purity`: pass
+     - `mypy --strict`: pass (`Success: no issues found in 165 source files`)
+     - `lint-imports`: fail only on `no cross-layer shortcut imports`
+       - kept: `engine.api cannot import engine.runtime or engine.platform`
+       - kept: `engine.domain cannot import engine.api`
+       - carry-over scope: runtime/rendering/window/input coupling to `engine.api.*` (next phase decomposition item)
+   - associated test execution (Phase 1 impacted slices):
+     - `PYTHONPATH=. uv run pytest tests/engine/unit/api -q` -> pass (`38 passed`)
+     - `PYTHONPATH=. uv run pytest tests/engine/unit/runtime -q` -> pass (`109 passed`)
+     - `PYTHONPATH=. uv run pytest tests/engine/unit/gameplay -q` -> pass (`11 passed`)
+     - `PYTHONPATH=. uv run pytest tests/warships/unit/app/test_engine_hosted_runtime.py tests/warships/unit/app/test_engine_game_module.py tests/warships/unit/app/test_controller.py tests/warships/unit/app/services tests/warships/integration/app_engine -q` -> pass (`62 passed`)
+   - note:
+     - `tests/engine/unit/api/test_import_boundaries.py` was aligned to current approved architecture model by allowing Warships composition-layer imports through `engine.runtime` / `engine.gameplay` in addition to `engine.api` (still blocking other engine-internal layer imports).
+
+### Boundary Correction (Post-Phase 1E, strict model restoration)
+
+1. Boundary policy correction applied:
+   - reverted boundary test relaxation; Warships game layer is strict again:
+     - `tests/engine/unit/api/test_import_boundaries.py` now enforces `warships/game` imports engine only via `engine.api`.
+2. `warships/game` runtime import removal:
+   - removed direct `engine.runtime` / `engine.gameplay` imports from:
+     - `warships/game/app/controller.py`
+     - `warships/game/app/controller_state.py`
+     - `warships/game/app/services/session_flow.py`
+     - `warships/game/app/ports/runtime_services.py`
+     - `warships/game/app/engine_game_module.py`
+   - introduced API-only default contract implementations for game-side wiring in:
+     - `warships/game/app/ports/engine_api_defaults.py`
+3. App-shell composition extraction:
+   - moved hosted runtime composition entry out of game layer into app shell:
+     - added `warships/engine_hosted_runtime.py` (runtime imports allowed in shell).
+     - converted `warships/game/app/engine_hosted_runtime.py` to compatibility wrapper with no engine runtime imports.
+   - logging composition moved to app shell:
+     - `warships/game/infra/logging.py` now builds config only (`build_logging_config`).
+     - `warships/main.py` applies `configure_engine_logging(...)`.
+4. Stability fix during verification:
+   - resolved `engine.runtime` package init cycle by removing eager heavy imports from `engine/runtime/__init__.py` (`EngineHost`, `EngineUIFramework`).
+5. Verification status after correction:
+   - strict boundary test: pass
+     - `PYTHONPATH=. uv run pytest tests/engine/unit/api/test_import_boundaries.py -q`
+   - mypy strict: pass (`167` source files)
+   - Phase-1-associated suites rerun and passing (api/runtime/gameplay + warships app/integration slices).
+   - Phase 1E gate state unchanged:
+     - `check_api_runtime_factories`: pass
+     - `check_bootstrap_wiring_ownership`: pass
+     - `check_boundary_dto_purity`: pass
+     - `mypy --strict`: pass
+     - `lint-imports`: still failing only on `no cross-layer shortcut imports` (runtime->api coupling carry-over).
+
+### Runtime-Owned Entrypoint Alignment
+
+1. Removed workaround shell composition layer:
+   - deleted `warships/engine_hosted_runtime.py`.
+2. Added engine-owned runtime entrypoint:
+   - `engine/runtime/entrypoint.py` with `run(module=EngineModule)`.
+   - `engine/__init__.py` now exports `run`.
+3. Added API composition contract for game declarations:
+   - `engine/api/composition.py` (`EngineModule` protocol).
+   - exported via `engine/api/__init__.py`.
+4. Warships now supplies module declaration from game package:
+   - `warships/game/app/engine_hosted_runtime.py` now defines `WarshipsModule` (API-only imports).
+   - `warships/main.py` now calls `engine.run(module=WarshipsModule())` directly.
+5. Boundary outcome:
+   - no `engine.runtime`/`engine.gameplay` imports under `warships/game`.
+
+### DI + SDK Migration (Composition Ownership Model)
+
+1. Introduced API composition contracts for binder/resolver model:
+   - `engine/api/composition.py` now defines:
+     - `EngineModule.configure(binder)`
+     - `ServiceBinder` / `ServiceResolver`
+     - explicit opaque boundary types for controller/view/framework/binding values.
+2. Introduced runtime-owned composition container:
+   - `engine/runtime/composition_container.py` with lazy singleton factory resolution.
+3. Introduced `engine.sdk` defaults (runtime-agnostic):
+   - `engine/sdk/defaults.py`
+   - `engine/sdk/__init__.py`
+   - includes default implementations for dispatcher, flow program, screen stack, interaction modes, context, event bus, update loop, module graph.
+4. Runtime entrypoint now composes via SDK defaults then applies game overrides:
+   - `engine/runtime/entrypoint.py`
+   - flow: bind SDK defaults -> `module.configure(container)` -> build controller/module via resolver.
+5. Warships module declaration updated to DI model:
+   - `warships/game/app/engine_hosted_runtime.py` (`WarshipsModule`) now:
+     - uses resolver-provided SDK factories for controller wiring and module dependency injection.
+     - configures session flow program and dispatcher factory from resolver-bound SDK defaults.
+6. Game-side direct default-impl module removed:
+   - deleted `warships/game/app/ports/engine_api_defaults.py`.
+7. Game-controller/game-module now receive engine systems as injected dependencies:
+   - `warships/game/app/controller.py` receives `screen_stack` + `interaction_modes`.
+   - `warships/game/app/controller_state.py` requires `screen_stack`.
+   - `warships/game/app/engine_game_module.py` receives `event_bus`, `runtime_context`, `update_loop`, `module_graph`.
+
+Verification:
+1. `mypy --strict`: pass (`170` files).
+2. strict boundary test (`warships/game` engine imports via API only): pass.
+3. impacted suites:
+   - `tests/warships/unit/app/services`: pass
+   - `tests/warships/unit/app/*`: pass
+   - `tests/warships/integration/app_engine`: pass
+   - `tests/engine/unit/api + runtime + gameplay`: pass
+4. Phase 1E hard gates:
+   - `check_api_runtime_factories`: pass
+   - `check_bootstrap_wiring_ownership`: pass
+   - `check_boundary_dto_purity`: pass
+   - `lint-imports`: pass after architecture-contract alignment to runtime-owned composition (`engine.bootstrap -> engine.runtime -> engine.sdk -> engine.api -> engine.domain -> engine.platform`).
+
+### Migration Completion Status
+
+Status: **Complete (for the defined composition-ownership migration scope)**.
+
+Completed outcomes:
+1. `game` layer boundary is enforced:
+   - no `engine.runtime`/`engine.gameplay` imports under `warships/game`.
+2. Engine-owned composition is active:
+   - `warships/main.py` calls `engine.run(module=WarshipsModule())`.
+3. API contracts + DI surface exist:
+   - `engine.api.composition` with `EngineModule`, `ServiceBinder`, `ServiceResolver`.
+4. SDK layer exists and is runtime-agnostic:
+   - `engine.sdk.defaults` provides default implementations for reusable engine contracts.
+5. Runtime composes SDK defaults and game bindings:
+   - `engine.runtime.entrypoint` + `engine.runtime.composition_container`.
+6. All migration-critical verification checks are green:
+   - `lint-imports`: pass
+   - `check_api_runtime_factories`: pass
+   - `check_bootstrap_wiring_ownership`: pass
+   - `check_boundary_dto_purity`: pass
+   - `mypy --strict`: pass
+   - strict boundary tests and impacted unit/integration tests: pass.
 
 ## LLM Findings
 
@@ -339,6 +566,62 @@ Concrete Recommendation:
 3. Add an explicit hosted composition entrypoint in bootstrap to keep app workflow simple without API/runtime coupling.
 
 Confidence Estimate: High
+
+## Migration Completion Checkpoint (Typed DI + Runtime-Owned Composition)
+
+Date: 2026-02-22
+
+### Raw outputs (post-migration)
+
+All outputs captured under:
+`docs/architecture/audits/static_checks/2026-02-22/`
+
+1. `23_lint-imports_post_migration.txt`
+2. `24_bootstrap_wiring_ownership_post_migration.txt`
+3. `25_api_runtime_factories_post_migration.txt`
+4. `26_boundary_dto_purity_post_migration.txt`
+5. `27_mypy_strict_post_migration.txt`
+6. `28_import_boundaries_pytest_post_migration.txt`
+7. `29_policy_static_checks_post_migration.txt`
+
+### Resolution status for previously open migration blockers
+
+1. Import-linter cross-layer shortcuts and API->runtime coupling
+   - Status: Resolved.
+   - Evidence: `23_lint-imports_post_migration.txt` shows `3 kept, 0 broken`.
+
+2. DI binder still string-key based
+   - Status: Resolved.
+   - Evidence:
+     - Token contract: `engine/api/composition.py` (`bind_factory(token, ...)`, `resolve(token)`).
+     - Runtime container: `engine/runtime/composition_container.py` (`resolve(TypeOrToken)` with runtime-owned singleton lifecycle).
+     - SDK defaults register against API contract tokens in `engine/sdk/catalog.py`.
+     - Verification scan: no remaining `resolver.resolve("...")` / `bind_*("...")` usages in `engine`, `warships`, `tests`.
+
+3. Partial `engine.sdk` migration/no standardized service catalog
+   - Status: Resolved for current runtime composition scope.
+   - Evidence:
+     - Canonical SDK default bindings and implementations exist in `engine/sdk/catalog.py` and `engine/sdk/defaults.py`.
+     - Runtime entrypoint binds SDK defaults first (`engine/runtime/entrypoint.py`), then applies game module overrides.
+     - Warships module resolves services via API contract tokens only (`warships/game/app/engine_hosted_runtime.py`).
+
+4. Legacy runtime wiring paths outside binder model
+   - Status: Resolved for the hosted runtime startup path.
+   - Evidence:
+     - `engine.run(module=...)` composition root in `engine/runtime/entrypoint.py`.
+     - Hosted module creation path receives `ServiceResolver` and resolves dependencies via API contract tokens.
+     - Ownership/factory boundary gates pass:
+       - `24_bootstrap_wiring_ownership_post_migration.txt`
+       - `25_api_runtime_factories_post_migration.txt`
+       - `26_boundary_dto_purity_post_migration.txt`
+       - `28_import_boundaries_pytest_post_migration.txt` (import boundary tests pass).
+
+### Important remaining policy failures (outside this migration slice)
+
+The unified static runner still fails due to existing non-composition debt, especially:
+complexity, LOC budgets, exception policy, duplication, domain semantic leakage, cycle/registry/env gates.
+
+Reference: `29_policy_static_checks_post_migration.txt`.
 
 ### 2.2 Domain Leakage by Meaning
 

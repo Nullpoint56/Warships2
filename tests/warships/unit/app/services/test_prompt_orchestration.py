@@ -1,3 +1,4 @@
+from engine.sdk.defaults import SdkScreenStack
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.ports.runtime_primitives import (
     PromptInteractionOutcome,
@@ -13,7 +14,7 @@ from warships.game.app.state_machine import AppState
 
 
 def test_apply_prompt_interaction_outcome_paths() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
     refreshed = {"count": 0}
     confirmed = {"count": 0}
 
@@ -45,7 +46,7 @@ def test_apply_prompt_interaction_outcome_paths() -> None:
 
 
 def test_apply_prompt_confirm_outcome_paths() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
     calls = {"rows": 0, "buttons": 0, "announce": 0}
     assert not apply_prompt_confirm_outcome(
         PromptConfirmOutcome(

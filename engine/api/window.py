@@ -8,13 +8,17 @@ from typing import Protocol
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 
 
+class SurfaceProvider(Protocol):
+    """Opaque backend-owned surface provider contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class SurfaceHandle:
     """Opaque renderer-attachable surface handle."""
 
     surface_id: str
     backend: str
-    provider: object | None = None
+    provider: SurfaceProvider | None = None
 
 
 @dataclass(frozen=True, slots=True)

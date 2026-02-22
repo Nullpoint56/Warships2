@@ -5,7 +5,11 @@ from __future__ import annotations
 import logging
 import random
 
-from engine.api.interaction_modes import create_interaction_mode_machine
+from engine.api.action_dispatch import ActionDispatcher
+from engine.api.composition import ActionDispatcherFactory
+from engine.api.flow import FlowProgram
+from engine.api.interaction_modes import InteractionModeMachine
+from engine.api.screens import ScreenStack
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.events import (
     BoardCellPressed,
@@ -73,12 +77,21 @@ class GameController:
     """Handles app events and owns editor state."""
 
     def __init__(
-        self, preset_service: PresetService, rng: random.Random, debug_ui: bool = False
+        self,
+        preset_service: PresetService,
+        rng: random.Random,
+        *,
+        screen_stack: ScreenStack,
+        interaction_modes: InteractionModeMachine,
+        action_dispatcher_factory: ActionDispatcherFactory,
+        session_flow_program: FlowProgram[AppState],
+        debug_ui: bool = False,
     ) -> None:
         self._preset_service = preset_service
         self._rng = rng
 
         self._state_data = ControllerState(
+            screen_stack=screen_stack,
             placements_by_type={ship_type: None for ship_type in _SHIP_ORDER},
         )
         self._support = ControllerSupport(
@@ -89,7 +102,7 @@ class GameController:
             logger=logger,
             debug_ui=debug_ui,
         )
-        self._button_dispatcher = create_action_dispatcher(
+        self._button_dispatcher: ActionDispatcher = create_action_dispatcher(
             direct_handlers={
                 "manage_presets": self._on_manage_presets,
                 "new_game": self._on_new_game,
@@ -111,8 +124,10 @@ class GameController:
                 ("preset_rename:", self._on_preset_rename),
                 ("preset_delete:", self._on_preset_delete),
             ),
+            factory=action_dispatcher_factory,
         )
-        self._interaction_modes = create_interaction_mode_machine()
+        self._interaction_modes = interaction_modes
+        self._session_flow_program = session_flow_program
         self._state_data.screen_stack.set_root(
             self._screen_id_for_state(self._state_data.app_state)
         )
@@ -662,7 +677,9 @@ class GameController:
         self._support.announce_state()
 
     def _apply_session_transition(self, trigger: str) -> bool:
-        transition = SessionFlowService.resolve(self._state_data.app_state, trigger)
+        transition = SessionFlowService.resolve(
+            self._session_flow_program, self._state_data.app_state, trigger
+        )
         if transition is None:
             return False
         self._apply_transition(transition)

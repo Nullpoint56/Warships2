@@ -7,6 +7,10 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
+class FlowPayload(Protocol):
+    """Opaque flow payload boundary contract."""
+
+
 @dataclass(frozen=True, slots=True)
 class FlowContext[TState]:
     """Transition execution context."""
@@ -14,7 +18,7 @@ class FlowContext[TState]:
     trigger: str
     source: TState
     target: TState
-    payload: object | None = None
+    payload: FlowPayload | None = None
 
 
 type TransitionGuard[TState] = Callable[[FlowContext[TState]], bool]
@@ -43,7 +47,7 @@ class FlowMachine[TState](Protocol):
     def add_transition(self, transition: FlowTransition[TState]) -> None:
         """Register one transition."""
 
-    def trigger(self, event: str, *, payload: object | None = None) -> bool:
+    def trigger(self, event: str, *, payload: FlowPayload | None = None) -> bool:
         """Execute first matching transition."""
 
 
@@ -51,22 +55,6 @@ class FlowProgram[TState](Protocol):
     """Reusable transition program for stateless state-resolution queries."""
 
     def resolve(
-        self, current_state: TState, trigger: str, *, payload: object | None = None
+        self, current_state: TState, trigger: str, *, payload: FlowPayload | None = None
     ) -> TState | None:
         """Resolve next state for a trigger from a given state."""
-
-
-def create_flow_machine[TState](initial_state: TState) -> FlowMachine[TState]:
-    """Create default engine flow-machine implementation."""
-    from engine.runtime.flow import RuntimeFlowMachine
-
-    return RuntimeFlowMachine(initial_state)
-
-
-def create_flow_program[TState](
-    transitions: tuple[FlowTransition[TState], ...],
-) -> FlowProgram[TState]:
-    """Create reusable transition program implementation."""
-    from engine.runtime.flow import RuntimeFlowProgram
-
-    return RuntimeFlowProgram(transitions)

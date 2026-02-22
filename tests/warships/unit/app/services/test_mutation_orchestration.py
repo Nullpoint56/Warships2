@@ -1,3 +1,4 @@
+from engine.sdk.defaults import SdkScreenStack
 from warships.game.app.controller_state import ControllerState
 from warships.game.app.services.battle import PlayerTurnResult
 from warships.game.app.services.mutation_orchestration import (
@@ -12,7 +13,7 @@ from warships.game.core.models import Coord, Orientation, ShipPlacement, ShipTyp
 
 
 def test_apply_placement_outcome_paths() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
     refreshed = {"count": 0}
 
     def refresh_buttons() -> None:
@@ -41,7 +42,7 @@ def test_apply_placement_outcome_paths() -> None:
 
 
 def test_apply_placement_outcome_sets_popup_message() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
 
     handled = apply_placement_outcome(
         PlacementActionResult(
@@ -60,7 +61,7 @@ def test_apply_placement_outcome_sets_popup_message() -> None:
 
 
 def test_apply_battle_turn_outcome_sets_result_state_on_winner() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
     refreshed = {"count": 0}
     apply_battle_turn_outcome(
         PlayerTurnResult(shot_result=ShotResult.MISS, status="x", winner=Turn.PLAYER),
@@ -72,7 +73,7 @@ def test_apply_battle_turn_outcome_sets_result_state_on_winner() -> None:
 
 
 def test_apply_edit_preset_result_paths() -> None:
-    state = ControllerState()
+    state = ControllerState(screen_stack=SdkScreenStack())
     calls = {"reset": 0, "apply": 0, "refresh": 0, "announce": 0}
 
     def reset_editor() -> None:
