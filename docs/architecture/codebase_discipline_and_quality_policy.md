@@ -326,165 +326,352 @@ python scripts/policy_static_checks.py
 
 ---
 
-# 2. LLM Semantic Governance Layer (Advisory, Required Review Output)
+Below is a redesigned, hardened version of your **LLM Semantic Governance Layer**.
 
-These checks are mandatory for review but not auto-blocking unless marked "critical".
+It converts the review from “advisory commentary” into a structured architectural analysis instrument.
 
-Each PR affecting engine core must be reviewed by LLM agent with structured output.
+This version enforces:
 
----
-
-## 2.1 API Ergonomics Review
-
-LLM must answer:
-
-* Show a typical user workflow for this API.
-* Is it unnecessarily verbose?
-* Are common operations multi-step when they could be single-step?
-* Are parameter names consistent and intention-revealing?
-* Is configuration leaking into call sites?
-
-Flag:
-
-* Boilerplate-heavy usage
-* Verbose initialization chains
-* Parameter inconsistency
+* Evidence binding
+* Root-cause classification
+* Severity normalization
+* Confidence scoring
+* Systemic vs local issue distinction
+* Actionable refactor direction
 
 ---
 
-## 2.2 Domain Leakage by Meaning
+# 2. LLM Semantic Governance Layer
 
-LLM must answer:
+**(Mandatory Structured Review — Architectural Advisory)**
 
-* Does this module embed assumptions about specific gameplay mechanics?
-* Are defaults biased toward one domain profile?
-* Are abstractions secretly tuned for naval/grid/2D assumptions?
+LLM review is required for all PRs affecting:
 
-Flag:
+* `engine/api`
+* `engine/runtime`
+* `engine/rendering`
+* `engine/window`
+* `engine/sdk`
+* cross-layer modifications
+* host, renderer, lifecycle, diagnostics, or config paths
 
-* Implicit domain coupling
-* Non-neutral default semantics
+LLM findings are advisory unless marked **Critical Architecture Risk**.
 
 ---
 
-## 2.3 Misleading Abstractions
+# 2.0 Output Contract (Mandatory)
+
+Every finding MUST follow this structure:
+
+```
+[Finding ID: <CATEGORY>-###]
+
+Category: <One of the categories below>
+Location:
+  - File(s):
+  - Line range (if identifiable):
+Risk Level:
+  - Informational
+  - Medium Structural Risk
+  - High Structural Risk
+  - Critical Architecture Risk
+Root Cause Classification:
+  - Structural layering issue
+  - Contract weakness
+  - Ownership drift
+  - Performance topology issue
+  - Semantic domain bias
+  - Lifecycle sequencing risk
+  - Configuration ownership drift
+Evidence:
+  - Concrete code behavior reference
+  - Why this is systemic (not stylistic)
+Impact:
+  - What will degrade over time if not addressed
+Proposed Structural Direction:
+  - High-level corrective path (not cosmetic fix)
+Confidence:
+  - Low / Medium / High
+```
+
+Rules:
+
+* No stylistic feedback.
+* No naming-only suggestions.
+* No formatting comments.
+* No micro-optimizations unless in performance section.
+* No speculative criticism without code evidence.
+
+All flags must include file references.
+
+---
+
+# 2.1 API Ergonomics Review
+
+LLM must:
+
+1. Show a realistic usage flow of the API being modified.
+2. Identify call-site verbosity.
+3. Identify unnecessary multi-step construction.
+4. Evaluate config propagation.
+5. Detect builder/factory verbosity.
+
+Flag when:
+
+* Common tasks require excessive orchestration.
+* Object graph assembly leaks into domain layer.
+* API abstraction does not meaningfully simplify runtime.
+
+Additional required output:
+
+* Is the verbosity inherent or architectural?
+* Does ergonomics degrade scalability?
+
+---
+
+# 2.2 Domain Leakage by Meaning
 
 LLM must evaluate:
 
-* Does the class name match actual responsibility?
-* Is the abstraction too generic or too specific?
-* Are protocols minimal and correct?
-* Are internal details leaking through public API?
+* Hidden gameplay assumptions.
+* Domain-biased defaults.
+* Semantic bias in generic abstractions.
+* Title-specific literals.
 
-Flag:
+Flag when:
 
-* Overly broad abstraction
-* Narrow abstraction disguised as generic
-* Protocol boundary weakness
+* Behavior implies naval/grid/2D/game-specific semantics.
+* Engine API contains domain-specific vocabulary.
+* Runtime contains game-level flags.
+
+Additional requirement:
+
+* Distinguish semantic bias from neutral parameterization.
 
 ---
 
-## 2.4 Performance Risk Heuristics
+# 2.3 Misleading Abstractions
+
+LLM must check:
+
+* Does abstraction match responsibility?
+* Does class name misrepresent behavior?
+* Does protocol hide required capabilities?
+* Does abstraction leak implementation detail?
+
+Flag when:
+
+* “Host” acts as multi-service container.
+* Generic names wrap specific behaviors.
+* Required-path reflection exists.
+
+Must include:
+
+* Whether abstraction reduction or split is preferable.
+
+---
+
+# 2.4 Performance Risk Heuristics
 
 LLM must analyze:
 
-* What objects are rebuilt per call?
-* Are containers reconstructed in hot paths?
-* Is deep copying done unnecessarily?
-* Are nested loops risking N² or worse?
+* Object reconstruction inside loops.
+* Per-frame container rebuilds.
+* Snapshot transform overhead.
+* Nested dispatch layers.
+* N² risk.
 
-Flag:
+Flag when:
 
-* Snapshot rebuild churn
-* Repeated map/dict reconstruction
-* Excessive temporary object creation
+* Immutable reshaping happens every frame.
+* Map/dict rebuilt per event.
+* Reflection in hot path.
+* Branch-dense logic inside draw/update path.
+
+Must include:
+
+* Whether issue is hot-path likely or theoretical.
+* Estimated runtime degradation risk over growth.
 
 ---
 
-## 2.5 Inconsistent Error Semantics
+# 2.5 Error Semantics Consistency
 
 LLM must evaluate:
 
-* Are exception models consistent across layers?
-* Is retry logic centralized?
-* Are errors silently transformed?
-* Are internal exceptions leaking outside boundary?
+* Exception policy consistency across layers.
+* Presence of silent fallbacks.
+* Retry policy centralization.
+* Exception leakage beyond boundary.
 
-Flag:
+Flag when:
 
-* Mixed error paradigms
-* Silent fallback logic
+* Broad exception catch without telemetry.
+* Runtime transforms errors across layers.
+* Mixed paradigms inside same subsystem.
+
+Must include:
+
+* Whether error model is deterministic or permissive.
+* Long-term observability risk.
 
 ---
 
-## 2.6 Abstraction Depth Assessment
+# 2.6 Abstraction Depth Assessment
 
 LLM must evaluate:
 
-* Are there too many thin wrapper layers?
-* Is indirection excessive relative to feature size?
-* Is boilerplate dominating core logic?
+* Wrapper thickness relative to value.
+* Indirection layers without logic.
+* Barrel export misuse.
+* API-to-runtime forwarding functions.
 
-Flag:
+Flag when:
 
-* Over-engineering
-* Wrapper chains without value
+* Proxy modules forward directly.
+* Indirection multiplies import coupling.
+* Over-factored micro-layers exist.
+
+Must distinguish:
+
+* Necessary decoupling from gratuitous layering.
 
 ---
 
-## 2.7 Config Ownership Drift (Semantic)
+# 2.7 Configuration Ownership Drift (Semantic)
 
 LLM must evaluate:
 
-* Are configuration values creeping into runtime logic?
-* Is feature flag usage proliferating?
-* Are default behaviors environment-dependent in subtle ways?
+* Config logic inside hot path modules.
+* Duplicate env parsing logic.
+* Feature flag proliferation.
+* Runtime behavior controlled by ambient state.
+
+Flag when:
+
+* Config decisions are evaluated repeatedly.
+* Env reads scattered.
+* Flags not injected but pulled.
+
+Must include:
+
+* Whether drift increases unpredictability under growth.
+
+---
+
+# 2.8 Duplication and Ownership Overlap
+
+LLM must detect:
+
+* Parallel implementations across packages.
+* API/runtime dual ownership.
+* Similar logic in diagnostics/runtime.
+* Serialization duplication.
+
+Flag when:
+
+* Logic duplicated across layers for convenience.
+* Similar algorithm with slight variation exists.
+
+Must include:
+
+* Whether duplication indicates boundary confusion.
+
+---
+
+# 2.9 Feature Growth Stress Test
+
+LLM must simulate:
+
+* Adding Audio subsystem
+* Adding Networking subsystem
+* Adding Asset streaming subsystem
+
+Answer:
+
+* Where would feature attach?
+* Which module would grow?
+* Would host expand?
+* Would SCC likely increase?
 
 Flag:
 
-* Hidden config coupling
-* Runtime behavior dependent on ambient state
+* Centralized fragility
+* Architecture cannot absorb subsystem without structural edits
 
 ---
 
-## 2.8 Refactor Opportunity Identification
+# 2.10 Replaceability Audit
 
-LLM must provide:
+LLM must evaluate:
 
-* Modules that should be split
-* Extractable shared behaviors
-* Redundant layers
-* Collapsible boilerplate sections
+* Can renderer be replaced?
+* Can window backend be replaced?
+* Can update loop be replaced?
+* Can event bus be replaced?
 
-Include:
+Flag:
 
-* Concrete refactor suggestion
-* Risk level
-
----
-
-# 3. Hybrid Review Workflow
-
-## PR Requirements
-
-PR must:
-
-1. Pass all static CI gates.
-2. Include LLM structured review output.
-3. Address critical LLM flags before merge.
-
-## Structured LLM Output Format
-
-For each category:
-
-* Observation
-* Risk Level (Low / Medium / High)
-* Concrete Recommendation
-* Confidence Estimate
+* Hidden dependency flows
+* Runtime-to-implementation knowledge leakage
+* Implicit coupling via behavior ordering
 
 ---
 
-# 4. Governance Principles
+# 2.11 Architectural Entropy Forecast
+
+LLM must answer:
+
+* What subsystem currently attracts new responsibilities?
+* Which module will likely exceed budget first?
+* Where is entropy concentration forming?
+* What will become future God module?
+
+This converts review into predictive governance.
+
+---
+
+# 2.12 Summary Output Block
+
+Each review must conclude with:
+
+```
+Architecture Stability Summary:
+- Layering Integrity: Stable / Slight Erosion / Structural Risk
+- Coupling Gradient: Healthy / Growing / High
+- Replaceability: Strong / Moderate / Weak
+- Growth Resilience: Good / Concerning / Fragile
+- Overall Risk Rating: 1–10
+```
+
+---
+
+# Reviewer Behavior Rules
+
+LLM must:
+
+* Never rewrite code unless asked.
+* Never propose renames as primary solution.
+* Prefer structural decomposition over local patches.
+* Not repeat static check findings unless giving new meaning-level interpretation.
+* Avoid trivial remarks.
+
+---
+
+# Governance Rule
+
+If any finding is marked:
+
+> Critical Architecture Risk
+
+Then:
+
+* It must reference structural layering or boundary violation.
+* It requires human review acknowledgment before merge.
+
+---
+
+# 3. Governance Principles
 
 * Static tools enforce structure and invariants.
 * LLM review enforces semantic clarity and architectural coherence.
@@ -494,7 +681,7 @@ For each category:
 
 ---
 
-# 5. Minimum Viable Toolchain
+# 4. Minimum Viable Toolchain
 
 Required:
 
@@ -509,9 +696,8 @@ Required:
 * policy scripts under `scripts/check_*.py` and `scripts/policy_static_checks.py`
 LLM:
 
-* Structured PR semantic review agent
+* Structured semantic review
 
 ---
 
 This document defines non-negotiable architectural discipline for long-term engine evolution.
-
