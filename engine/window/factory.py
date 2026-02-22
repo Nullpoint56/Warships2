@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
 from engine.api.window import WindowPort
@@ -18,9 +17,10 @@ def create_window_layer(
     min_fps: float,
     max_fps: float,
     vsync: bool,
+    backend: str = "rendercanvas_glfw",
 ) -> WindowPort:
-    backend = _resolve_window_backend()
-    if backend == "rendercanvas_glfw":
+    normalized_backend = _normalize_window_backend(backend)
+    if normalized_backend == "rendercanvas_glfw":
         return create_rendercanvas_window(
             width=int(width),
             height=int(height),
@@ -30,17 +30,16 @@ def create_window_layer(
             max_fps=float(max_fps),
             vsync=bool(vsync),
         )
-    if backend == "direct_glfw":
+    if normalized_backend == "direct_glfw":
         raise RuntimeError(
             "ENGINE_WINDOW_BACKEND=direct_glfw is not supported for production runtime: "
             "current renderer surface contract requires a provider exposing get_context('wgpu'). "
             "Use rendercanvas_glfw or complete a direct wgpu/glfw surface integration path."
         )
-    raise RuntimeError(f"Unsupported ENGINE_WINDOW_BACKEND: {backend!r}")
+    raise RuntimeError(f"Unsupported ENGINE_WINDOW_BACKEND: {normalized_backend!r}")
 
 
-def _resolve_window_backend() -> str:
-    raw = os.getenv("ENGINE_WINDOW_BACKEND", "rendercanvas_glfw")
+def _normalize_window_backend(raw: str) -> str:
     value = str(raw).strip().lower()
     if value in {"rendercanvas", "rendercanvas_glfw", "glfw"}:
         return "rendercanvas_glfw"

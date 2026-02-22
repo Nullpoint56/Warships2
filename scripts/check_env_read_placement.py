@@ -10,6 +10,7 @@ from pathlib import Path
 
 ALLOWED_FILES = {
     "engine/runtime/bootstrap.py",
+    "engine/runtime/config.py",
     "engine/runtime/debug_config.py",
     "engine/diagnostics/config.py",
 }

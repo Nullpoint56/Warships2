@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Literal
 
@@ -89,12 +88,13 @@ _PROFILE_PRESETS: dict[RuntimeProfileName, RuntimeProfile] = {
 }
 
 
-def resolve_runtime_profile_name(default: RuntimeProfileName = "release-like") -> RuntimeProfileName:
-    """Resolve normalized runtime profile name from environment."""
-    raw = os.getenv("ENGINE_RUNTIME_PROFILE")
+def normalize_runtime_profile_name(
+    raw: str | None, default: RuntimeProfileName = "release-like"
+) -> RuntimeProfileName:
+    """Normalize runtime profile name from a raw string."""
     if raw is None:
         return default
-    normalized = raw.strip().lower()
+    normalized = str(raw).strip().lower()
     alias_map: dict[str, RuntimeProfileName] = {
         "dev-debug": "dev-debug",
         "dev_debug": "dev-debug",
@@ -110,10 +110,25 @@ def resolve_runtime_profile_name(default: RuntimeProfileName = "release-like") -
     return alias_map.get(normalized, default)
 
 
-def resolve_runtime_profile(default: RuntimeProfileName = "release-like") -> RuntimeProfile:
+def resolve_runtime_profile_name(default: RuntimeProfileName = "release-like") -> RuntimeProfileName:
+    """Resolve runtime profile name without environment lookup."""
+    return default
+
+
+def resolve_runtime_profile(
+    default: RuntimeProfileName = "release-like",
+    *,
+    profile_name: RuntimeProfileName | None = None,
+) -> RuntimeProfile:
     """Return full runtime profile defaults."""
-    name = resolve_runtime_profile_name(default=default)
+    name = profile_name or default
     return _PROFILE_PRESETS[name]
 
 
-__all__ = ["RuntimeProfile", "RuntimeProfileName", "resolve_runtime_profile", "resolve_runtime_profile_name"]
+__all__ = [
+    "RuntimeProfile",
+    "RuntimeProfileName",
+    "normalize_runtime_profile_name",
+    "resolve_runtime_profile",
+    "resolve_runtime_profile_name",
+]

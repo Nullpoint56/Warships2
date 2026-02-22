@@ -40,6 +40,16 @@ def _const_str(node: ast.AST | None) -> str | None:
     return None
 
 
+def _first_const_str(args: list[ast.expr], *, max_index: int = 1) -> str | None:
+    for index, node in enumerate(args):
+        if index > max_index:
+            break
+        value = _const_str(node)
+        if value is not None:
+            return value
+    return None
+
+
 def _extract_flag_uses(path: Path) -> list[FlagUse]:
     src = path.read_text(encoding="utf-8")
     tree = ast.parse(src, filename=str(path))
@@ -49,8 +59,19 @@ def _extract_flag_uses(path: Path) -> list[FlagUse]:
         if not isinstance(node, ast.Call):
             continue
         name = _call_name(node)
-        if name in {"os.getenv", "_flag", "_env_flag"}:
-            arg0 = _const_str(node.args[0]) if node.args else None
+        if name in {
+            "os.getenv",
+            "_flag",
+            "_env_flag",
+            "_int",
+            "_env_int",
+            "_float",
+            "_env_float",
+            "_text",
+            "_csv",
+            "_raw",
+        }:
+            arg0 = _first_const_str(node.args)
             if arg0 and ENV_NAME_RE.match(arg0):
                 uses.append(FlagUse(name=arg0, file=path.as_posix(), line=node.lineno))
         elif name == "get":
@@ -152,4 +173,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

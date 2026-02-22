@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 
 from engine.api.app_port import EngineAppPort, InteractionPlanView
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
@@ -20,6 +19,7 @@ from engine.api.ui_primitives import (
     route_non_modal_key_event,
 )
 from engine.runtime.commands import RuntimeCommandMap
+from engine.runtime.config import get_runtime_config
 from engine.runtime.ui_space import UISpaceTransform, resolve_ui_space_transform
 
 
@@ -35,12 +35,7 @@ class EngineUIFramework:
             renderer=renderer,
         )
         self._modal_state = ModalInputState()
-        self._trace_input = os.getenv("ENGINE_INPUT_TRACE_ENABLED", "0").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
+        self._trace_input = bool(get_runtime_config().input.trace_enabled)
         self._trace_log = logging.getLogger("engine.inputtrace")
 
     def sync_ui_state(self) -> None:

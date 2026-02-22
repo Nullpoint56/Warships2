@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, field
 import logging
-import os
 import time
 from typing import Any, cast
 
@@ -19,6 +18,7 @@ from engine.api.window import (
     WindowPort,
     WindowResizeEvent,
 )
+from engine.runtime.config import get_runtime_config
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:
@@ -134,14 +134,12 @@ class RenderCanvasWindow(WindowPort):
     _resize_redraw_skipped_total: int = field(default=0, repr=False)
 
     def __post_init__(self) -> None:
-        self._debug_events = (
-            os.getenv("ENGINE_WINDOW_EVENTS_TRACE_ENABLED", "0").strip().lower()
-            in {"1", "true", "yes", "on"}
-        )
+        runtime_config = get_runtime_config()
+        self._debug_events = bool(runtime_config.window.events_trace_enabled)
         self._resize_redraw_min_interval_s = (
             max(
                 0.0,
-                _env_float("ENGINE_WINDOW_RESIZE_REDRAW_MIN_INTERVAL_MS", 16.0),
+                float(runtime_config.window.resize_redraw_min_interval_ms),
             )
             / 1000.0
         )
@@ -479,16 +477,6 @@ def _is_pointer_type_match(raw_type: str, expected_type: str) -> bool:
     }
     allowed = aliases.get(expected_type, (expected_type,))
     return raw_type in allowed
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return float(default)
-    try:
-        return float(raw.strip())
-    except ValueError:
-        return float(default)
 
 
 def _install_wgpu_physical_size_guard() -> None:

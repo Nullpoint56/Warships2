@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
@@ -13,6 +12,7 @@ from engine.api.render_snapshot import (
     RenderPassSnapshot,
     RenderSnapshot,
 )
+from engine.runtime.config import get_runtime_config
 
 _SCALE_CACHE_MAX = 20_000
 _SCALED_COMMAND_CACHE: dict[
@@ -121,23 +121,18 @@ def _resolve_engine_design_resolution(renderer: RenderAPI) -> tuple[float, float
                 height = 0.0
             if width > 0.0 and height > 0.0:
                 return (width, height)
-    return _resolve_design_resolution_from_env()
+    return _resolve_design_resolution_from_config()
 
 
-def _resolve_design_resolution_from_env() -> tuple[float, float]:
-    raw = os.getenv("ENGINE_UI_RESOLUTION", "").strip().lower()
-    if raw:
-        normalized = raw.replace(" ", "")
-        for sep in ("x", ",", ":"):
-            if sep in normalized:
-                left, right = normalized.split(sep, 1)
-                try:
-                    width = float(max(1, int(left)))
-                    height = float(max(1, int(right)))
-                except ValueError:
-                    break
-                return (width, height)
-    return (1200.0, 720.0)
+def _resolve_design_resolution_from_config() -> tuple[float, float]:
+    runtime_config = get_runtime_config()
+    resolution = runtime_config.render.ui_resolution
+    if resolution is not None:
+        return (float(resolution[0]), float(resolution[1]))
+    return (
+        float(runtime_config.render.ui_design_width),
+        float(runtime_config.render.ui_design_height),
+    )
 
 
 class _ScaledRenderAPI:

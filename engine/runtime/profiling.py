@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from engine.diagnostics.json_codec import dumps_text
+from engine.runtime.config import get_runtime_config
 from engine.runtime.metrics import MetricsSnapshot
 
 _RSS_PROVIDER: str | None = None
@@ -55,26 +56,19 @@ class FrameProfiler:
     _capture_warmup_frames: int = 0
 
     def __post_init__(self) -> None:
+        profiling_config = get_runtime_config().profiling
         self._sampling_n = max(1, int(self.sampling_n))
-        self._include_system_timings = _env_flag("ENGINE_PROFILING_INCLUDE_SYSTEM_TIMINGS", False)
-        self._include_event_topics = _env_flag("ENGINE_PROFILING_INCLUDE_EVENT_TOPICS", False)
-        self._system_top_n = max(1, _env_int("ENGINE_PROFILING_SYSTEM_TOP_N", 5))
-        self._capture_enabled = _env_flag("ENGINE_PROFILING_CAPTURE_ENABLED", False)
-        self._capture_frames = max(1, _env_int("ENGINE_PROFILING_CAPTURE_FRAMES", 180))
-        self._capture_top_n = max(10, _env_int("ENGINE_PROFILING_CAPTURE_TOP_N", 80))
-        self._capture_sort = _env_str("ENGINE_PROFILING_CAPTURE_SORT", "cumtime").strip().lower()
-        self._capture_export_dir = Path(
-            _env_str("ENGINE_PROFILING_CAPTURE_EXPORT_DIR", "tools/data/profiles")
-        )
-        self._capture_tracemalloc_depth = max(
-            1, _env_int("ENGINE_PROFILING_CAPTURE_TRACEMALLOC_DEPTH", 25)
-        )
-        self._capture_timeline_max = max(
-            60, _env_int("ENGINE_PROFILING_CAPTURE_TIMELINE_MAX", 600)
-        )
-        self._capture_warmup_frames = max(
-            10, _env_int("ENGINE_PROFILING_CAPTURE_WARMUP_FRAMES", 30)
-        )
+        self._include_system_timings = bool(profiling_config.include_system_timings)
+        self._include_event_topics = bool(profiling_config.include_event_topics)
+        self._system_top_n = max(1, int(profiling_config.system_top_n))
+        self._capture_enabled = bool(profiling_config.capture_enabled)
+        self._capture_frames = max(1, int(profiling_config.capture_frames))
+        self._capture_top_n = max(10, int(profiling_config.capture_top_n))
+        self._capture_sort = str(profiling_config.capture_sort).strip().lower()
+        self._capture_export_dir = Path(str(profiling_config.capture_export_dir))
+        self._capture_tracemalloc_depth = max(1, int(profiling_config.capture_tracemalloc_depth))
+        self._capture_timeline_max = max(60, int(profiling_config.capture_timeline_max))
+        self._capture_warmup_frames = max(10, int(profiling_config.capture_warmup_frames))
         self._capture_frame_samples = []
         if self.enabled:
             tracemalloc.start(max(1, self._capture_tracemalloc_depth))
@@ -591,35 +585,6 @@ def _process_rss_mb() -> float | None:
             return None
 
     return None
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return bool(default)
-    value = str(raw).strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    return bool(default)
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return int(default)
-    try:
-        return int(raw)
-    except ValueError:
-        return int(default)
-
-
-def _env_str(name: str, default: str) -> str:
-    raw = os.getenv(name)
-    if raw is None:
-        return str(default)
-    return str(raw)
 
 
 def _float_or(value: object, default: float) -> float:

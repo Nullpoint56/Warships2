@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-import os
+from contextvars import ContextVar
 from dataclasses import dataclass
 
 from engine.api.render import RenderAPI
@@ -41,15 +41,16 @@ class UIStyleTokens:
 
 
 DEFAULT_UI_STYLE_TOKENS = UIStyleTokens()
+_STYLE_EFFECTS_ENABLED: ContextVar[bool] = ContextVar("engine_ui_style_effects_enabled", default=True)
+
+
+def configure_style_effects(*, enabled: bool) -> None:
+    """Set global style-effects switch resolved by runtime configuration."""
+    _STYLE_EFFECTS_ENABLED.set(bool(enabled))
 
 
 def _style_effects_enabled() -> bool:
-    return os.getenv("ENGINE_UI_STYLE_EFFECTS", "1").strip().lower() in {
-        "1",
-        "true",
-        "yes",
-        "on",
-    }
+    return bool(_STYLE_EFFECTS_ENABLED.get())
 
 
 def draw_stroke_rect(

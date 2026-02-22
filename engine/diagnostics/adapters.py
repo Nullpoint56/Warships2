@@ -2,20 +2,12 @@
 
 from __future__ import annotations
 
-import os
 from typing import Any
 
+from engine.diagnostics.config import load_diagnostics_config
 from engine.diagnostics.hub import DiagnosticHub
 
-_EMIT_SYSTEM_TIMINGS = os.getenv("ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS", "0").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
-_EMIT_EVENT_TOPIC_BREAKDOWN = os.getenv(
-    "ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN", "0"
-).strip().lower() in {"1", "true", "yes", "on"}
+_DIAGNOSTICS_ADAPTER_CONFIG = load_diagnostics_config()
 
 
 def emit_frame_metrics(hub: DiagnosticHub, snapshot: Any) -> None:
@@ -48,11 +40,11 @@ def emit_frame_metrics(hub: DiagnosticHub, snapshot: Any) -> None:
         value=frame.event_publish_count,
         metadata=(
             {"by_topic": dict(frame.event_publish_by_topic)}
-            if _EMIT_EVENT_TOPIC_BREAKDOWN
+            if _DIAGNOSTICS_ADAPTER_CONFIG.emit_event_topic_breakdown
             else None
         ),
     )
-    if _EMIT_SYSTEM_TIMINGS and frame.system_timings_ms:
+    if _DIAGNOSTICS_ADAPTER_CONFIG.emit_system_timings and frame.system_timings_ms:
         for system_id, elapsed_ms in frame.system_timings_ms.items():
             hub.emit_fast(
                 category="system",

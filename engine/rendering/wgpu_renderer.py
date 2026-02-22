@@ -19,7 +19,7 @@ from engine.api.window import SurfaceHandle, WindowResizeEvent
 from engine.rendering.scene_runtime import resolve_preserve_aspect
 from engine.rendering.scene_viewport import to_design_space as viewport_to_design_space
 from engine.rendering.scene_viewport import viewport_transform
-from engine.runtime_profile import resolve_runtime_profile
+from engine.runtime.config import RuntimeConfig, get_runtime_config, set_runtime_config
 
 if TYPE_CHECKING:
     from engine.diagnostics.hub import DiagnosticHub
@@ -205,6 +205,7 @@ class WgpuRenderer:
     surface: SurfaceHandle | None = None
     width: int = 1200
     height: int = 720
+    runtime_config: RuntimeConfig | None = None
     _backend_factory: Callable[[SurfaceHandle | None], _Backend] | None = None
     _backend: _Backend = field(init=False)
     _draw_callback: Callable[[], None] | None = field(init=False, default=None)
@@ -247,32 +248,38 @@ class WgpuRenderer:
 
     def __post_init__(self) -> None:
         self._owner_thread_id = int(threading.get_ident())
-        profile = resolve_runtime_profile()
+        runtime_config = self.runtime_config or get_runtime_config()
+        if self.runtime_config is not None:
+            set_runtime_config(runtime_config)
         design_w, design_h = _resolve_ui_design_dimensions(
             default_width=int(_DEFAULT_UI_DESIGN_WIDTH),
             default_height=int(_DEFAULT_UI_DESIGN_HEIGHT),
+            runtime_config=runtime_config,
         )
         self._design_width = int(design_w)
         self._design_height = int(design_h)
-        self._preserve_aspect = resolve_preserve_aspect()
+        self._preserve_aspect = resolve_preserve_aspect(runtime_config)
         self._diag_stage_events_enabled = _env_flag(
             "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED", True
         )
         self._diag_stage_sampling_n = _env_int(
             "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N",
-            profile.diagnostics_default_sampling_n,
+            runtime_config.profile.diagnostics_default_sampling_n,
             minimum=1,
         )
         self._diag_profile_sampling_n = _env_int(
             "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N",
-            profile.diagnostics_default_sampling_n,
+            runtime_config.profile.diagnostics_default_sampling_n,
             minimum=1,
         )
         self._auto_static_min_stable_frames = _env_int(
             "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES", 3, minimum=1
         )
         self._canvas = self.surface.provider if self.surface is not None else None
-        factory = self._backend_factory or _create_wgpu_backend
+        if self._backend_factory is not None:
+            factory = self._backend_factory
+        else:
+            factory = lambda surface: _create_wgpu_backend(surface, runtime_config=runtime_config)
         self._backend = factory(self.surface)
         self._projection = _ortho_projection(width=float(self.width), height=float(self.height))
 
@@ -1020,8 +1027,10 @@ def _command_to_packet(command: RenderCommand) -> _DrawPacket:
     )
 
 
-def _create_wgpu_backend(surface: SurfaceHandle | None) -> _Backend:
-    return _WgpuBackend(surface=surface)
+def _create_wgpu_backend(
+    surface: SurfaceHandle | None, *, runtime_config: RuntimeConfig | None = None
+) -> _Backend:
+    return _WgpuBackend(surface=surface, runtime_config=runtime_config)
 
 
 def _command_sort_key(command: RenderCommand, ordinal: int) -> tuple[object, ...]:
@@ -1680,6 +1689,7 @@ class _WgpuBackend:
     """Backend initialization scaffold used during migration."""
 
     surface: SurfaceHandle | None = None
+    runtime_config: RuntimeConfig | None = None
     _title: str = field(init=False, default="")
     _wgpu_loaded: bool = field(init=False, default=False)
     _wgpu: object = field(init=False)
@@ -1837,21 +1847,20 @@ class _WgpuBackend:
     _cffi_miss_total_last: int = field(init=False, default=0)
 
     def __post_init__(self) -> None:
-        self._preserve_aspect = resolve_preserve_aspect()
+        runtime_config = self.runtime_config or get_runtime_config()
+        if self.runtime_config is not None:
+            set_runtime_config(runtime_config)
+        self._preserve_aspect = resolve_preserve_aspect(runtime_config)
         design_w, design_h = _resolve_ui_design_dimensions(
             default_width=int(_DEFAULT_UI_DESIGN_WIDTH),
             default_height=int(_DEFAULT_UI_DESIGN_HEIGHT),
+            runtime_config=runtime_config,
         )
         self._design_width = int(design_w)
         self._design_height = int(design_h)
-        self._internal_render_scale = _env_float(
-            "ENGINE_RENDER_INTERNAL_SCALE",
-            1.0,
-            minimum=0.1,
-        )
-        self._cffi_miss_diagnostics_enabled = _env_flag(
-            "ENGINE_WGPU_CFFI_MISS_DIAGNOSTICS_ENABLED",
-            False,
+        self._internal_render_scale = float(runtime_config.renderer.internal_scale)
+        self._cffi_miss_diagnostics_enabled = bool(
+            runtime_config.renderer.cffi_miss_diagnostics_enabled
         )
         if _NP is None:
             raise WgpuInitError(
@@ -1873,20 +1882,15 @@ class _WgpuBackend:
                     "requirement": "Phase 9 native text shaping path requires uharfbuzz",
                 },
             )
-        self._recovery_failure_streak_threshold = _env_int(
-            "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD",
-            3,
-            minimum=1,
+        self._recovery_failure_streak_threshold = max(
+            1, int(runtime_config.renderer.recovery_failure_streak_threshold)
         )
-        self._recovery_cooldown_s = _env_float(
-            "ENGINE_WGPU_RECOVERY_COOLDOWN_MS",
-            50.0,
-            minimum=0.0,
-        ) / 1000.0
-        self._reconfigure_retry_limit_max = _env_int(
-            "ENGINE_WGPU_RECOVERY_MAX_RETRY_LIMIT",
-            4,
-            minimum=max(2, int(self._reconfigure_retry_limit)),
+        self._recovery_cooldown_s = (
+            max(0.0, float(runtime_config.renderer.recovery_cooldown_ms)) / 1000.0
+        )
+        self._reconfigure_retry_limit_max = max(
+            max(2, int(self._reconfigure_retry_limit)),
+            int(runtime_config.renderer.recovery_max_retry_limit),
         )
         self._window_width = int(max(1, self._target_width))
         self._window_height = int(max(1, self._target_height))
@@ -1894,15 +1898,11 @@ class _WgpuBackend:
             self._window_width,
             self._window_height,
         )
-        self._static_bundle_min_draw_calls = _env_int(
-            "ENGINE_RENDER_STATIC_BUNDLE_MIN_DRAWS",
-            2,
-            minimum=1,
+        self._static_bundle_min_draw_calls = max(
+            1, int(runtime_config.renderer.static_bundle_min_draws)
         )
-        self._static_pass_expand_cache_max = _env_int(
-            "ENGINE_RENDER_STATIC_PASS_EXPAND_CACHE_MAX",
-            512,
-            minimum=64,
+        self._static_pass_expand_cache_max = max(
+            64, int(runtime_config.renderer.static_pass_expand_cache_max)
         )
         try:
             import wgpu
@@ -1927,7 +1927,7 @@ class _WgpuBackend:
             self._adapter, self._selected_backend = self._request_adapter()
             self._adapter_info = self._extract_adapter_info(self._adapter)
             self._device = self._request_device(self._adapter)
-            self._font_path = _resolve_system_font_path()
+            self._font_path = _resolve_system_font_path(runtime_config=runtime_config)
         except Exception as exc:
             details: dict[str, object] = {
                 "selected_backend": self._selected_backend,
@@ -2772,14 +2772,12 @@ class _WgpuBackend:
         self._text_atlas_dirty = False
 
     def _resolve_present_mode(self) -> str:
-        raw_supported = os.getenv("ENGINE_WGPU_PRESENT_MODES", "").strip().lower()
-        if raw_supported:
-            supported = tuple(item.strip() for item in raw_supported.split(",") if item.strip())
-        else:
+        runtime_config = get_runtime_config()
+        supported = tuple(item.strip().lower() for item in runtime_config.renderer.present_modes if item.strip())
+        if not supported:
             supported = ("fifo", "mailbox", "immediate")
         self._present_mode_supported = tuple(supported)
-        vsync_raw = os.getenv("ENGINE_RENDER_VSYNC", "1").strip().lower()
-        vsync = vsync_raw in {"1", "true", "yes", "on"}
+        vsync = bool(runtime_config.render.vsync)
         self._vsync_enabled = bool(vsync)
         if vsync:
             preferred = ("fifo", "mailbox", "immediate")
@@ -4210,7 +4208,7 @@ class _WgpuBackend:
             return None
 
     def _prime_native_paths(self) -> None:
-        if not _env_flag("ENGINE_WGPU_PRIME_NATIVE_PATHS", True):
+        if not get_runtime_config().renderer.prime_native_paths:
             return
         write_buffer = getattr(self._queue, "write_buffer", None)
         if not callable(write_buffer):
@@ -4234,32 +4232,19 @@ class _WgpuBackend:
             return
 
     def _prime_text_paths(self) -> None:
-        if not _env_flag("ENGINE_WGPU_TEXT_PREWARM_ENABLED", False):
+        renderer_config = get_runtime_config().renderer
+        if not renderer_config.text_prewarm_enabled:
             return
         if not self._supports_text_atlas():
             return
-        raw_sizes = os.getenv("ENGINE_WGPU_TEXT_PREWARM_SIZES", "14,18,24").strip()
-        sizes: list[int] = []
-        if raw_sizes:
-            for part in raw_sizes.split(","):
-                try:
-                    sizes.append(max(6, int(part.strip())))
-                except ValueError:
-                    continue
+        sizes = [int(value) for value in renderer_config.text_prewarm_sizes]
         if not sizes:
             sizes = [14, 18, 24]
-        raw_chars = os.getenv(
-            "ENGINE_WGPU_TEXT_PREWARM_CHARS",
-            "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789 .,:;!?-_()/[]{}+#",
-        )
-        raw_labels = os.getenv(
-            "ENGINE_WGPU_TEXT_PREWARM_LABELS",
-            "New Game|Resume|Options|Back|Start|Preset|Difficulty|Random Fleet|Generate Random Fleet",
-        )
-        max_chars = _env_int("ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS", 96, minimum=8)
-        seed_text = str(raw_chars)[: int(max_chars)].strip()
+        seed_text = str(renderer_config.text_prewarm_chars)[
+            : int(renderer_config.text_prewarm_max_chars)
+        ].strip()
         labels: list[str] = []
-        for label in str(raw_labels).split("|"):
+        for label in renderer_config.text_prewarm_labels:
             value = label.strip()
             if value:
                 labels.append(value)
@@ -4282,9 +4267,10 @@ class _WgpuBackend:
             return
 
     def _prime_startup_render_paths(self) -> None:
-        if not _env_flag("ENGINE_WGPU_STARTUP_PREWARM_ENABLED", False):
+        renderer_config = get_runtime_config().renderer
+        if not renderer_config.startup_prewarm_enabled:
             return
-        frames = _env_int("ENGINE_WGPU_STARTUP_PREWARM_FRAMES", 1, minimum=1)
+        frames = max(1, int(renderer_config.startup_prewarm_frames))
         packets = self._startup_prewarm_packets()
         if not packets:
             return
@@ -4768,43 +4754,52 @@ def _pack_f32_bytes(values: list[float]) -> bytes:
 
 
 def _resolve_backend_priority() -> tuple[str, ...]:
-    raw = os.getenv("ENGINE_WGPU_BACKENDS", "").strip()
-    if not raw:
-        return ("vulkan", "metal", "dx12")
-    values = tuple(
-        item.strip().lower()
-        for item in raw.split(",")
-        if item.strip()
-    )
+    values = tuple(item.strip().lower() for item in get_runtime_config().bootstrap.wgpu_backends)
     return values or ("vulkan", "metal", "dx12")
 
 
 def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return bool(default)
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    runtime_config = get_runtime_config()
+    mapping: dict[str, bool] = {
+        "ENGINE_DIAGNOSTICS_RENDER_STAGE_EVENTS_ENABLED": runtime_config.renderer.diag_stage_events_enabled,
+        "ENGINE_WGPU_PRIME_NATIVE_PATHS": runtime_config.renderer.prime_native_paths,
+        "ENGINE_WGPU_TEXT_PREWARM_ENABLED": runtime_config.renderer.text_prewarm_enabled,
+        "ENGINE_WGPU_STARTUP_PREWARM_ENABLED": runtime_config.renderer.startup_prewarm_enabled,
+        "ENGINE_WGPU_CFFI_FASTPATH_ENABLED": True,
+        "ENGINE_WGPU_CFFI_PREWARM_ENABLED": True,
+    }
+    return bool(mapping.get(name, bool(default)))
 
 
 def _env_int(name: str, default: int, *, minimum: int = 1) -> int:
-    raw = os.getenv(name)
-    if raw is None:
-        return max(minimum, int(default))
-    try:
-        value = int(raw.strip())
-    except ValueError:
-        value = int(default)
+    runtime_config = get_runtime_config()
+    mapping: dict[str, int] = {
+        "ENGINE_DIAGNOSTICS_RENDER_STAGE_SAMPLING_N": runtime_config.renderer.diag_stage_sampling_n,
+        "ENGINE_DIAGNOSTICS_RENDER_PROFILE_SAMPLING_N": runtime_config.renderer.diag_profile_sampling_n,
+        "ENGINE_RENDER_AUTO_STATIC_MIN_STABLE_FRAMES": runtime_config.renderer.auto_static_min_stable_frames,
+        "ENGINE_WGPU_TEXT_PREWARM_MAX_CHARS": runtime_config.renderer.text_prewarm_max_chars,
+        "ENGINE_WGPU_STARTUP_PREWARM_FRAMES": runtime_config.renderer.startup_prewarm_frames,
+        "ENGINE_UI_DESIGN_WIDTH": runtime_config.render.ui_design_width,
+        "ENGINE_UI_DESIGN_HEIGHT": runtime_config.render.ui_design_height,
+        "ENGINE_WGPU_RECOVERY_FAILURE_STREAK_THRESHOLD": runtime_config.renderer.recovery_failure_streak_threshold,
+        "ENGINE_WGPU_RECOVERY_MAX_RETRY_LIMIT": runtime_config.renderer.recovery_max_retry_limit,
+        "ENGINE_RENDER_STATIC_BUNDLE_MIN_DRAWS": runtime_config.renderer.static_bundle_min_draws,
+        "ENGINE_RENDER_STATIC_PASS_EXPAND_CACHE_MAX": runtime_config.renderer.static_pass_expand_cache_max,
+        "ENGINE_WGPU_CFFI_FASTPATH_CACHE_MAX": 512,
+        "ENGINE_WGPU_CFFI_PREWARM_MAX_TYPES": 256,
+        "ENGINE_WGPU_CFFI_PREWARM_MAX_LITERALS": 2048,
+    }
+    value = int(mapping.get(name, int(default)))
     return max(minimum, value)
 
 
 def _env_float(name: str, default: float, *, minimum: float = 0.0) -> float:
-    raw = os.getenv(name)
-    if raw is None:
-        return max(float(minimum), float(default))
-    try:
-        value = float(raw.strip())
-    except ValueError:
-        value = float(default)
+    runtime_config = get_runtime_config()
+    mapping: dict[str, float] = {
+        "ENGINE_RENDER_INTERNAL_SCALE": runtime_config.renderer.internal_scale,
+        "ENGINE_WGPU_RECOVERY_COOLDOWN_MS": runtime_config.renderer.recovery_cooldown_ms,
+    }
+    value = float(mapping.get(name, float(default)))
     return max(float(minimum), float(value))
 
 
@@ -4823,27 +4818,22 @@ def _as_int(value: object, default: int = 0) -> int:
     return int(default)
 
 
-def _resolve_ui_design_dimensions(*, default_width: int, default_height: int) -> tuple[int, int]:
-    raw = os.getenv("ENGINE_UI_RESOLUTION", "").strip().lower()
-    if raw:
-        normalized = raw.replace(" ", "")
-        for sep in ("x", ",", ":"):
-            if sep in normalized:
-                left, right = normalized.split(sep, 1)
-                try:
-                    width = max(1, int(left))
-                    height = max(1, int(right))
-                except ValueError:
-                    break
-                return (width, height)
-    design_w = _env_int("ENGINE_UI_DESIGN_WIDTH", int(default_width), minimum=1)
-    design_h = _env_int("ENGINE_UI_DESIGN_HEIGHT", int(default_height), minimum=1)
-    return (int(design_w), int(design_h))
+def _resolve_ui_design_dimensions(
+    *, default_width: int, default_height: int, runtime_config: RuntimeConfig | None = None
+) -> tuple[int, int]:
+    config = runtime_config or get_runtime_config()
+    if config.render.ui_resolution is not None:
+        return (int(config.render.ui_resolution[0]), int(config.render.ui_resolution[1]))
+    design_w = max(1, int(config.render.ui_design_width))
+    design_h = max(1, int(config.render.ui_design_height))
+    if design_w <= 0 or design_h <= 0:
+        return (max(1, int(default_width)), max(1, int(default_height)))
+    return (design_w, design_h)
 
 
-def _resolve_system_font_path() -> str:
+def _resolve_system_font_path(*, runtime_config: RuntimeConfig | None = None) -> str:
     checked: list[str] = []
-    for candidate in _iter_system_font_candidates():
+    for candidate in _iter_system_font_candidates(runtime_config=runtime_config):
         normalized = os.path.normpath(candidate)
         checked.append(normalized)
         if os.path.isfile(normalized):
@@ -4858,16 +4848,11 @@ def _resolve_system_font_path() -> str:
     )
 
 
-def _iter_system_font_candidates() -> tuple[str, ...]:
+def _iter_system_font_candidates(*, runtime_config: RuntimeConfig | None = None) -> tuple[str, ...]:
     candidates: list[str] = []
-    env_value = os.getenv("ENGINE_WGPU_FONT_PATHS", "").strip()
-    if env_value:
-        # Accept explicit Windows-style ';' separator even on POSIX CI.
-        separator = ";" if ";" in env_value else os.pathsep
-        for raw in env_value.split(separator):
-            item = raw.strip()
-            if item:
-                candidates.append(item)
+    config = runtime_config or get_runtime_config()
+    if config.renderer.font_paths:
+        candidates.extend(str(item) for item in config.renderer.font_paths if str(item).strip())
         return tuple(candidates)
     candidates.extend(_platform_font_file_candidates())
     for directory in _platform_font_directories():

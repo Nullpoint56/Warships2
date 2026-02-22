@@ -613,7 +613,7 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 
 1. Static track
 - `S1`: `completed`
-- `S2`: `not_started`
+- `S2`: `completed`
 - `S3`: `not_started`
 - `S4`: `not_started`
 - `S5`: `not_started`
@@ -625,16 +625,15 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - None
 
 3. Current focus
-- Prepare `S2` config-ownership centralization implementation.
+- Prepare `S3` protocol boundary hardening and reflection-removal implementation.
 
 4. Last completed step
-- `S1` completed with artifacts under:
-- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_183100_S1/`
+- `S2` completed with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_194137_S2/`
 - Key outcomes:
-- `check_public_api_surface`: pass after baseline sync and approved surface curation.
-- `check_feature_flag_registry`: pass (`WARSHIPS_DEBUG_UI` read removed from engine runtime).
-- `check_barrel_exports`: runtime mixed-layer barrel violation removed; API barrel size reduced to budget.
+- centralized config subsystem added: `engine/runtime/config.py`; runtime/render/window env parsing removed from execution modules.
+- `check_env_read_placement`: pass (`S2_01_env_read_placement.txt`).
 - `lint-imports`: pass (`3 kept, 0 broken`).
 - `mypy --strict`: pass.
-- Remaining non-S1 failure observed in verification set:
-- `check_env_read_placement`: still failing and deferred to `S2`.
+- Additional follow-up signal (not an `S2` completion gate):
+- `check_feature_flag_registry`: fail after checker enhancement (`scripts/check_feature_flag_registry.py`) now detects `_text/_int/_float/_csv/_raw` helper usage and surfaced missing metadata entries in `tools/quality/budgets/feature_flags_registry.json` (`S2_04_feature_flag_registry.txt`).

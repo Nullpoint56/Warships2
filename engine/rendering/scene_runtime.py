@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from typing import Any
 
-from engine.runtime_profile import resolve_runtime_profile
+from engine.runtime.config import RuntimeConfig, get_runtime_config
 from engine.window.rendercanvas_glfw import (
     apply_startup_window_mode as _apply_startup_window_mode,
     run_backend_loop as _run_backend_loop,
@@ -22,38 +21,33 @@ class RenderLoopConfig:
     fps_cap: float = 60.0
 
 
-def resolve_render_vsync() -> bool:
-    """Read render present sync policy from environment."""
-    profile = resolve_runtime_profile()
-    raw = os.getenv("ENGINE_RENDER_VSYNC", "1" if profile.render_vsync else "0").strip().lower()
-    return raw in {"1", "true", "yes", "on"}
+def resolve_render_vsync(config: RuntimeConfig | None = None) -> bool:
+    """Resolve render present sync policy from centralized runtime config."""
+    runtime_config = config or get_runtime_config()
+    return bool(runtime_config.render.vsync)
 
 
-def resolve_render_loop_config() -> RenderLoopConfig:
-    """Read render loop capability settings from environment."""
-    profile = resolve_runtime_profile()
-    mode = os.getenv("ENGINE_RENDER_LOOP_MODE", profile.render_loop_mode).strip().lower()
-    if mode not in {"on_demand", "continuous"}:
-        mode = profile.render_loop_mode
-    try:
-        fps_cap = float(os.getenv("ENGINE_RENDER_FPS_CAP", str(profile.render_fps_cap)))
-    except ValueError:
-        fps_cap = profile.render_fps_cap
+def resolve_render_loop_config(config: RuntimeConfig | None = None) -> RenderLoopConfig:
+    """Resolve render loop capability settings from centralized runtime config."""
+    runtime_config = config or get_runtime_config()
+    mode = runtime_config.render.loop_mode
+    fps_cap = runtime_config.render.fps_cap
     return RenderLoopConfig(
         mode=mode,
         fps_cap=max(0.0, fps_cap),
     )
 
 
-def resolve_preserve_aspect() -> bool:
-    """Read aspect mode from env and normalize into preserve_aspect flag."""
-    aspect_mode = os.getenv("ENGINE_UI_ASPECT_MODE", "stretch").strip().lower()
-    return aspect_mode in {"contain", "preserve", "fixed"}
+def resolve_preserve_aspect(config: RuntimeConfig | None = None) -> bool:
+    """Resolve preserve-aspect behavior from centralized runtime config."""
+    runtime_config = config or get_runtime_config()
+    return bool(runtime_config.render.preserve_aspect)
 
 
-def resolve_window_mode() -> str:
-    """Read startup window mode from environment."""
-    return os.getenv("ENGINE_WINDOW_MODE", "windowed").strip().lower()
+def resolve_window_mode(config: RuntimeConfig | None = None) -> str:
+    """Resolve startup window mode from centralized runtime config."""
+    runtime_config = config or get_runtime_config()
+    return str(runtime_config.render.window_mode)
 
 
 def apply_startup_window_mode(canvas: Any, window_mode: str) -> None:

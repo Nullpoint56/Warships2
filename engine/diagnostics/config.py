@@ -6,7 +6,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from engine.runtime_profile import resolve_runtime_profile
+from engine.runtime_profile import normalize_runtime_profile_name, resolve_runtime_profile
 
 def _flag(name: str, default: bool) -> bool:
     raw = os.getenv(name)
@@ -50,10 +50,14 @@ class DiagnosticsConfig:
     event_default_sampling_n: int = 1
     event_category_sampling: dict[str, int] = field(default_factory=dict)
     event_category_allowlist: tuple[str, ...] = ()
+    emit_system_timings: bool = False
+    emit_event_topic_breakdown: bool = False
 
 
 def load_diagnostics_config() -> DiagnosticsConfig:
-    profile = resolve_runtime_profile()
+    profile = resolve_runtime_profile(
+        profile_name=normalize_runtime_profile_name(os.getenv("ENGINE_RUNTIME_PROFILE"))
+    )
     mode = _str("ENGINE_DIAGNOSTICS_PROFILING_MODE", profile.diagnostics_profile_mode).lower()
     if mode not in {"off", "light", "timeline", "timeline_sample"}:
         mode = profile.diagnostics_profile_mode
@@ -79,6 +83,8 @@ def load_diagnostics_config() -> DiagnosticsConfig:
         event_default_sampling_n=max(1, _int("ENGINE_DIAGNOSTICS_DEFAULT_SAMPLING_N", profile.diagnostics_default_sampling_n)),
         event_category_sampling=category_sampling,
         event_category_allowlist=category_allowlist,
+        emit_system_timings=_flag("ENGINE_DIAGNOSTICS_EMIT_SYSTEM_TIMINGS", False),
+        emit_event_topic_breakdown=_flag("ENGINE_DIAGNOSTICS_EMIT_EVENT_TOPIC_BREAKDOWN", False),
     )
 
 

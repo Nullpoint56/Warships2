@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -33,6 +32,7 @@ from engine.diagnostics import (
 )
 from engine.diagnostics.json_codec import dumps_text
 from engine.diagnostics.event import DiagnosticEvent
+from engine.runtime.config import RuntimeHostConfig, get_runtime_config
 from engine.runtime.debug_config import enabled_metrics, enabled_overlay, load_debug_config
 from engine.runtime.diagnostics_http import DiagnosticsHttpServer
 from engine.runtime.metrics import MetricsSnapshot, create_metrics_collector
@@ -46,12 +46,6 @@ from engine.ui_runtime.debug_overlay import DebugOverlay
 _LOG = logging.getLogger("engine.runtime")
 _PROFILE_LOG = logging.getLogger("engine.profiling")
 _OVERLAY_TOGGLE_KEY = "f3"
-_PROFILE_LOG_ENABLED = os.getenv("ENGINE_PROFILING_LOG_PAYLOAD_ENABLED", "1").strip().lower() in {
-    "1",
-    "true",
-    "yes",
-    "on",
-}
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +77,10 @@ class EngineHost(HostControl):
         self._scheduler = Scheduler()
         self._render_api = render_api
         self._connected_controller_ids: set[str] = set()
+        runtime_config = get_runtime_config()
+        host_runtime_config = runtime_config.host
+        self._host_runtime_config = host_runtime_config
+        self._profile_log_payload_enabled = bool(host_runtime_config.profile_log_payload_enabled)
         cfg = load_debug_config()
         diag_cfg = load_diagnostics_config()
         self._diag_cfg = diag_cfg
@@ -131,7 +129,7 @@ class EngineHost(HostControl):
         )
         self._replay_recorder = ReplayRecorder(
             enabled=diag_cfg.replay_capture,
-            seed=_resolve_replay_seed(),
+            seed=_resolve_replay_seed(host_runtime_config),
             build=self._runtime_metadata(self._runtime_name),
             hash_interval=diag_cfg.replay_hash_interval,
             hub=self._diagnostics_hub,
@@ -139,9 +137,7 @@ class EngineHost(HostControl):
         self._render_snapshot_exchange: DoubleBufferedSnapshotExchange[RenderSnapshot] = (
             DoubleBufferedSnapshotExchange()
         )
-        self._sanitize_render_snapshot_enabled = _env_flag(
-            "ENGINE_RUNTIME_RENDER_SNAPSHOT_SANITIZE", True
-        )
+        self._sanitize_render_snapshot_enabled = bool(host_runtime_config.render_snapshot_sanitize)
         self._last_snapshot_passes_identity: int = 0
         self._last_sanitized_passes: tuple[RenderPassSnapshot, ...] | None = None
         self._last_scaled_snapshot_passes_identity: int = 0
@@ -451,7 +447,7 @@ class EngineHost(HostControl):
                     tick=self._frame_index,
                     value=profile,
                 )
-                if _PROFILE_LOG_ENABLED:
+                if self._profile_log_payload_enabled:
                     _PROFILE_LOG.info(
                         "frame_profile frame=%d dt_ms=%.3f top=%s",
                         profile["frame_index"],
@@ -553,16 +549,11 @@ class EngineHost(HostControl):
         return {"engine_versions": versions, "game_name": normalized_name}
 
     def _try_start_diagnostics_http(self) -> None:
-        enabled_raw = os.getenv("ENGINE_DIAGNOSTICS_HTTP_ENABLED", "1").strip().lower()
-        if enabled_raw in {"0", "false", "off", "no"}:
+        config = self._host_runtime_config
+        if not config.diagnostics_http_enabled:
             return
-        bind_host = (
-            os.getenv("ENGINE_DIAGNOSTICS_HTTP_HOST", "127.0.0.1").strip() or "127.0.0.1"
-        )
-        try:
-            bind_port = int(os.getenv("ENGINE_DIAGNOSTICS_HTTP_PORT", "8765"))
-        except ValueError:
-            bind_port = 8765
+        bind_host = str(config.diagnostics_http_host).strip() or "127.0.0.1"
+        bind_port = int(config.diagnostics_http_port)
         server = DiagnosticsHttpServer(host_obj=self, bind_host=bind_host, bind_port=bind_port)
         try:
             server.start()
@@ -867,8 +858,8 @@ def _profiling_snapshot_payload(snapshot: object) -> dict[str, object]:
     }
 
 
-def _resolve_replay_seed() -> int | None:
-    raw = os.getenv("WARSHIPS_RNG_SEED", "").strip()
+def _resolve_replay_seed(config: RuntimeHostConfig) -> int | None:
+    raw = str(config.replay_seed or "").strip()
     if not raw:
         return None
     try:
@@ -887,15 +878,3 @@ def _try_state_hash_provider(module: object) -> str | None:
     if isinstance(state_hash, str):
         return state_hash
     return str(state_hash)
-
-
-def _env_flag(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None:
-        return bool(default)
-    value = raw.strip().lower()
-    if value in {"1", "true", "yes", "on"}:
-        return True
-    if value in {"0", "false", "no", "off"}:
-        return False
-    return bool(default)
