@@ -1,0 +1,32 @@
+rules:
+  - id: engine-no-bare-except
+    languages: [python]
+    severity: ERROR
+    message: "Bare except is forbidden by policy."
+    paths:
+      include:
+        - engine/**/*.py
+    pattern: |
+      try:
+        ...
+      except:
+        ...
+
+  - id: engine-no-silent-except-exception
+    languages: [python]
+    severity: ERROR
+    message: "Silent except Exception fallback is forbidden by policy."
+    paths:
+      include:
+        - engine/**/*.py
+    pattern-either:
+      - pattern: |
+          try:
+            ...
+          except Exception:
+            pass
+      - pattern: |
+          try:
+            ...
+          except Exception as $E:
+            pass

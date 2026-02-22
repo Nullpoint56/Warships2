@@ -1,0 +1,29 @@
+[importlinter]
+root_package = engine
+
+[importlinter:contract:api_no_runtime_or_platform]
+name = engine.api cannot import engine.runtime or engine.platform
+type = forbidden
+source_modules =
+    engine.api
+forbidden_modules =
+    engine.runtime
+    engine.platform
+
+[importlinter:contract:domain_no_api]
+name = engine.domain cannot import engine.api
+type = forbidden
+source_modules =
+    engine.domain
+forbidden_modules =
+    engine.api
+
+[importlinter:contract:no_cross_layer_shortcuts]
+name = no cross-layer shortcut imports
+type = layers
+layers =
+    engine.bootstrap
+    engine.api
+    engine.domain
+    engine.runtime
+    engine.platform

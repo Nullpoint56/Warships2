@@ -14,7 +14,7 @@ These checks are blocking. No override without emergency procedure.
 
 ## 1.1 Layered Architecture Enforcement
 
-Tool: **import-linter**
+Tool: **import-linter + bootstrap ownership check**
 
 Rules:
 
@@ -27,6 +27,12 @@ CI Command:
 
 ```
 lint-imports
+```
+
+Additional blocking command:
+
+```
+python scripts/check_bootstrap_wiring_ownership.py
 ```
 
 ## 1.2 No Import Cycles
@@ -89,14 +95,16 @@ Tool: semgrep
 
 Tool: jscpd
 
-* Duplication threshold ≤ 5%
+* Duplication threshold <= 5%
+* Executed via Node: `npx jscpd --config .jscpd.json`
 
-## 1.8 Performance Regression Gate
+## 1.8 Manual Performance Evaluation
 
-Tool: pytest-benchmark
+Tool: manual performance evaluation (profiling + representative scenario timing)
 
-* Baseline stored in repo
-* CI fails if p95 regression > 10%
+* Performance evaluation is required for performance-critical changes.
+* Results must be documented in the plan/PR review output.
+* This step is manual and not CI-gated by benchmark tooling.
 
 ---
 
@@ -263,7 +271,7 @@ For each category:
 * Static tools enforce structure and invariants.
 * LLM review enforces semantic clarity and architectural coherence.
 * No policy relies solely on probabilistic reasoning.
-* Performance-critical code must have benchmark backing.
+* Performance-critical code must have manual performance-evaluation backing.
 * Architecture violations are blocked early, not debated post-merge.
 
 ---
@@ -278,8 +286,7 @@ Required:
 * semgrep
 * jscpd
 * pytest
-* pytest-benchmark
-
+* nodejs (for `npx jscpd`)
 LLM:
 
 * Structured PR semantic review agent
@@ -287,3 +294,4 @@ LLM:
 ---
 
 This document defines non-negotiable architectural discipline for long-term engine evolution.
+

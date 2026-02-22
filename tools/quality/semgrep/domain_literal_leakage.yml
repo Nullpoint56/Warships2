@@ -1,0 +1,9 @@
+rules:
+  - id: engine-domain-title-literal-leakage
+    languages: [python]
+    severity: ERROR
+    message: "Title-specific terminology is forbidden in engine.* by policy."
+    paths:
+      include:
+        - engine/**/*.py
+    pattern-regex: "(?i)\\bwarships\\b"
