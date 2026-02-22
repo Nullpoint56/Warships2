@@ -8,7 +8,7 @@ Each Check finding part contains these fields:
 - Evaluations: Raw output interpretations (very verbose to not miss details)
 - Investigation: Raw output signals are rarely the ones we need to react on. They usually hide deeper issues. Because of that, investigation section is an investigation of why the Raw check signals appeared.
 - Proposed fixes: Investigation reveals root causes, proposed fixes are higher level decisions and documented approaches on how the identified root causes will be fixed.
-- Refactoring Phase-Plan: Proposed fixes will be broken down from high level plans into low level actionable, phase by phase fix executions.
+- Refactoring Phase-Plan: Proposed fixes will be broken down from high level plans into low level actionable, phase by phase fix executions. Phase plans are specific to Static and LLM check execution, and they contain a list of phases with actionable items derived from the specific check type's proposed fixes section.
 
 ## Static Check Findings
 
