@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
+from engine.api.render import RenderAPI
 from engine.api.render_snapshot import RenderCommand, RenderPassSnapshot, RenderSnapshot
 from engine.api.window import SurfaceHandle, WindowResizeEvent
 from engine.rendering.scene_runtime import resolve_preserve_aspect
@@ -199,7 +200,7 @@ class _StaticPassExpandCacheEntry:
 
 
 @dataclass(slots=True)
-class WgpuRenderer:
+class WgpuRenderer(RenderAPI):
     """Renderer scaffold using immutable snapshots and explicit stages."""
 
     surface: SurfaceHandle | None = None

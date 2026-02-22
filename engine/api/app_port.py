@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Protocol, runtime_checkable
 
 
@@ -43,40 +44,50 @@ class ModalWidgetView(Protocol):
     overlay_rect: RectView
 
 
-@runtime_checkable
-class EngineAppPort(Protocol):
+class EngineAppPort(ABC):
     """Contract the engine runtime uses to talk to app-specific logic."""
 
+    @abstractmethod
     def ui_state(self) -> "UIStateView":
         """Return current app UI snapshot."""
 
+    @abstractmethod
     def modal_widget(self) -> ModalWidgetView | None:
         """Return modal widget view-model for runtime input routing."""
 
+    @abstractmethod
     def interaction_plan(self) -> InteractionPlanView:
         """Return interaction plan view-model for runtime input routing."""
 
+    @abstractmethod
     def on_button(self, button_id: str) -> bool:
         """Handle UI button action."""
 
+    @abstractmethod
     def on_cell_click(self, surface_target: str, row: int, col: int) -> bool:
         """Handle cell click action for a named surface target."""
 
+    @abstractmethod
     def on_pointer_move(self, x: float, y: float) -> bool:
         """Handle pointer move."""
 
+    @abstractmethod
     def on_pointer_release(self, x: float, y: float, button: int) -> bool:
         """Handle pointer release."""
 
+    @abstractmethod
     def on_pointer_down(self, x: float, y: float, button: int) -> bool:
         """Handle pointer down."""
 
+    @abstractmethod
     def on_key(self, key: str) -> bool:
         """Handle normalized key press."""
 
+    @abstractmethod
     def on_char(self, value: str) -> bool:
         """Handle character input."""
 
+    @abstractmethod
     def on_wheel(self, x: float, y: float, dy: float) -> bool:
         """Handle wheel input."""
 

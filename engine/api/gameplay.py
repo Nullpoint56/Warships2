@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable, TypeVar
@@ -64,18 +65,21 @@ class StateStore(Protocol[TState]):
         """Return current revision number."""
 
 
-@runtime_checkable
-class UpdateLoop(Protocol):
+class UpdateLoop(ABC):
     """Ordered gameplay update-loop contract."""
 
+    @abstractmethod
     def add_system(self, spec: SystemSpec) -> None:
         """Register system for lifecycle execution."""
 
+    @abstractmethod
     def start(self, context: RuntimeContext) -> None:
         """Start systems in order."""
 
+    @abstractmethod
     def step(self, context: RuntimeContext, delta_seconds: float) -> int:
         """Run one update frame and return number of ticks executed."""
 
+    @abstractmethod
     def shutdown(self, context: RuntimeContext) -> None:
         """Shutdown started systems in reverse order."""

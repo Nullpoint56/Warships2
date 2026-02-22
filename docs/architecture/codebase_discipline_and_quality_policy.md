@@ -74,6 +74,10 @@ python scripts/check_api_runtime_factories.py
 
 Tool: **mypy --strict**
 
+Contract model authority:
+
+* `docs/architecture/engine_api_contract_model_policy.md`
+
 Configuration requirements:
 
 * `strict = true`

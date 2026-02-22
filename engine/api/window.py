@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
@@ -58,46 +59,58 @@ class WindowCloseEvent:
 WindowEvent = WindowResizeEvent | WindowFocusEvent | WindowMinimizeEvent | WindowCloseEvent
 
 
-@runtime_checkable
-class WindowPort(Protocol):
+class WindowPort(ABC):
     """Engine-facing window/event-loop ownership contract."""
 
+    @abstractmethod
     def create_surface(self) -> SurfaceHandle:
         """Create a surface handle used by the renderer backend."""
 
+    @abstractmethod
     def poll_events(self) -> tuple[WindowEvent, ...]:
         """Poll and return normalized window events."""
 
+    @abstractmethod
     def poll_input_events(self) -> tuple[PointerEvent | KeyEvent | WheelEvent, ...]:
         """Poll and return normalized raw input events for input subsystem ingestion."""
 
+    @abstractmethod
     def set_draw_handler(self, draw_callback: Callable[[], None]) -> None:
         """Install backend draw callback when the backend supports callback-driven rendering."""
 
+    @abstractmethod
     def request_draw(self) -> None:
         """Request one redraw from backend/window."""
 
+    @abstractmethod
     def set_title(self, title: str) -> None:
         """Set OS window title."""
 
+    @abstractmethod
     def set_windowed(self, width: int, height: int) -> None:
         """Configure windowed mode with logical size."""
 
+    @abstractmethod
     def set_fullscreen(self) -> None:
         """Configure fullscreen mode."""
 
+    @abstractmethod
     def set_maximized(self) -> None:
         """Configure maximized mode."""
 
+    @abstractmethod
     def run_loop(self) -> None:
         """Run the OS/backend event loop."""
 
+    @abstractmethod
     def stop_loop(self) -> None:
         """Stop the OS/backend event loop when supported."""
 
+    @abstractmethod
     def consume_resize_telemetry(self) -> dict[str, int]:
         """Consume and reset resize telemetry counters for diagnostics emission."""
 
+    @abstractmethod
     def close(self) -> None:
         """Close window and release backend resources."""
 

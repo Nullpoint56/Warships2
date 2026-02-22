@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 from engine.diagnostics.json_codec import dumps_text
 
@@ -20,18 +21,22 @@ class EngineLoggingConfig:
     file_format: str = "json"  # text|json
 
 
-@runtime_checkable
-class LoggerPort(Protocol):
+class LoggerPort(ABC):
     """Minimal logger surface for app/engine callers."""
 
+    @abstractmethod
     def debug(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
+    @abstractmethod
     def info(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
+    @abstractmethod
     def warning(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
+    @abstractmethod
     def error(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
+    @abstractmethod
     def exception(self, message: "LogValue", *args: "LogValue", **kwargs: "LogValue") -> None: ...
 
 

@@ -2,30 +2,36 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import Protocol
 
 
-@runtime_checkable
-class Blackboard(Protocol):
+class Blackboard(ABC):
     """Shared AI context storage contract."""
 
+    @abstractmethod
     def set(self, key: str, value: "BlackboardValue") -> None:
         """Set a value for key."""
 
+    @abstractmethod
     def get(self, key: str) -> "BlackboardValue | None":
         """Get value for key if present."""
 
+    @abstractmethod
     def require(self, key: str) -> "BlackboardValue":
         """Get required value or raise KeyError."""
 
+    @abstractmethod
     def has(self, key: str) -> bool:
         """Return whether key exists."""
 
+    @abstractmethod
     def remove(self, key: str) -> "BlackboardValue | None":
         """Remove key and return previous value if present."""
 
+    @abstractmethod
     def snapshot(self) -> dict[str, "BlackboardValue"]:
         """Return a copy of current blackboard values."""
 
@@ -44,10 +50,10 @@ class DecisionContext:
     observations: dict[str, BlackboardValue]
 
 
-@runtime_checkable
-class Agent(Protocol):
+class Agent(ABC):
     """AI agent contract."""
 
+    @abstractmethod
     def decide(self, context: DecisionContext) -> str:
         """Return next action identifier."""
 

@@ -541,6 +541,89 @@ Depth discipline: rewrite depth is not a reason to defer work. If a phase is too
 - `S3_01_semgrep_protocol_boundary.txt`
 - `S3_02_mypy_strict.txt`
 
+3.a Phase S3.c: Subsystem-role contract model enforcement (ABC migration)
+- Objective:
+- Align `engine.api` subsystem-role contracts with `docs/architecture/engine_api_contract_model_policy.md` by migrating runtime-owned subsystem interfaces from `Protocol` to nominal `ABC` contracts.
+- Targeted signals:
+- Architectural mismatch discovered after policy upgrade: subsystem roles remained structural `Protocol` instead of nominal `ABC`.
+- Executable steps:
+- Reclassify subsystem roles and convert to `ABC`:
+- `engine/api/render.py` (`RenderAPI`)
+- `engine/api/window.py` (`WindowPort`)
+- `engine/api/events.py` (`EventBus`)
+- `engine/api/ui_framework.py` (`UIFramework`)
+- `engine/api/gameplay.py` (`UpdateLoop`)
+- `engine/api/context.py` (`RuntimeContext`)
+- `engine/api/module_graph.py` (`ModuleGraph`)
+- `engine/api/screens.py` (`ScreenStack`)
+- `engine/api/action_dispatch.py` (`ActionDispatcher`)
+- `engine/api/app_port.py` (`EngineAppPort`)
+- Keep capability/data contracts structural per policy (`Protocol`, with `@runtime_checkable` only for capability boundaries).
+- Update concrete implementations to nominally inherit migrated ABC contracts in runtime/sdk/game:
+- `engine/runtime/framework_engine.py`
+- `engine/runtime/module_graph.py`
+- `engine/runtime/screen_stack.py`
+- `engine/runtime/events.py`
+- `engine/runtime/ui_space.py`
+- `engine/runtime/host.py`
+- `engine/gameplay/update_loop.py`
+- `engine/rendering/wgpu_renderer.py`
+- `warships/game/ui/game_view.py`
+- Re-run and serialize:
+- `uv run semgrep --error --config tools/quality/semgrep/protocol_boundary_rules.yml engine`
+- `uv run mypy --strict engine/api engine/runtime engine/sdk engine/gameplay warships/game/app warships/game/ui`
+- `uv run lint-imports`
+- `rg -n "class\\s+\\w+\\((ABC|Protocol)\\)" engine/api`
+- Completion gates:
+- semgrep protocol-boundary rules: pass
+- strict mypy: pass
+- import-linter contracts: pass
+- API contract model scan confirms subsystem roles migrated to `ABC` while data/capability slices remain structural by policy
+- Artifacts:
+- `S3c_01_semgrep_protocol_boundary.txt`
+- `S3c_02_mypy_strict.txt`
+- `S3c_03_lint_imports.txt`
+- `S3c_04_api_contract_model_scan.txt`
+
+3.b Phase S3.d: Final contract classification sweep
+- Objective:
+- Execute full `engine.api` contract classification against `docs/architecture/engine_api_contract_model_policy.md` and close remaining subsystem-role misclassifications.
+- Targeted signals:
+- residual subsystem-role protocols remained in AI/assets/commands/interaction/logging/composition boundary surfaces after S3.c.
+- Executable steps:
+- Convert remaining subsystem-role contracts to nominal `ABC`:
+- `engine/api/ai.py` (`Blackboard`, `Agent`)
+- `engine/api/assets.py` (`AssetRegistry`)
+- `engine/api/commands.py` (`CommandMap`)
+- `engine/api/interaction_modes.py` (`InteractionModeMachine`)
+- `engine/api/logging.py` (`LoggerPort`)
+- `engine/api/composition.py` (`ServiceResolver`, `ServiceBinder`)
+- Remove unnecessary `@runtime_checkable` from non-capability opaque boundary placeholders (`ControllerPort`, `FrameworkPort`, `ViewPort`).
+- Align concrete implementations to explicit ABC inheritance:
+- `engine/ai/blackboard.py`
+- `engine/ai/agent.py`
+- `engine/assets/registry.py`
+- `engine/runtime/commands.py`
+- `engine/runtime/interaction_modes.py`
+- `engine/runtime/__init__.py` (runtime command export alignment)
+- Re-run and serialize:
+- `uv run mypy --strict engine/api engine/runtime engine/sdk engine/gameplay engine/assets engine/ai warships/game`
+- `uv run semgrep --error --config tools/quality/semgrep/protocol_boundary_rules.yml engine`
+- `uv run lint-imports`
+- `rg -n "class\\s+\\w+\\((ABC|Protocol)\\)" engine/api`
+- `rg -n "@runtime_checkable" engine/api -A 1`
+- Completion gates:
+- strict mypy: pass
+- protocol-boundary semgrep: pass
+- import-linter contracts: pass
+- contract map confirms subsystem roles are nominal (`ABC`) while plugin/capability/data contracts remain structural (`Protocol`) per policy
+- Artifacts:
+- `S3d_01_mypy_strict.txt`
+- `S3d_02_semgrep_protocol_boundary.txt`
+- `S3d_03_lint_imports.txt`
+- `S3d_04_api_contract_kinds.txt`
+- `S3d_05_runtime_checkable_map.txt`
+
 4. Phase S4: Exception semantics and observability normalization
 - Objective:
 - Eliminate silent broad catches and enforce observability contracts for remaining broad handlers.
@@ -757,6 +840,25 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - Prepare `S4` exception semantics and observability normalization.
 
 4. Last completed step
+- `S3.d` completed (final contract classification sweep) with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_204659_S3d/`
+- Key outcomes:
+- remaining subsystem-role contracts were migrated to `ABC` in `engine/api` (`Blackboard`, `Agent`, `AssetRegistry`, `CommandMap`, `InteractionModeMachine`, `LoggerPort`, `ServiceResolver`, `ServiceBinder`).
+- plugin/capability/data-shape contracts remain structural `Protocol`.
+- unnecessary `@runtime_checkable` was removed from opaque non-capability placeholders (`ControllerPort`, `FrameworkPort`, `ViewPort`).
+- strict mypy: pass (`S3d_01`).
+- protocol-boundary semgrep: pass (`S3d_02`).
+- import-linter contracts: pass (`S3d_03`).
+
+- `S3.c` completed (subsystem-role contract model enforcement) with artifacts under:
+- `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_204126_S3c/`
+- Key outcomes:
+- subsystem roles in `engine.api` migrated from structural `Protocol` to nominal `ABC` for runtime-owned services (render/window/events/ui/update/context/module-graph/screen-stack/action-dispatch/app-port).
+- concrete runtime/sdk/game implementations were aligned to explicit inheritance of migrated ABC contracts.
+- semgrep protocol-boundary rules: pass (`S3c_01`).
+- strict mypy over migrated scope: pass (`S3c_02`).
+- import-linter contracts: pass (`S3c_03`).
+
 - `S3` completed after two-pass closure verification with artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_200456_S3/`
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_201300_S3_pass1/`

@@ -6,13 +6,13 @@ import logging
 from time import perf_counter
 
 from engine.api.context import RuntimeContext
-from engine.api.gameplay import SystemSpec
+from engine.api.gameplay import SystemSpec, UpdateLoop
 from engine.runtime.time import FixedStepAccumulator
 
 _LOG = logging.getLogger("engine.update")
 
 
-class RuntimeUpdateLoop:
+class RuntimeUpdateLoop(UpdateLoop):
     """Ordered gameplay update-loop with optional fixed-step mode."""
 
     def __init__(self, *, fixed_step_seconds: float | None = None) -> None:

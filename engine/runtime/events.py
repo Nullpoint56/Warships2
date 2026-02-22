@@ -5,13 +5,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, TypeVar
 
-from engine.api.events import Subscription
+from engine.api.events import EventBus as EventBusPort, EventPayload, Subscription
 
 TEvent = TypeVar("TEvent")
 EventHandler = Callable[[Any], None]
 
 
-class RuntimeEventBus:
+class RuntimeEventBus(EventBusPort):
     """Simple in-process pub/sub for engine-local coordination."""
 
     def __init__(self) -> None:
@@ -45,7 +45,7 @@ class RuntimeEventBus:
         """Remove a subscription if present."""
         self._subscriptions.pop(subscription.id, None)
 
-    def publish(self, event: object) -> int:
+    def publish(self, event: EventPayload) -> int:
         """Publish one event and return number of invoked handlers."""
         metrics = self._metrics_collector
         if metrics is not None and hasattr(metrics, "increment_event_publish_count"):
@@ -58,6 +58,4 @@ class RuntimeEventBus:
                 handler(event)
                 invoked += 1
         return invoked
-
-
 EventBus = RuntimeEventBus

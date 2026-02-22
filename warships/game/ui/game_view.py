@@ -364,7 +364,7 @@ class GameView:
         return recorder.finish(frame_index=frame_index), labels
 
 
-class _SnapshotRecorder:
+class _SnapshotRecorder(Render2D):
     """RenderAPI-compatible recorder that captures immutable snapshot commands."""
 
     def __init__(self) -> None:

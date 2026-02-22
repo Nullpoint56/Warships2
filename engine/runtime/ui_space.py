@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from engine.api.app_port import EngineAppPort, UIDesignResolutionProvider
 from engine.api.render import RenderAPI
@@ -141,7 +141,7 @@ def _resolve_design_resolution_from_config() -> tuple[float, float]:
     )
 
 
-class _ScaledRenderAPI:
+class _ScaledRenderAPI(RenderAPI):
     """RenderAPI proxy that maps app-authored coordinates to engine design-space."""
 
     def __init__(self, *, inner: RenderAPI, transform: UISpaceTransform) -> None:
@@ -274,7 +274,7 @@ class _ScaledRenderAPI:
     def invalidate(self) -> None:
         self._inner.invalidate()
 
-    def run(self, draw_callback: Any) -> None:
+    def run(self, draw_callback: Callable[[], None]) -> None:
         self._inner.run(draw_callback)
 
     def close(self) -> None:

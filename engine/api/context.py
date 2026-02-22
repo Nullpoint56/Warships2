@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from typing import Protocol, runtime_checkable
 
 from engine.api.render import RenderAPI
@@ -27,8 +28,7 @@ class SchedulerPort(Protocol):
     """Opaque scheduler boundary contract."""
 
 
-@runtime_checkable
-class RuntimeContext(Protocol):
+class RuntimeContext(ABC):
     """Shared runtime context passed across engine modules."""
 
     render_api: RenderAPI | None
@@ -38,12 +38,15 @@ class RuntimeContext(Protocol):
     scheduler: SchedulerPort | None
     services: dict[str, "ServiceLike"]
 
+    @abstractmethod
     def provide(self, name: str, service: "ServiceLike") -> None:
         """Register a named service."""
 
+    @abstractmethod
     def get(self, name: str) -> "ServiceLike | None":
         """Return a named service if present."""
 
+    @abstractmethod
     def require(self, name: str) -> "ServiceLike":
         """Return named service or raise KeyError."""
 

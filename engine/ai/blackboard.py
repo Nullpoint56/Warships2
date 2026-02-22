@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 
+from engine.api.ai import Blackboard
 
-class RuntimeBlackboard:
+
+class RuntimeBlackboard(Blackboard):
     """Default blackboard based on a dict store."""
 
     def __init__(self) -> None:

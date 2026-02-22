@@ -8,6 +8,7 @@ from engine.api.app_port import EngineAppPort, InteractionPlanView, UIDesignReso
 from engine.api.input_events import KeyEvent, PointerEvent, WheelEvent
 from engine.api.input_snapshot import InputSnapshot
 from engine.api.render import RenderAPI
+from engine.api.ui_framework import UIFramework
 from engine.api.ui_primitives import (
     GridLayout,
     ModalInputState,
@@ -23,7 +24,7 @@ from engine.runtime.config import get_runtime_config
 from engine.runtime.ui_space import UISpaceTransform, resolve_ui_space_transform
 
 
-class EngineUIFramework:
+class EngineUIFramework(UIFramework):
     """Coordinates input routing between engine runtime and app port."""
 
     def __init__(self, app: EngineAppPort, renderer: RenderAPI, layout: GridLayout) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 from collections.abc import Callable
@@ -36,39 +37,38 @@ class EngineModule(Protocol):
         """Register game bindings/overrides into composition binder."""
 
 
-@runtime_checkable
-class ServiceResolver(Protocol):
+class ServiceResolver(ABC):
     """Runtime composition resolver contract."""
 
+    @abstractmethod
     def resolve[TBinding: "BindingValue"](self, token: type[TBinding] | object) -> TBinding:
         """Resolve bound dependency by type token."""
 
 
-class ServiceBinder(ServiceResolver, Protocol):
+class ServiceBinder(ServiceResolver, ABC):
     """Runtime composition binder contract."""
 
+    @abstractmethod
     def bind_factory[TBinding: "BindingValue"](
         self, token: type[TBinding] | object, factory: Callable[[ServiceResolver], TBinding]
     ) -> None:
         """Bind/override dependency factory."""
 
+    @abstractmethod
     def bind_instance[TBinding: "BindingValue"](
         self, token: type[TBinding] | object, instance: TBinding
     ) -> None:
         """Bind concrete singleton instance."""
 
 
-@runtime_checkable
 class ControllerPort(Protocol):
     """Opaque controller boundary contract."""
 
 
-@runtime_checkable
 class FrameworkPort(Protocol):
     """Opaque framework boundary contract."""
 
 
-@runtime_checkable
 class ViewPort(Protocol):
     """Opaque view boundary contract."""
 

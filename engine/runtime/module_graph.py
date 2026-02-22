@@ -5,10 +5,10 @@ from __future__ import annotations
 from collections import deque
 
 from engine.api.context import RuntimeContext
-from engine.api.module_graph import ModuleNode
+from engine.api.module_graph import ModuleGraph, ModuleNode
 
 
-class RuntimeModuleGraph:
+class RuntimeModuleGraph(ModuleGraph):
     """Dependency-ordered lifecycle runner for runtime modules."""
 
     def __init__(self) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
@@ -31,21 +32,25 @@ class ModuleNode:
     depends_on: tuple[str, ...] = ()
 
 
-@runtime_checkable
-class ModuleGraph(Protocol):
+class ModuleGraph(ABC):
     """Ordered lifecycle executor for runtime modules."""
 
+    @abstractmethod
     def add_node(self, node: ModuleNode) -> None:
         """Register one module node."""
 
+    @abstractmethod
     def start_all(self, context: RuntimeContext) -> None:
         """Start registered modules in dependency order."""
 
+    @abstractmethod
     def update_all(self, context: RuntimeContext) -> None:
         """Update started modules in dependency order."""
 
+    @abstractmethod
     def shutdown_all(self, context: RuntimeContext) -> None:
         """Shutdown started modules in reverse dependency order."""
 
+    @abstractmethod
     def execution_order(self) -> tuple[str, ...]:
         """Return current dependency order."""

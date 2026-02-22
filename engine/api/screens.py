@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Literal, Protocol, runtime_checkable
 
@@ -21,27 +22,33 @@ class ScreenLayer:
     data: ScreenData | None = None
 
 
-@runtime_checkable
-class ScreenStack(Protocol):
+class ScreenStack(ABC):
     """Public screen stack contract."""
 
+    @abstractmethod
     def set_root(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Replace root and clear overlays."""
 
+    @abstractmethod
     def push_overlay(self, screen_id: str, *, data: ScreenData | None = None) -> ScreenLayer:
         """Push one overlay."""
 
+    @abstractmethod
     def pop_overlay(self) -> ScreenLayer | None:
         """Pop top overlay."""
 
+    @abstractmethod
     def clear_overlays(self) -> None:
         """Clear overlays."""
 
+    @abstractmethod
     def root(self) -> ScreenLayer | None:
         """Return root."""
 
+    @abstractmethod
     def top(self) -> ScreenLayer | None:
         """Return top visible."""
 
+    @abstractmethod
     def layers(self) -> tuple[ScreenLayer, ...]:
         """Return root-first snapshot."""

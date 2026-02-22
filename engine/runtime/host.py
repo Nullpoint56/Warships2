@@ -620,7 +620,7 @@ class EngineHost(HostControl):
         return normalized or "game"
 
 
-class _OverlaySnapshotRecorder:
+class _OverlaySnapshotRecorder(RenderAPI):
     """Capture debug overlay primitives into immutable render commands."""
 
     def __init__(self, *, frame_index: int) -> None:

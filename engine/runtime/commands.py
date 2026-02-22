@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from engine.api.commands import Command
+from engine.api.commands import Command, CommandMap
 
 
-class RuntimeCommandMap:
+class RuntimeCommandMap(CommandMap):
     """Maps raw input triggers to engine-neutral command tokens."""
 
     def __init__(self) -> None:
@@ -48,6 +48,3 @@ class RuntimeCommandMap:
             return None
         command_name = self._pointer_down_bindings.get(button)
         return Command(command_name) if command_name is not None else None
-
-
-CommandMap = RuntimeCommandMap

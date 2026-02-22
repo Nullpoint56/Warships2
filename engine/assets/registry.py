@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TypeVar, cast
 
-from engine.api.assets import AssetHandle, AssetLoader, AssetUnloader, AssetValue
+from engine.api.assets import AssetHandle, AssetLoader, AssetRegistry, AssetUnloader, AssetValue
 
 TAsset = TypeVar("TAsset")
 
@@ -17,7 +17,7 @@ class _LoadedAsset:
     unloader: AssetUnloader | None
 
 
-class RuntimeAssetRegistry:
+class RuntimeAssetRegistry(AssetRegistry):
     """Registry that loads, caches, and releases assets by kind and id."""
 
     def __init__(self) -> None:
@@ -79,6 +79,3 @@ class RuntimeAssetRegistry:
             if loaded.unloader is not None:
                 loaded.unloader(loaded.value)
             self._loaded.pop(key, None)
-
-
-AssetRegistry = RuntimeAssetRegistry

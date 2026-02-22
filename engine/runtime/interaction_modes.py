@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from engine.api.interaction_modes import InteractionMode
+from engine.api.interaction_modes import InteractionMode, InteractionModeMachine as InteractionModeMachinePort
 
 
-class RuntimeInteractionModeMachine:
+class RuntimeInteractionModeMachine(InteractionModeMachinePort):
     """Runtime mode switch for input gating."""
 
     def __init__(self) -> None:

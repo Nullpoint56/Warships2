@@ -1,6 +1,6 @@
 """Engine runtime modules."""
 
-from engine.runtime.commands import CommandMap
+from engine.runtime.commands import RuntimeCommandMap as CommandMap
 from engine.runtime.context import RuntimeContextImpl
 from engine.runtime.debug_config import DebugConfig, load_debug_config
 from engine.runtime.events import EventBus

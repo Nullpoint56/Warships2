@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable, TypeVar
+from typing import Protocol, TypeVar
 
 TAsset = TypeVar("TAsset")
 
@@ -25,10 +26,10 @@ class AssetHandle[TAsset]:
     asset_id: str
 
 
-@runtime_checkable
-class AssetRegistry(Protocol):
+class AssetRegistry(ABC):
     """Public registry contract for loading and retaining assets."""
 
+    @abstractmethod
     def register_kind(
         self,
         kind: str,
@@ -38,15 +39,19 @@ class AssetRegistry(Protocol):
     ) -> None:
         """Register loader for one asset kind."""
 
+    @abstractmethod
     def load(self, kind: str, asset_id: str) -> AssetHandle[AssetValue]:
         """Load or acquire asset handle."""
 
+    @abstractmethod
     def get(self, handle: AssetHandle[TAsset]) -> TAsset:
         """Resolve handle to loaded value."""
 
+    @abstractmethod
     def release(self, handle: AssetHandle[AssetValue]) -> None:
         """Release one handle reference."""
 
+    @abstractmethod
     def clear(self) -> None:
         """Release all loaded assets."""
 

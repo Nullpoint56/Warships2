@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Protocol, runtime_checkable
 
 from engine.api.render_snapshot import RenderSnapshot
 from engine.api.window import WindowResizeEvent
 
 
-@runtime_checkable
-class RenderAPI(Protocol):
+class RenderAPI(ABC):
     """Rendering capabilities exposed by the engine to higher layers."""
 
+    @abstractmethod
     def begin_frame(self) -> None:
         """Prepare frame-local renderer state."""
 
+    @abstractmethod
     def end_frame(self) -> None:
         """Finalize frame-local renderer state."""
 
+    @abstractmethod
     def add_rect(
         self,
         key: str | None,
@@ -32,6 +34,7 @@ class RenderAPI(Protocol):
     ) -> None:
         """Draw or update a rectangle primitive."""
 
+    @abstractmethod
     def add_grid(
         self,
         key: str,
@@ -46,6 +49,7 @@ class RenderAPI(Protocol):
     ) -> None:
         """Draw or update a grid primitive."""
 
+    @abstractmethod
     def add_style_rect(
         self,
         *,
@@ -65,6 +69,7 @@ class RenderAPI(Protocol):
     ) -> None:
         """Draw style-capable rect primitive when supported by renderer backend."""
 
+    @abstractmethod
     def add_text(
         self,
         key: str | None,
@@ -79,29 +84,38 @@ class RenderAPI(Protocol):
     ) -> None:
         """Draw or update a text primitive."""
 
+    @abstractmethod
     def set_title(self, title: str) -> None:
         """Set window title when supported."""
 
+    @abstractmethod
     def fill_window(self, key: str, color: str, z: float = -100.0) -> None:
         """Fill the full window area regardless of design-space/aspect transform."""
 
+    @abstractmethod
     def to_design_space(self, x: float, y: float) -> tuple[float, float]:
         """Map pointer coordinates into design-space coordinates."""
 
+    @abstractmethod
     def design_space_size(self) -> tuple[float, float]:
         """Return active design-space dimensions used for rendering."""
 
+    @abstractmethod
     def invalidate(self) -> None:
         """Schedule one redraw."""
 
+    @abstractmethod
     def run(self, draw_callback: Callable[[], None]) -> None:
         """Run render loop with callback-driven frames."""
 
+    @abstractmethod
     def close(self) -> None:
         """Close renderer resources and stop the loop."""
 
+    @abstractmethod
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
         """Render immutable snapshot payload."""
 
+    @abstractmethod
     def apply_window_resize(self, event: WindowResizeEvent) -> None:
         """Apply normalized window resize event into renderer state."""

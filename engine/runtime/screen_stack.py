@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from engine.api.screens import ScreenData, ScreenLayer
+from engine.api.screens import ScreenData, ScreenLayer, ScreenStack as ScreenStackPort
 
 
-class RuntimeScreenStack:
+class RuntimeScreenStack(ScreenStackPort):
     """Layered root + overlay screen stack."""
 
     def __init__(self) -> None:
