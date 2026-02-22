@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Literal
 
 type RuntimeProfileName = Literal["dev-debug", "dev-fast", "release-like"]
@@ -30,7 +31,7 @@ class RuntimeProfile:
     diagnostics_category_sampling_csv: str
 
 
-_PROFILE_PRESETS: dict[RuntimeProfileName, RuntimeProfile] = {
+_PROFILE_PRESETS = MappingProxyType({
     "dev-debug": RuntimeProfile(
         name="dev-debug",
         log_level="DEBUG",
@@ -85,7 +86,7 @@ _PROFILE_PRESETS: dict[RuntimeProfileName, RuntimeProfile] = {
         diagnostics_category_allowlist_csv="",
         diagnostics_category_sampling_csv="",
     ),
-}
+})
 
 
 def normalize_runtime_profile_name(

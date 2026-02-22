@@ -231,6 +231,36 @@ S3 architecture correction addendum (runtime-checkable boundary policy + type-bo
 - `S3P2B_05_runtime_checkable_scan.txt`
 - Result: all pass
 
+S6 closure execution addendum (run id: `2026-02-22_221900_S6_closure`, raw root: `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_221900_S6_closure/`):
+- `S6C_01_state_mutation_ownership.txt` -> Pass
+- `S6C_02_mypy_strict.txt` -> Pass
+- `S6C_03_lint_imports.txt` -> Pass
+- `S6C_04_removed_module_state_scan.txt` -> Pass
+- `S6C_05_state_ownership_impl_scan.txt` -> Pass
+- `S6C_06_state_mutation_ownership_second_pass.txt` -> Pass
+- `S6C_07_lint_imports_second_pass.txt` -> Pass
+- Resolution result:
+- Renderer module-level mutable caches migrated to `WgpuRenderer` instance-owned state (`_command_color_cache`, `_command_linear_color_cache`, `_transform_values_cache`) and helper call graph updated to consume owned caches.
+- UI-space mutable caches migrated from module globals into `_ScaleCacheState` owned by `_ScaledRenderAPI`; public stateless scaling path remains available without shared mutable globals.
+- Runtime profile presets converted to immutable mapping (`MappingProxyType`) in `engine/runtime_profile.py`.
+- Runtime profiling RSS provider globals replaced by `_ProcessRssProbe` service object with owned probe state (no `global` writes).
+- Runtime logging singleton state remains object-owned via `_LoggingRuntimeState` (no `global` writes).
+- Completion discipline note:
+- S6 marked complete only after second-pass validation (`S6C_06`, `S6C_07`) and targeted symbol/global scans (`S6C_04`, `S6C_05`).
+
+S6 strict re-evaluation addendum (run id: `2026-02-22_222600_S6_strict_reeval`, non-closure):
+- Re-ran primary and closure sanity gates:
+- `check_state_mutation_ownership`: pass
+- `mypy --strict`: pass
+- `lint-imports`: pass
+- Carry-over finding:
+- S6 objective requires removal of mutable module-level runtime state ownership, but mutable module-level singleton objects still exist in:
+- `engine/runtime/logging.py` (`_LOGGING_RUNTIME`)
+- `engine/runtime/profiling.py` (`_PROCESS_RSS_PROBE`)
+- Decision:
+- Open `S6.b` for strict state-ownership completion.
+- `S6.b` is documented only in this update and is not executed yet.
+
 ### Investigation
 Investigation scope: code-verified investigation for every failing signal from run `2026-02-22_175415_static_eval`.
 
@@ -721,6 +751,39 @@ Depth discipline: rewrite depth is not a reason to defer work. If a phase is too
 - `S6_01_state_mutation_ownership.txt`
 - `S6_02_mypy_strict.txt`
 
+6.b Phase S6.b: Strict composition-owned runtime state finalization
+- Objective:
+- Eliminate remaining mutable module-level singleton ownership in runtime paths by moving state to composition-owned service instances.
+- This sub-phase is opened from S6 strict re-evaluation carry-over and is not executed yet.
+- Targeted signals:
+- S6 strict re-evaluation carry-over in:
+- `engine/runtime/logging.py`
+- `engine/runtime/profiling.py`
+- Executable steps:
+- Logging state ownership migration:
+- remove module-level `_LOGGING_RUNTIME` singleton.
+- introduce a composition-owned logging runtime service (listener lifecycle owner) created/wired from runtime composition.
+- route `configure_engine_logging` through injected/owned runtime state object instead of module singleton.
+- Profiling RSS probe ownership migration:
+- remove module-level `_PROCESS_RSS_PROBE` singleton.
+- move RSS provider/probe state behind composition-owned profiling service object or explicit runtime-owned probe instance lifecycle.
+- Checker hardening:
+- extend `scripts/check_state_mutation_ownership.py` to detect mutable module-level object singleton initialization patterns (not only list/dict/set/global statements).
+- add explicit allowlist-only exceptions if absolutely required and documented.
+- Re-run and serialize:
+- `uv run python scripts/check_state_mutation_ownership.py`
+- `uv run mypy --strict`
+- `uv run lint-imports`
+- Completion gates:
+- state mutation ownership check: pass with hardened singleton detection enabled.
+- `mypy --strict`: pass.
+- `lint-imports`: pass.
+- Artifacts:
+- `S6b_01_state_mutation_ownership.txt`
+- `S6b_02_mypy_strict.txt`
+- `S6b_03_lint_imports.txt`
+- `S6b_04_singleton_scan.txt`
+
 7. Phase S7: Cycle graph reduction and decomposition completion
 - Objective:
 - Reduce SCC size and remove cycle budget regressions through concrete module separation.
@@ -829,19 +892,21 @@ Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
 - `S3`: `completed`
 - `S4`: `completed`
 - `S5`: `completed`
-- `S6`: `not_started`
+- `S6`: `in_progress`
 - `S7`: `not_started`
 - `S8`: `not_started`
 
 2. Active sub-phases
-- None
+- `S6.b`: `not_started` (opened from strict re-evaluation carry-over; not executed yet)
 
 3. Current focus
-- Execute `S6` mutable state ownership remediation.
+- Execute `S6.b` strict composition-owned runtime state finalization.
 
 4. Last completed step
 - `S5` completed (domain-neutralization and API/runtime duplication cleanup) with closure artifacts under:
 - `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_210549_S5_closure/`
+- Note:
+- `S6` closure artifacts exist under `docs/architecture/audits/static_checks/2026-02-22/2026-02-22_221900_S6_closure/`, but phase status was reopened to `in_progress` after strict re-evaluation due to carry-over resolved via newly opened `S6.b` (not yet executed).
 - Gate outcomes:
 - `S5C_01_semgrep_domain_leakage.txt`: pass
 - `S5C_02_domain_semantic_hardening.txt`: pass

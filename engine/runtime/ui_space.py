@@ -17,14 +17,22 @@ from engine.api.window import WindowResizeEvent
 from engine.runtime.config import get_runtime_config
 
 _SCALE_CACHE_MAX = 20_000
-_SCALED_COMMAND_CACHE: dict[
-    tuple[int, tuple[float, float, float]],
-    tuple[RenderCommand, RenderCommand],
-] = {}
-_SCALED_PASS_CACHE: dict[
-    tuple[int, tuple[float, float, float]],
-    tuple[tuple[RenderCommand, ...], tuple[RenderCommand, ...]],
-] = {}
+
+
+@dataclass(slots=True)
+class _ScaleCacheState:
+    command_cache: dict[
+        tuple[int, tuple[float, float, float]],
+        tuple[RenderCommand, RenderCommand],
+    ]
+    pass_cache: dict[
+        tuple[int, tuple[float, float, float]],
+        tuple[tuple[RenderCommand, ...], tuple[RenderCommand, ...]],
+    ]
+
+    @classmethod
+    def create(cls) -> _ScaleCacheState:
+        return cls(command_cache={}, pass_cache={})
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +155,7 @@ class _ScaledRenderAPI(RenderAPI):
     def __init__(self, *, inner: RenderAPI, transform: UISpaceTransform) -> None:
         self._inner = inner
         self._transform = transform
+        self._cache_state = _ScaleCacheState.create()
 
     def begin_frame(self) -> None:
         self._inner.begin_frame()
@@ -281,7 +290,13 @@ class _ScaledRenderAPI(RenderAPI):
         self._inner.close()
 
     def render_snapshot(self, snapshot: RenderSnapshot) -> None:
-        self._inner.render_snapshot(scale_render_snapshot(snapshot, self._transform))
+        self._inner.render_snapshot(
+            _scale_render_snapshot(
+                snapshot,
+                self._transform,
+                cache_state=self._cache_state,
+            )
+        )
 
     def design_space_size(self) -> tuple[float, float]:
         return (self._transform.app_width, self._transform.app_height)
@@ -290,7 +305,12 @@ class _ScaledRenderAPI(RenderAPI):
         self._inner.apply_window_resize(event)
 
 
-def _scale_render_snapshot(snapshot: RenderSnapshot, transform: UISpaceTransform) -> RenderSnapshot:
+def _scale_render_snapshot(
+    snapshot: RenderSnapshot,
+    transform: UISpaceTransform,
+    *,
+    cache_state: _ScaleCacheState | None,
+) -> RenderSnapshot:
     scale_key = (
         round(float(transform.scale_x), 6),
         round(float(transform.scale_y), 6),
@@ -303,6 +323,7 @@ def _scale_render_snapshot(snapshot: RenderSnapshot, transform: UISpaceTransform
                 render_pass.commands,
                 transform,
                 scale_key=scale_key,
+                cache_state=cache_state,
             ),
         )
         for render_pass in snapshot.passes
@@ -314,7 +335,7 @@ def scale_render_snapshot(snapshot: RenderSnapshot, transform: UISpaceTransform)
     """Scale immutable snapshot command payload from app-space into engine-space."""
     if transform.is_identity:
         return snapshot
-    return _scale_render_snapshot(snapshot, transform)
+    return _scale_render_snapshot(snapshot, transform, cache_state=None)
 
 
 def _scale_render_command(command: RenderCommand, transform: UISpaceTransform) -> RenderCommand:
@@ -353,19 +374,28 @@ def _scale_render_commands(
     transform: UISpaceTransform,
     *,
     scale_key: tuple[float, float, float],
+    cache_state: _ScaleCacheState | None,
 ) -> tuple[RenderCommand, ...]:
+    if cache_state is None:
+        return tuple(_scale_render_command(command, transform) for command in commands)
+
     pass_cache_key = (int(id(commands)), scale_key)
-    cached_pass = _SCALED_PASS_CACHE.get(pass_cache_key)
+    cached_pass = cache_state.pass_cache.get(pass_cache_key)
     if cached_pass is not None and cached_pass[0] is commands:
         return cached_pass[1]
     scaled = tuple(
-        _scale_render_command_cached(command, transform, scale_key=scale_key)
+        _scale_render_command_cached(
+            command,
+            transform,
+            scale_key=scale_key,
+            cache_state=cache_state,
+        )
         for command in commands
     )
-    _SCALED_PASS_CACHE[pass_cache_key] = (commands, scaled)
-    if len(_SCALED_PASS_CACHE) > _SCALE_CACHE_MAX:
-        _SCALED_PASS_CACHE.clear()
-        _SCALED_PASS_CACHE[pass_cache_key] = (commands, scaled)
+    cache_state.pass_cache[pass_cache_key] = (commands, scaled)
+    if len(cache_state.pass_cache) > _SCALE_CACHE_MAX:
+        cache_state.pass_cache.clear()
+        cache_state.pass_cache[pass_cache_key] = (commands, scaled)
     return scaled
 
 
@@ -374,15 +404,16 @@ def _scale_render_command_cached(
     transform: UISpaceTransform,
     *,
     scale_key: tuple[float, float, float],
+    cache_state: _ScaleCacheState,
 ) -> RenderCommand:
     cache_key = (int(id(command)), scale_key)
-    cached = _SCALED_COMMAND_CACHE.get(cache_key)
+    cached = cache_state.command_cache.get(cache_key)
     if cached is not None and cached[0] is command:
         return cached[1]
     scaled = _scale_render_command(command, transform)
-    _SCALED_COMMAND_CACHE[cache_key] = (command, scaled)
-    if len(_SCALED_COMMAND_CACHE) > _SCALE_CACHE_MAX:
-        _SCALED_COMMAND_CACHE.clear()
-        _SCALED_COMMAND_CACHE[cache_key] = (command, scaled)
+    cache_state.command_cache[cache_key] = (command, scaled)
+    if len(cache_state.command_cache) > _SCALE_CACHE_MAX:
+        cache_state.command_cache.clear()
+        cache_state.command_cache[cache_key] = (command, scaled)
     return scaled
 

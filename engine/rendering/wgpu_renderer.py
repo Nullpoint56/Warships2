@@ -12,6 +12,7 @@ import time
 import tracemalloc
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -41,11 +42,6 @@ _COLOR_CACHE_MAX = 512
 _TRANSFORM_CACHE_MAX = 20_000
 _DEFAULT_UI_DESIGN_WIDTH = 1200
 _DEFAULT_UI_DESIGN_HEIGHT = 720
-_COMMAND_COLOR_CACHE: dict[object, tuple[float, float, float, float]] = {}
-_COMMAND_LINEAR_COLOR_CACHE: dict[
-    tuple[float, float, float, float], tuple[float, float, float, float]
-] = {}
-_TRANSFORM_VALUES_CACHE: dict[int, tuple[object, tuple[float, ...]]] = {}
 _LOG = logging.getLogger("engine.rendering.wgpu")
 
 
@@ -247,6 +243,17 @@ class WgpuRenderer(RenderAPI):
         init=False, default_factory=dict
     )
     _command_version_token_cache: dict[int, tuple[RenderCommand, object]] = field(
+        init=False, default_factory=dict
+    )
+    _command_color_cache: dict[object, tuple[float, float, float, float]] = field(
+        init=False, default_factory=dict
+    )
+    _command_linear_color_cache: dict[
+        tuple[float, float, float, float], tuple[float, float, float, float]
+    ] = field(
+        init=False, default_factory=dict
+    )
+    _transform_values_cache: dict[int, tuple[object, tuple[float, ...]]] = field(
         init=False, default_factory=dict
     )
 
@@ -810,7 +817,12 @@ class WgpuRenderer(RenderAPI):
             if cached_command is command:
                 return packet, override, version_token
         override = _command_static_override(command)
-        packet = _command_to_packet(command)
+        packet = _command_to_packet(
+            command,
+            transform_values_cache=self._transform_values_cache,
+            color_cache=self._command_color_cache,
+            linear_color_cache=self._command_linear_color_cache,
+        )
         version_token = self._command_version_token_cached(command)
         self._command_packet_cache[command_id] = (command, packet, override, version_token)
         if len(self._command_packet_cache) > 20000:
@@ -823,7 +835,10 @@ class WgpuRenderer(RenderAPI):
         cached = self._command_version_token_cache.get(command_id)
         if cached is not None and cached[0] is command:
             return cached[1]
-        token = _command_version_token(command)
+        token = _command_version_token(
+            command,
+            transform_values_cache=self._transform_values_cache,
+        )
         self._command_version_token_cache[command_id] = (command, token)
         if len(self._command_version_token_cache) > 20000:
             self._command_version_token_cache.clear()
@@ -1000,17 +1015,35 @@ def _resolve_pass_descriptor(name: str) -> _PassDescriptor:
     return _PassDescriptor(canonical_name=normalized or "overlay", priority=1)
 
 
-def _command_to_packet(command: RenderCommand) -> _DrawPacket:
+def _command_to_packet(
+    command: RenderCommand,
+    *,
+    transform_values_cache: dict[int, tuple[object, tuple[float, ...]]],
+    color_cache: dict[object, tuple[float, float, float, float]],
+    linear_color_cache: dict[
+        tuple[float, float, float, float], tuple[float, float, float, float]
+    ],
+) -> _DrawPacket:
     payload = _normalized_payload(command.data)
-    srgb_rgba = _extract_srgb_rgba(payload)
-    linear_rgba = _srgb_to_linear_rgba_cached(srgb_rgba)
-    srgb_secondary_rgba = _extract_srgb_secondary_rgba(payload, default=srgb_rgba)
-    linear_secondary_rgba = _srgb_to_linear_rgba_cached(srgb_secondary_rgba)
+    srgb_rgba = _extract_srgb_rgba(payload, color_cache=color_cache)
+    linear_rgba = _srgb_to_linear_rgba_cached(srgb_rgba, linear_color_cache=linear_color_cache)
+    srgb_secondary_rgba = _extract_srgb_secondary_rgba(
+        payload,
+        default=srgb_rgba,
+        color_cache=color_cache,
+    )
+    linear_secondary_rgba = _srgb_to_linear_rgba_cached(
+        srgb_secondary_rgba,
+        linear_color_cache=linear_color_cache,
+    )
     return _DrawPacket(
         kind=str(command.kind),
         layer=int(command.layer),
         sort_key=str(command.sort_key),
-        transform=_transform_values_tuple(command.transform.values),
+        transform=_transform_values_tuple(
+            command.transform.values,
+            transform_values_cache=transform_values_cache,
+        ),
         data=payload
         + (
             ("srgb_rgba", srgb_rgba),
@@ -1056,14 +1089,21 @@ def _command_static_override(command: RenderCommand) -> str:
     return "auto"
 
 
-def _command_version_token(command: RenderCommand) -> object:
+def _command_version_token(
+    command: RenderCommand,
+    *,
+    transform_values_cache: dict[int, tuple[object, tuple[float, ...]]],
+) -> object:
     payload = tuple(command.data)
     payload_token: object
     try:
         payload_token = ("h", hash(payload), len(payload))
     except (RuntimeError, OSError, ValueError, TypeError, AttributeError, ImportError):
         payload_token = ("id", int(id(payload)), len(payload))
-    transform_values = _transform_values_tuple(command.transform.values)
+    transform_values = _transform_values_tuple(
+        command.transform.values,
+        transform_values_cache=transform_values_cache,
+    )
     transform_token: object
     try:
         transform_token = ("h", hash(transform_values), len(transform_values))
@@ -1090,9 +1130,13 @@ def _normalized_payload(data: tuple[tuple[str, object], ...]) -> tuple[tuple[str
     return tuple((str(key), value) for key, value in data)
 
 
-def _transform_values_tuple(values: object) -> tuple[float, ...]:
+def _transform_values_tuple(
+    values: object,
+    *,
+    transform_values_cache: dict[int, tuple[object, tuple[float, ...]]],
+) -> tuple[float, ...]:
     key = int(id(values))
-    cached = _TRANSFORM_VALUES_CACHE.get(key)
+    cached = transform_values_cache.get(key)
     if cached is not None and cached[0] is values:
         return cached[1]
     try:
@@ -1100,10 +1144,10 @@ def _transform_values_tuple(values: object) -> tuple[float, ...]:
     except TypeError:
         return ()
     out = tuple(float(value) for value in raw_values)
-    _TRANSFORM_VALUES_CACHE[key] = (values, out)
-    if len(_TRANSFORM_VALUES_CACHE) > _TRANSFORM_CACHE_MAX:
-        _TRANSFORM_VALUES_CACHE.clear()
-        _TRANSFORM_VALUES_CACHE[key] = (values, out)
+    transform_values_cache[key] = (values, out)
+    if len(transform_values_cache) > _TRANSFORM_CACHE_MAX:
+        transform_values_cache.clear()
+        transform_values_cache[key] = (values, out)
     return out
 
 
@@ -1113,28 +1157,32 @@ def _stable_sort_value(value: object) -> object:
     return repr(value)
 
 
-def _extract_srgb_rgba(payload: tuple[tuple[str, object], ...]) -> tuple[float, float, float, float]:
+def _extract_srgb_rgba(
+    payload: tuple[tuple[str, object], ...],
+    *,
+    color_cache: dict[object, tuple[float, float, float, float]],
+) -> tuple[float, float, float, float]:
     color_value: object = "#ffffff"
     for key, value in payload:
         if str(key) == "color":
             color_value = value
             break
-    cached = _COMMAND_COLOR_CACHE.get(color_value)
+    cached = color_cache.get(color_value)
     if cached is not None:
         return cached
     if isinstance(color_value, str):
         parsed = _parse_hex_color(color_value)
         if parsed is not None:
-            _COMMAND_COLOR_CACHE[color_value] = parsed
-            if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
-                _COMMAND_COLOR_CACHE.clear()
-                _COMMAND_COLOR_CACHE[color_value] = parsed
+            color_cache[color_value] = parsed
+            if len(color_cache) > _COLOR_CACHE_MAX:
+                color_cache.clear()
+                color_cache[color_value] = parsed
             return parsed
     fallback = (1.0, 1.0, 1.0, 1.0)
-    _COMMAND_COLOR_CACHE[color_value] = fallback
-    if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
-        _COMMAND_COLOR_CACHE.clear()
-        _COMMAND_COLOR_CACHE[color_value] = fallback
+    color_cache[color_value] = fallback
+    if len(color_cache) > _COLOR_CACHE_MAX:
+        color_cache.clear()
+        color_cache[color_value] = fallback
     return fallback
 
 
@@ -1142,6 +1190,7 @@ def _extract_srgb_secondary_rgba(
     payload: tuple[tuple[str, object], ...],
     *,
     default: tuple[float, float, float, float],
+    color_cache: dict[object, tuple[float, float, float, float]],
 ) -> tuple[float, float, float, float]:
     color_value: object | None = None
     for key, value in payload:
@@ -1149,15 +1198,15 @@ def _extract_srgb_secondary_rgba(
             color_value = value
             break
     if isinstance(color_value, str):
-        cached = _COMMAND_COLOR_CACHE.get(color_value)
+        cached = color_cache.get(color_value)
         if cached is not None:
             return cached
         parsed = _parse_hex_color(color_value)
         if parsed is not None:
-            _COMMAND_COLOR_CACHE[color_value] = parsed
-            if len(_COMMAND_COLOR_CACHE) > _COLOR_CACHE_MAX:
-                _COMMAND_COLOR_CACHE.clear()
-                _COMMAND_COLOR_CACHE[color_value] = parsed
+            color_cache[color_value] = parsed
+            if len(color_cache) > _COLOR_CACHE_MAX:
+                color_cache.clear()
+                color_cache[color_value] = parsed
             return parsed
     return default
 
@@ -1193,16 +1242,20 @@ def _srgb_to_linear_rgba(srgb: tuple[float, float, float, float]) -> tuple[float
 
 
 def _srgb_to_linear_rgba_cached(
-    srgb: tuple[float, float, float, float]
+    srgb: tuple[float, float, float, float],
+    *,
+    linear_color_cache: dict[
+        tuple[float, float, float, float], tuple[float, float, float, float]
+    ],
 ) -> tuple[float, float, float, float]:
-    cached = _COMMAND_LINEAR_COLOR_CACHE.get(srgb)
+    cached = linear_color_cache.get(srgb)
     if cached is not None:
         return cached
     linear = _srgb_to_linear_rgba(srgb)
-    _COMMAND_LINEAR_COLOR_CACHE[srgb] = linear
-    if len(_COMMAND_LINEAR_COLOR_CACHE) > _COLOR_CACHE_MAX:
-        _COMMAND_LINEAR_COLOR_CACHE.clear()
-        _COMMAND_LINEAR_COLOR_CACHE[srgb] = linear
+    linear_color_cache[srgb] = linear
+    if len(linear_color_cache) > _COLOR_CACHE_MAX:
+        linear_color_cache.clear()
+        linear_color_cache[srgb] = linear
     return linear
 
 
@@ -1600,7 +1653,7 @@ def _safe_uv_bounds(*, start_px: int, size_px: int, atlas_size_px: int) -> tuple
     return (u0, u1)
 
 
-_BITMAP_FONT_5X7: dict[str, tuple[str, ...]] = {
+_BITMAP_FONT_5X7 = MappingProxyType({
     " ": ("00000", "00000", "00000", "00000", "00000", "00000", "00000"),
     "!": ("00100", "00100", "00100", "00100", "00100", "00000", "00100"),
     "'": ("00100", "00100", "00000", "00000", "00000", "00000", "00000"),
@@ -1656,7 +1709,7 @@ _BITMAP_FONT_5X7: dict[str, tuple[str, ...]] = {
     "X": ("10001", "10001", "01010", "00100", "01010", "10001", "10001"),
     "Y": ("10001", "10001", "01010", "00100", "00100", "00100", "00100"),
     "Z": ("11111", "00001", "00010", "00100", "01000", "10000", "11111"),
-}
+})
 
 
 def _geometry_wgsl_for_color(color: tuple[float, float, float, float]) -> str:

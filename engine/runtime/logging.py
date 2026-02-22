@@ -6,21 +6,26 @@ import logging
 import queue
 from logging.handlers import QueueHandler, QueueListener
 from pathlib import Path
+from dataclasses import dataclass
 
 from engine.api.logging import EngineLoggingConfig, JsonFormatter
 from engine.runtime.debug_config import resolve_log_level_name
 
-_QUEUE_LISTENER: QueueListener | None = None
+
+@dataclass(slots=True)
+class _LoggingRuntimeState:
+    queue_listener: QueueListener | None = None
+
+
+_LOGGING_RUNTIME = _LoggingRuntimeState()
 RESERVED_LOGGER_NAMES: tuple[str, ...] = ("engine.network", "engine.audio")
 
 
 def configure_engine_logging(config: EngineLoggingConfig) -> None:
     """Configure root logging with optional async file streaming."""
-    global _QUEUE_LISTENER
-
-    if _QUEUE_LISTENER is not None:
-        _QUEUE_LISTENER.stop()
-        _QUEUE_LISTENER = None
+    if _LOGGING_RUNTIME.queue_listener is not None:
+        _LOGGING_RUNTIME.queue_listener.stop()
+        _LOGGING_RUNTIME.queue_listener = None
 
     level = getattr(logging, config.level_name.upper(), logging.INFO)
     console_handler = logging.StreamHandler()
@@ -44,8 +49,8 @@ def configure_engine_logging(config: EngineLoggingConfig) -> None:
 
     log_queue: queue.SimpleQueue[logging.LogRecord] = queue.SimpleQueue()
     root.addHandler(QueueHandler(log_queue))
-    _QUEUE_LISTENER = QueueListener(log_queue, *handlers, respect_handler_level=True)
-    _QUEUE_LISTENER.start()
+    _LOGGING_RUNTIME.queue_listener = QueueListener(log_queue, *handlers, respect_handler_level=True)
+    _LOGGING_RUNTIME.queue_listener.start()
 
 
 def setup_engine_logging() -> None:
