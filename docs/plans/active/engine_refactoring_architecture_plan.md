@@ -10,6 +10,9 @@ Each Check finding part contains these fields:
 - Proposed fixes: Investigation reveals root causes, proposed fixes are higher level decisions and documented approaches on how the identified root causes will be fixed.
 - Refactoring Phase-Plan: Proposed fixes will be broken down from high level plans into low level actionable, phase by phase fix executions. Phase plans are specific to Static and LLM check execution, and they contain a list of phases with actionable items derived from the specific check type's proposed fixes section.
 
+There is also a shared execution tracking chapter named Global Refactor status, where progress is tracked in a shared way.
+
+
 ## Static Check Findings
 
 ### Evaluations
@@ -594,3 +597,6 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 ### Proposed fixes
 
 ### Refactoring Phase-Plan
+
+
+## Global Refactor status
