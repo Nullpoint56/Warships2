@@ -336,10 +336,11 @@ Investigation scope: code-verified investigation for every failing signal from r
 ### Refactoring Phase-Plan
 Phase planning scope: static-check remediation only.  
 Execution rule: each phase must serialize raw outputs under `docs/architecture/audits/static_checks/<date>/<run_id>/` and must not proceed until its completion gates are met or explicitly deferred with documented rationale.
+Depth discipline: rewrite depth is not a reason to defer work. If a phase is too large, it must be split into explicit sub-phases and executed fully.
 
 1. Phase S1: Governance and boundary quick alignment
 - Objective:
-- Remove avoidable policy failures that do not require deep subsystem rewrites.
+- Fully resolve governance and boundary alignment failures, including deep rewrites if required.
 - Targeted failing checks:
 - `22_public_api_surface.txt`
 - `19_feature_flag_registry.txt`
@@ -374,6 +375,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 2. Phase S2: Config ownership centralization
 - Objective:
 - Eliminate distributed env reads from runtime/renderer/window execution paths by introducing centralized runtime config resolution.
+- If cross-cutting rewiring is required, split into `S2.a`, `S2.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `10_env_read_placement.txt`
 - Related: complexity and exception pressure reductions from removing scattered env fallback code.
@@ -408,6 +410,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 3. Phase S3: Protocol boundary hardening and reflection removal
 - Objective:
 - Replace required-path reflection with explicit contracts to satisfy protocol boundary rules and reduce branching complexity.
+- If contract migration spans many files, split into `S3.a`, `S3.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `14_semgrep_protocol_boundary.txt`
 - Contributes to: `07_xenon.txt`, `11_ruff_broad_exceptions.txt`, `12_semgrep_broad_exceptions.txt`
@@ -436,6 +439,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 4. Phase S4: Exception semantics and observability normalization
 - Objective:
 - Eliminate silent broad catches and enforce observability contracts for remaining broad handlers.
+- If broad-catch cleanup is large, split into `S4.a`, `S4.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `11_ruff_broad_exceptions.txt`
 - `12_semgrep_broad_exceptions.txt`
@@ -469,6 +473,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 5. Phase S5: Domain-neutralization and API/runtime duplication cleanup
 - Objective:
 - Remove game-domain leakage and collapse duplicated UI/observability logic ownership.
+- If domain cleanup and deduplication are too broad for one slice, split into `S5.a`, `S5.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `13_semgrep_domain_leakage.txt`
 - `15_domain_semantic_hardening.txt`
@@ -506,6 +511,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 6. Phase S6: Mutable state ownership remediation
 - Objective:
 - Remove mutable module-level state and global writes from engine runtime paths.
+- If cache/singleton replacement requires service extraction, split into `S6.a`, `S6.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `20_state_mutation_ownership.txt`
 - Executable steps:
@@ -530,6 +536,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 7. Phase S7: Cycle graph reduction and decomposition completion
 - Objective:
 - Reduce SCC size and remove cycle budget regressions through concrete module separation.
+- If decomposition is large, split into `S7.a`, `S7.b`, ... and execute all sub-phases.
 - Targeted failing checks:
 - `03_import_cycles_strict.txt`
 - `04_import_cycles_budget.txt`
@@ -551,7 +558,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 - `uv run xenon --max-absolute B --max-modules A --max-average A engine`
 - `uv run python scripts/check_engine_file_limits.py --soft 600 --hard 900`
 - Completion gates:
-- strict import cycles: pass (or explicitly approved residual with decreasing SCC trend if strict pass is not yet feasible in the same slice).
+- strict import cycles: pass.
 - budget regression: no regression; target lower than baseline.
 - xenon budgets: pass.
 - LOC limits: pass.
@@ -564,6 +571,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 8. Phase S8: Final static gate convergence and lock-in
 - Objective:
 - Validate whole static policy set after all remediation phases and lock-in passing state.
+- No residual policy failures allowed at phase completion.
 - Executable steps:
 - Run unified gate:
 - `uv run python scripts/policy_static_checks.py`
@@ -586,6 +594,7 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 - append concise delta summary in this document under static findings.
 - capture unresolved failures explicitly as carry-over with direct file references.
 - Do not bypass checks by baseline edits unless change is intentional and approved by policy intent.
+- If a phase expands beyond practical single-slice size, create numbered sub-phases inside the same phase (`Sx.a`, `Sx.b`, ...) and keep executing until all phase gates pass.
 
 
 ## LLM Check Findings
@@ -600,3 +609,23 @@ Execution rule: each phase must serialize raw outputs under `docs/architecture/a
 
 
 ## Global Refactor status
+Execution status legend: `not_started`, `in_progress`, `blocked`, `completed`.
+
+1. Static track
+- `S1`: `not_started`
+- `S2`: `not_started`
+- `S3`: `not_started`
+- `S4`: `not_started`
+- `S5`: `not_started`
+- `S6`: `not_started`
+- `S7`: `not_started`
+- `S8`: `not_started`
+
+2. Active sub-phases
+- None
+
+3. Current focus
+- None
+
+4. Last completed step
+- None
